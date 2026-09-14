@@ -1,0 +1,48 @@
+# SupplyAgent 本地开发服务拓扑。
+# 版本对齐借用服务器（PostgreSQL 16.6 / Redis 7.4.2），保证本地与远端行为一致。
+# 端口只绑 127.0.0.1，不得改成 0.0.0.0 或无认证 TCP 监听。
+# 应用本身不在此编排：MVP 阶段应用跑在宿主机 .venv 里，容器只提供有状态服务。
+
+name: supplyagent
+
+services:
+  postgres:
+    image: postgres:16.6
+    container_name: supplyagent-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SUPPLYAGENT_PG_DB:-supplyagent}
+      POSTGRES_USER: ${SUPPLYAGENT_PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${SUPPLYAGENT_PG_PASSWORD:-devonly_change_me}
+    ports:
+      - "127.0.0.1:${SUPPLYAGENT_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SUPPLYAGENT_PG_USER:-postgres} -d ${SUPPLYAGENT_PG_DB:-supplyagent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7.4.2
+    container_name: supplyagent-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${SUPPLYAGENT_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:
+    name: supplyagent-pgdata
+  redisdata:
+    name: supplyagent-redisdata

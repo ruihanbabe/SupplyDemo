@@ -10,22 +10,22 @@
 ## 新会话启动
 
 1. 阅读本文件、`README.md`、`PROGRESS.md`；`DECISIONS.md` 只浏览决策标题（`grep '^## ' DECISIONS.md`）建立索引，具体条目按需定点读取，不在启动阶段通读全文。
-2. 运行 `git status --short --branch`，保护已有未提交修改（仓库尚未初始化时先确认是否需要初始化，不擅自创建）。
-3. 环境与依赖尚未定稿，标准命令（见下）待 `Makefile` 建立后启用；当前先确认借用服务器的服务可用性（对应 `PROGRESS.md` T01）。
+2. 运行 `git status --short --branch`，保护已有未提交修改。仓库已初始化（`main` 分支）。
+3. 运行 `make status` 确认解释器、`.venv` 与 `.env` 就位；需要真实服务时再 `make services-up` + `make services-smoke`。开发环境在本地，不连远程服务器（见 `DECISIONS.md` D18）。
 4. 根据任务确定所属模块（参照 `ARCHITECTURE.md` 的一级逻辑模块表），先读该目录的局部 `AGENTS.md`（占位 stub 已建，见下方"模块入口"）；stub 内容较薄时以 `ARCHITECTURE.md` 对应模块行为准。
 5. 不默认扫描整个仓库或全部 Markdown；只读取与当前任务有关的文档和模块。
 
 ## 标准命令入口
 
 ```bash
-make setup   # 待建
-make status  # 待建
-make check   # 待建
-make run     # 待建
-make health  # 待建
+make help
 ```
 
-当前项目尚无代码仓库，`Makefile`、依赖锁文件、`.env.example`、`compose.yaml` 均待建（进度见 `PROGRESS.md`）。这些文件建立后，本节应替换为真实命令；Markdown 不能证明当前依赖、服务或外部系统状态，以 `Makefile` 与实际运行结果为准。
+`Makefile` 是命令的唯一权威入口，以 `make help` 实际列出的目标为准。常用：`make setup`（建 `.venv` + 装依赖 + 生成 `.env`）、`make status`（查环境，不启动任何东西）、`make check`（离线门禁）、`make services-up` / `make services-smoke`（起 PostgreSQL + Redis 并冒烟）。
+
+开发在**本地**进行（见 `DECISIONS.md` D18）：Python 3.11.15 / `.venv`、Docker CE 29.7.1（colima）、PostgreSQL 16.6、Redis 7.4.2。服务拓扑见 `compose.yaml`，环境变量模板见 `.env.example`，依赖版本台账见 `requirement.txt`。
+
+`make run` / `make health` 目前会明确报错退出——`src/` 下尚无应用入口，这是如实报告。命令目标在源码或测试为空时打印「跳过」并以 0 退出；**跳过不等于通过**。Markdown 不能证明当前依赖、服务或外部系统状态，一律以 `Makefile` 与实际运行结果为准。
 
 ## 全局硬约束
 

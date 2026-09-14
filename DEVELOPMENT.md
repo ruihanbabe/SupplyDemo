@@ -9,37 +9,43 @@
 
 ## 标准命令
 
+`Makefile` 已建立，是命令的**唯一权威入口**，以 `make help` 列出的目标为准；本文档只说明入口边界与预期结果，不复制其实现。
+
 ```bash
-make setup
-make check
-make run
-make health
+make help
 ```
 
-`Makefile` 与 `bin/` 待建；建立后它们是权威入口，届时以 `make help` 为准，本文档不复制其实现。当前阶段这些命令尚不可用，环境准备见「环境」一节。
+边界说明：
 
-`make setup` 只检查解释器并在缺少 `.env` 时复制安全模板，不安装依赖。`make status` 只检查项目入口和本地解释器；服务状态使用对应的 `services-status` 命令。
+- `make setup` 建 `.venv`（缺失时）、按锁文件或 `requirements.txt` 装依赖、在缺少 `.env` 时由 `.env.example` 复制一份。不碰服务，不装系统级软件。
+- `make status` 只报告解释器、虚拟环境、`.env` 与源码文件数；不启动任何东西。服务状态用 `make services-status`。
+- `make check` 是 `compile` + `lint` + `test` 的离线门禁，对应 `DECISIONS.md` D14 的 ①② 层。
+- `make run` / `make health` 目前会明确报错退出——`src/` 下尚无应用入口，这是如实报告而非失败。
+- `make freeze` 把当前虚拟环境固化为 `requirements.lock.txt`。
+
+源码或测试目录为空时，`compile` / `lint` / `test` 会打印「跳过」并以 0 退出。**跳过不等于通过**，记录证据时必须写明跳过原因，不得当作已验证。
 
 ## 环境
 
-- 语言/运行时：Python 3.11+（已锁定，见 `DECISIONS.md`）。默认使用 `python3`；需要指定解释器时通过 `PYTHON` 或 `SUPPLYAGENT_PYTHON` 覆盖。
-- 将 `.env.example`（待建）复制为 `.env`，密钥不得进入 Git。
-- 进程环境变量优先于 `.env`。
-- LLM Provider 通过抽象 `ModelProvider` 接口接入，不在代码或文档中写死具体厂商；启用开关与凭据走 `SUPPLYAGENT_LLM_*` 系列环境变量，具体变量名以 `.env.example` 为准（待建）。旗舰/便宜快速两档模型按 worker 在 YAML 配置中独立指定（见 `DECISIONS.md` D06）。
-- 服务镜像和拓扑以 `compose.yaml` 为准（待建）。
-- 依赖来源：`requirements`/锁文件待建；机器上的既有环境不等于项目契约。
-- MVP 不引入向量库 / RAG（见 `DECISIONS.md`，Infrastructure 仅 LLM / PostgreSQL / Redis / 供应商 API）。
+**开发在本地进行**，借用的 GPU 服务器不再是默认环境，仅在后续确有需要时启用（见 `DECISIONS.md` D18）。
 
-## 可选服务
+- 语言/运行时：Python 3.11（已锁定，见 `DECISIONS.md`）。虚拟环境是项目根的 `.venv`，由 `make setup` 创建；解释器路径通过 `PYTHON` 变量覆盖。手工进入环境用 `source .venv/bin/activate`，但**日常操作走 `make`，不依赖是否已激活**——Makefile 内部一律用 `.venv/bin/python`。
+- 将 `.env.example` 复制为 `.env`（`make setup` 会自动做），密钥不得进入 Git。进程环境变量优先于 `.env`。
+- LLM Provider 通过抽象 `ModelProvider` 接口接入，不在代码或文档中写死具体厂商；启用开关与凭据走 `SUPPLYAGENT_LLM_*` 系列环境变量，变量名以 `.env.example` 为准。旗舰/便宜快速两档模型按 worker 在 YAML 配置中独立指定（见 `DECISIONS.md` D06）。**本地不跑任何模型推理**，全部外部调用。
+- 服务镜像和拓扑以 `compose.yaml` 为准：PostgreSQL 16.6 与 Redis 7.4.2，端口只绑 `127.0.0.1`。容器运行时是 colima（macOS Virtualization.framework）+ Docker CE 29.7.1。
+- 依赖来源：`requirements.lock.txt`（由 `make freeze` 生成）；当前已装版本与变更记录见根目录 `requirement.txt` 台账。机器上的既有环境不等于项目契约。
+- 组件版本必须与将来启用的任何远端环境保持一致，否则「本地通过」不能作为远端行为的证据（见 D18 约束）。
+- MVP 不引入向量库 / RAG（见 `DECISIONS.md` D12，Infrastructure 仅 LLM / PostgreSQL / Redis / 供应商 API）。
+
+## 服务
 
 ```bash
 make services-up
-make services-status
-make services-smoke
-make services-down
 ```
 
-持久化 smoke 会连接真实 Redis / PostgreSQL。上述 target 待 `compose.yaml` 与 `Makefile` 建立后启用。
+`services-up` / `services-status` / `services-smoke` / `services-down` 四个目标封装 `docker compose`，拓扑权威是 `compose.yaml`。`services-smoke` 会连接真实 Redis / PostgreSQL，只证明连通性，不证明 schema 或业务正确性。
+
+跑 `DECISIONS.md` D14 的 ③ 层（集成故障注入）前，服务必须先 up 且健康检查通过。`services-down` 默认保留数据卷（`supplyagent-pgdata` / `supplyagent-redisdata`），需要干净重来时显式删卷。
 
 ## 可选模型验证
 
@@ -47,7 +53,9 @@ make services-down
 
 ## 验证边界
 
-`make check` 只执行离线语法编译和当前测试。lint / type-check 尚未纳入门禁；它也不证明真实 LLM、Redis / PostgreSQL 应用接入、外部供应商 API、或业务正确性（缺口计算、报价、审批链路的实际正确性）。
+`make check` 覆盖 `DECISIONS.md` D14 的 ①② 两层：离线语法编译、ruff、离线测试。它**不证明**真实 LLM 调用、Redis / PostgreSQL 的应用级接入、外部供应商 API、或业务正确性（缺口计算、报价、审批链路的实际正确性）——那些属于 ③④ 层。
+
+`ruff` 与 `pytest` 已装入 `.venv`，但在 `src/` 与 `tests/` 尚无内容时会打印跳过。装配完成后 lint 即为必经子阶段，不得再跳过。
 
 ## Feature / Task 分层
 

@@ -76,3 +76,33 @@
 - 决策：供应查询（FR-03）默认只查主源（首版 DigiKey，US／USD），不对每次查询并发扇出全部已配置 provider。扩展到第二家及以上必须命中确定性规则，由代码判断而非 LLM 每次裁量：命中缓存且未过 TTL → 不发请求；主源命中且库存 ≥ 需求量 → 停；主源无结果 → 扩到第二家；主源库存 < 需求量 → 扩到第二家找货；该用料行有多候选需选型，或用户明确要求比价 → 并发查全部。真正扇出时必须并发执行，延迟取各家最大值而非累加。
 - 原因：配额上限决定了全量扇出不可行——Mouser 每分钟 30 次、每天 1000 次，121 条用料行 × 4 家 = 484 次调用，一天扫两遍即耗尽（见 `PROCUREMENT-API-MCP.md` §1）。且 BR-06 规定不同币种／包装不自动混合比较，多查回来的结果本就无法直接排序比价，收益有限。这与 D03「Monitor 越阈值才生成 TriggerEvent」是同一条成本治理原则：高成本操作只在有实际价值时触发，一个治 LLM 成本，一个治 API 配额。
 - 约束：扇出编排归 Detail Agent（其职责即"多维度信息收集的 fan-out 编排"），不新增模块；升级规则的阈值属可变业务参数，存 `business_rule` 表（见 D07），不硬编码进 Worker 代码或 prompt；报价快照缓存走 Redis 且 TTL 必须短（价格／库存是时效数据）；缓存键必须隔离地区与账户价格范围，不同 provider 的结果不合并为单一"市场最优"结论。
+
+## 2026-09-14：验证层级归一到四层，Feature 三层契约改为其投影 <!-- id: D14 -->
+
+- 决策：仓库统一使用一套验证层级——① 静态契约（输入输出 schema、引用完整性、状态合法迁移、模块依赖检查）② 离线测试（固定数据与 mock，覆盖身份、算术、权限、预算；不访问供应商）③ 集成故障注入（本地真实 PostgreSQL / Redis / 目标业务服务，注入超时、进程终止、并发与响应丢失）④ 授权端到端（真实供应只读接口 + 自己控制的业务系统草稿写入，记录版本、地区、时间与结果）。`DEVELOPMENT.md` 原有的 static / runtime / system 三层不再是独立模型，改写为该四层的投影：static→①，runtime→②，system→③+④；`docs/features.json` 的 `verification` / `evidence` 字段相应扩为四键。原「语法与类型 → lint → 单元 → 模块集成」四级递进保留，但降级为 ①② 两层内部的自动修复重试计数器，不再承担完成定义。
+- 原因：三套层级并存且不互相映射，Codex 每次都要判断「现在说的是哪一套的第三层」。选四层为骨架，是因为本项目的核心卖点是可审计与故障恢复——「集成故障注入」与「授权端到端」是两道独立的验收门，塌进一个 system 层就失去区分度：能跑通端到端不等于注入故障后仍正确。
+- 约束：四层顺序执行，上一层失败、未执行或被阻塞时不得进入下一层，也不得跳级掩盖失败；③④ 需真实服务或外部授权，被阻塞时如实记为 blocked 而非跳过。硬门禁（越权写入、重复草稿、伪造身份、无证据关键结论为零）在每一层都适用，不因层级低而豁免。每个 EV 用例必须标注其所属层级。
+
+## 2026-09-14：需求/验收/接口正文迁出归档区，建立 docs/product 与 docs/spec 层 <!-- id: D15 -->
+
+- 决策：FR/BR 正文迁入 `docs/product/requirements.md`；EV 正文与 FR→EV 追踪矩阵迁入 `docs/product/acceptance-cases.md`；MCP 工具 schema 与 ToolResult 统一返回结构迁入 `docs/spec/interfaces.md`；任务状态机与合法迁移表迁入 `docs/spec/state-machine.md`；PostgreSQL DDL 迁入 `docs/spec/data-model.md`；供应平台能力、配额与 ERP 选型调研迁入 `docs/research/procurement-platforms.md`。`data/supplychain/` 下三份初稿的正文清空为一行指针。
+- 原因：`AGENTS.md` 硬约束禁止读入归档区，而 FR/BR/EV 的唯一正文就在归档区，Codex 守约束就拿不到缺口计算规则，读了就违约。这不是排版问题，是治理体系的自相矛盾。
+- 约束：验收原则正文归 `docs/product/acceptance-cases.md`，`productinfo.md` §10 只保留硬门禁一句话与指针；项目性质措辞以 `productinfo.md` §1 为准；存储分工表归 `ARCHITECTURE.md`；`TASKS.md` 不建立，任务事实源只有 `docs/features.json` 与 `PROGRESS.md` 任务看板两处。迁移后每个信息要素只有一处正文，别处只留编号引用或一句话指针。
+
+## 2026-09-14：FR / BR / EV 编号留空缺，不回收不重排 <!-- id: D16 -->
+
+- 决策：D12 删除的 FR-10、EV-15、EV-16 编号永久作废，后续新增从当前最大编号续下（FR-11、EV-29 起）。现存编号集合为 FR-01～09、BR-01～11、EV-01～14 与 EV-17～28（共 26 例）。
+- 原因：编号是跨文档引用锚点，`DECISIONS.md` D12 等既有条目已按旧编号书写，重排会让所有引用同时失效，且失效方式无法机检。
+- 约束：`docs/product/requirements.md` 与 `docs/product/acceptance-cases.md` 须在编号表附近注明空缺原因与出处（见 D12），避免后人误判为遗漏。
+
+## 2026-09-14：requirement.txt 纳入文档治理，与 PROGRESS.md 划清分工 <!-- id: D17 -->
+
+- 决策：保留根目录 `requirement.txt` 作为依赖与环境台账，补文档契约块、纳入 `AGENTS.md` 文档索引与 `CODING_RULES.md` SSOT 矩阵，并逐行剔除 LawAgent 专属内容（`lawagent_runtime`、`cn2an` 中文解析、Qdrant / FlagEmbedding / RAGAS 向量栈、法规向量入库记录、`data-root=/root/lawagent/...`）。分工：`requirement.txt` 独占**依赖清单、版本台账与依赖变更记录**，`PROGRESS.md` 独占**服务可用性的验证状态**——版本号写台账，「是否已对 SupplyAgent 复测」写 `PROGRESS.md`，同一事实不双写。
+- 原因：该文件此前不在任何治理索引里，却记着 Docker 29.7.1 / Redis 7.4.2 / PostgreSQL 16.6 已装且真实 smoke 通过（2026-08-19），而 `PROGRESS.md` T01 同时把「服务器有没有这些服务」列为唯一硬阻塞。治理外的文件持有关键事实，导致阻塞程度被高估。
+- 约束：台账中来自 LawAgent 的验证记录必须标注来源与日期，并注明「未对 SupplyAgent 复测」；T01 从「硬阻塞」降为「待复测」，复测范围收窄为「这些服务对 SupplyAgent 仍可用」而非「是否存在」。Qdrant / RAGAS 等与 D12 冲突的依赖不得进入 SupplyAgent 的目标依赖清单。
+
+## 2026-09-14：开发环境迁到本地，GPU 服务器降为后续可选 <!-- id: D18 -->
+
+- 决策：日常开发与 `DECISIONS.md` D14 的 ①②③ 层验证（静态契约、离线测试、集成故障注入）全部在本地 MacBook Pro 上进行。本地已装 Python 3.11.15、Docker CE 29.7.1（colima + Virtualization.framework）、PostgreSQL 16.6 与 Redis 7.4.2 容器，版本与此前借用的服务器一致。服务拓扑以 `compose.yaml` 为权威，命令入口以 `Makefile` 为权威。借用服务器不再作为默认开发环境，仅在后续确有需要时（例如 ④ 层需要一台常开宿主跑 ERPNext 实例，或将来重新引入需要 GPU 的能力）再启用。
+- 原因：服务器唯一不可替代的资源是 RTX 3090，而 D12 已把 RAG／向量检索移出 MVP，LLM 调用全部走外部 API，本地不跑任何模型推理——GPU 对当前范围没有用处。本地 32 GB 内存运行「FastAPI + PostgreSQL + Redis」的纯 IO 负载绰绰有余，且省掉了远程登录、沙箱设备隔离与单次授权申请的往返成本。
+- 约束：本地服务端口只绑 `127.0.0.1`，不得改成 `0.0.0.0` 或无认证 TCP 监听。本地与服务器的组件版本必须保持一致，版本台账见 `requirement.txt`；任何一侧升级都要同步另一侧，否则「本地通过」不能作为服务器行为的证据。④ 层的授权端到端验证仍需真实供应只读接口与自己控制的业务系统，本地跑不了的部分如实记为 blocked，不得以 ①②③ 层通过代替。笔记本休眠会中断长时运行的定时扫描，FR-08 与恢复类用例（EV-23、EV-24）若受此影响，须在证据中注明运行环境限制。

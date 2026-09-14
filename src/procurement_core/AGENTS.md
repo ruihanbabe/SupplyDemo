@@ -11,7 +11,7 @@
 
 ## 修改前
 
-阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的采购业务核行、`DECISIONS.md` D01 / D07、`productinfo.md` §5 与 §8；FR/BR 条款正文当前仍在归档目录 `data/supplychain/MVP-PRD.md`（尚未提升为正式需求章节，见 `PROGRESS.md` T09），引用时须注意其题头标注为初稿。代码与测试待建。
+阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的采购业务核行、`DECISIONS.md` D01 / D07、`productinfo.md` §5 与 §8，以及 `docs/product/requirements.md` 中本模块需满足的条款（FR-02/04/05/07、BR-01～07、BR-10，反向索引见该文 §3）。**不要读 `data/supplychain/` 归档区**。代码与测试待建。
 
 ## 不变量与 contract
 

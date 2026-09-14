@@ -34,7 +34,7 @@ Agent 行为（system prompt／模型／工具列表）以 YAML 配置管理，�
 
 ## 已确认的业务需求基础
 
-早期设计稿中定义的 FR-01～FR-10（提交需求、缺料计算、供应查询、资料核验、方案生成、审批、执行、定时扫描、故障恢复、知识展示）与 BR-01～BR-11（缺口计算、候选选型、报价、审批版本绑定等业务规则），目前作为上述"分析类查询"深度路径（Detail→Research→Summary→Action）的执行内核被复用，不是被推翻，范围见 `productinfo.md` §5；FR/BR 条款正文当前仍在归档目录 `data/supplychain/MVP-PRD.md`，尚未提升为正式需求章节（见 `PROGRESS.md` 任务看板）。
+FR-01～FR-09（提交需求、缺料计算、供应查询、候选核验、方案生成、审批、执行、定时扫描、故障恢复）与 BR-01～BR-11（缺口计算、候选选型、报价、审批版本绑定等业务规则），作为上述"分析类查询"深度路径（Detail→Research→Summary→Action）的执行内核被复用。条款正文见 `docs/product/requirements.md`，验收用例见 `docs/product/acceptance-cases.md`。原 FR-10（知识展示）已随 `DECISIONS.md` D12 移除 RAG 而删除，编号不回收（见 D16）。
 
 5 个开源硬件项目的真实 BOM 已完成落库（121 条用料行、148 个候选型号、160 条分销商料号，元件总数量 420），构成身份与技术规格层的基础数据。一条用料行可对应多个厂商的等效型号，这是候选选型与替代料判断的数据基础。原始文件在 `data/supplychain/domdata/`（只读不可变），规范化产出与已知缺口见 `data/supplychain/normalized/projects.yaml`。**这批数据不含时间序列，尚不足以支撑库存周转率／缺货率等指标计算**，需要补充一批合成的时间序列数据（库存/出入库/在途事件）才能让 Monitor 层的阈值逻辑有东西可算。
 
@@ -50,7 +50,13 @@ Agent 行为（system prompt／模型／工具列表）以 YAML 配置管理，�
 
 ## 运行
 
-尚无可运行代码。环境、依赖、启动命令待开发环境搭建后补充，届时以 `Makefile`、`.env.example`、`compose.yaml` 为准，不在本文档预先承诺。
+**尚无可运行的产品代码**，但开发环境已就位（本地，见 `DECISIONS.md` D18）。命令以 `Makefile` 为准：
+
+```bash
+make help
+```
+
+首次准备：`make setup` 建 `.venv` 并生成 `.env`，`make services-up` 起 PostgreSQL 16.6 与 Redis 7.4.2。环境变量见 `.env.example`，服务拓扑见 `compose.yaml`，依赖版本台账见 `requirement.txt`。`make run` 目前会明确报错退出——`src/` 下还没有应用入口。
 
 ## 文档索引
 
@@ -60,8 +66,12 @@ Agent 行为（system prompt／模型／工具列表）以 YAML 配置管理，�
 - 开发指南（命令、验证层级、Feature 编排契约）：`DEVELOPMENT.md`
 - Codex 文档记录规则：`CODING_RULES.md`
 - 当前进度、阻塞和下一步：`PROGRESS.md`
-- Feature 清单与三层验证契约：`docs/features.json`（待建，机制见 `DEVELOPMENT.md`）
-- 产品需求：`productinfo.md`（整合版）
+- Feature 清单与验证契约：`docs/features.json`（待建，机制见 `DEVELOPMENT.md`）
+- 产品需求：`productinfo.md`（定位、范围、业务边界）
+- 功能需求与业务规则：`docs/product/requirements.md`（FR-01～09 / BR-01～11 正文）
+- 验收用例：`docs/product/acceptance-cases.md`（EV 正文 + FR→EV 追踪矩阵）
+- 领域术语：`docs/product/GLOSSARY.md`
+- 命令入口 / 服务拓扑 / 环境变量 / 依赖台账：`Makefile`、`compose.yaml`、`.env.example`、`requirement.txt`
 - 数据说明：`data/supplychain/normalized/projects.yaml`（已落库的项目注册表与已知缺口）
 - 设计初稿与讨论记录（**归档，不作为实现依据**）：`data/supplychain/`
 

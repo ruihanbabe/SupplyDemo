@@ -1,79 +1,79 @@
-# SupplyAgent 当前环境与依赖台账
+# SupplyAgent 依赖与环境台账
 
-> 用途：记录“服务器上实际安装了什么”以及“项目准备安装什么”。
-> 本文件同时作为实际环境、目标依赖与依赖变更的人工审计台账；
-> 最后核对：2026-09-03（Asia/Shanghai）
+> **文档契约** · 类型：规则层 · 读取：准备环境、增删依赖或排查版本问题时按节读
+> 更新：安装、升级、删除任何依赖后由 Codex 即时写入，须同时填日期、原因与验证
+> 独占：项目直接依赖清单、组件版本台账、依赖变更记录、明确排除的依赖及其理由
+> 不收录：服务可用性的验证状态（见 `PROGRESS.md`）、命令实现（见 `Makefile`）、服务拓扑（见 `compose.yaml`）、环境变量清单（见 `.env.example`）、决策理由（见 `DECISIONS.md`）
 
-## 当前解释器
+本文记录「项目声明要用什么」与「本机实际装了什么」。**机器真相以 `requirements.lock.txt` 为准**（由 `make freeze` 生成）；本文承担人工审计视角的说明与取舍理由，不替代锁文件。
 
-- Conda 环境：`agent`
-- Python：3.11.15
-- 路径：`/root/miniconda3/envs/agent/bin/python`
-- pip：26.1.2
-- 环境性质：SupplyAgent 独立 Conda 环境
-- 计算资源：8 CPU、43 GB 内存、RTX 3090 24GB；宿主终端 CUDA 可用，Codex 默认沙箱不映射 GPU 设备节点，需要时按开发切片申请单次授权
+开发环境已于 2026-09-14 迁至本地，借用的 GPU 服务器不再是默认环境（见 `DECISIONS.md` D18）。
 
-## 当前环境结论
+## 运行时
 
-- 已有 Python 3.11 独立环境，可直接作为当前开发环境。
-- FastAPI、Qdrant Client、FlagEmbedding、Sentence Transformers、Torch 等已安装。
-- 环境实测已有 `ragas==0.4.3`、`openai==2.53.0` 及其带入/共存的 LangChain、LangGraph 依赖；RAGAS仅用于离线评测，不改变MVP继续使用自研轻量Agent Runtime的架构决策。旧 Agent/API 原型仍暂作历史对照。
-- 环境包含 CUDA 版 Torch。2026-08-04 宿主终端核验 `nvidia-smi` 与 PyTorch CUDA 正常，并使用 RTX 3090 完成法规向量入库；Codex 默认沙箱仍因设备隔离不可见。GPU 操作不设长期授权，按具体开发切片单次申请；代码使用 `device=auto|cpu|cuda`。
-- 不直接把完整 `pip freeze` 当作顶层依赖；待依赖选型稳定后生成锁定文件。
-- Docker Engine 已从官方 Ubuntu Jammy APT 仓库安装并完成容器运行验证。当前环境无可用 systemd bus，daemon 使用项目专用目录和 Unix socket 手动运行。
+| 项目 | 版本 | 说明 |
+|---|---|---|
+| 宿主机 | MacBook Pro 2020，Intel i5-1038NG7，32 GB | x86_64，macOS 15.7.9 |
+| Python | 3.11.15 | Homebrew `python@3.11`，路径 `/usr/local/opt/python@3.11/bin/python3.11` |
+| 虚拟环境 | 项目根 `.venv` | 由 `make setup` 创建；Makefile 内部一律用 `.venv/bin/python`，不依赖是否已激活 |
+| 计算资源 | 4 核 8 线程 / 32 GB | **本地不跑任何模型推理**，LLM 全部外部 API 调用，无 GPU 需求 |
 
-## 系统运行依赖
+Homebrew 自 2026-08 起不再为 Intel macOS 提供预编译包，`brew install` 会退化为源码编译。因此容器运行时与 CLI 均改用官方静态二进制安装，不经 brew。
 
-[未完成, 未创建docker镜像用于本项目]
-当前 Docker 客户端连接变量：
+## 容器与服务组件
 
-```bash
-export DOCKER_HOST=unix:///tmp/supplyagent-docker.sock
-```
+| 能力 | 版本 | 运行方式 |
+|---|---|---|
+| Docker CE / CLI | 29.7.1 | 官方静态二进制装于 `/usr/local/bin/docker`，非 brew |
+| Docker Compose | v5.5.1 | 官方 release 单文件，装于 `~/.docker/cli-plugins/` |
+| 虚拟机 | colima 0.10.3 + lima 2.2.0 | `--vm-type vz`（macOS Virtualization.framework），不需要 QEMU |
+| PostgreSQL | 16.6 | `compose.yaml`，只绑 `127.0.0.1:5432`，数据卷 `supplyagent-pgdata` |
+| Redis | 7.4.2 | `compose.yaml`，只绑 `127.0.0.1:6379`，AOF 持久化，数据卷 `supplyagent-redisdata` |
 
-该 socket 位于 `/tmp`，服务器或任务环境重启后需要重新启动 daemon；不得改成无认证的 TCP 监听。
-
-| 能力 | 当前版本 | 当前运行方式 |
-|---|---:|---|
-| Docker Engine / CLI | `29.7.1` | daemon 手动启动；`data-root=/root/lawagent/.runtime/docker-data` |
-| Docker Compose | `v5.4.0` | Docker CLI 插件 |
-| containerd | `2.2.6` | 由 Docker daemon 使用 |
-| Redis Server | `7.4.2` | `compose.yaml`；仅绑定 `127.0.0.1:6379`，AOF 持久化至 `.runtime/redis-data` |
-| PostgreSQL Server | `16.6` | `compose.yaml`；仅绑定 `127.0.0.1:5432`，数据保存至 `.runtime/postgres-data` |
-
+PostgreSQL 与 Redis 版本刻意对齐此前服务器上的版本，以便将来若启用远端环境时行为一致（见 D18 约束）。端口不得改成 `0.0.0.0` 或无认证 TCP 监听。
 
 ## 项目直接依赖
 
-| 能力 | 候选包 | 当前声明 | 当前环境 |
-|---|---|---:|---|
-| Agent Runtime | 自研 `lawagent_runtime` | 已开始 | 无新增外部依赖 |
-| LLM 抽象 | 待选；不默认绑定 LangChain | 缺失 | `langchain==1.3.14`、`langchain-openai==1.4.1`（环境已有） |
-| API | `fastapi`、`uvicorn` | 已声明 | `0.140.8` / `0.51.0` |
-| 配置与模型 | `pydantic`、`pydantic-settings`、`python-dotenv` | 部分声明 | `2.13.4` / 未安装 / 未安装 |
-| 中文解析 | `cn2an` | `==0.5.24` | `0.5.24`（直接依赖；带入 `proces==0.1.7`） |
-| HTTP | `httpx` | `>=0.27.0` | `0.28.1` |
-| Redis客户端 | `redis` | `>=5,<7` | `6.4.0` |
-| PostgreSQL客户端 | `SQLAlchemy[asyncio]`、`asyncpg` | `SQLAlchemy>=2,<3`、`asyncpg>=0.29,<1` | `2.0.51` / `0.31.0` |
-| 评估 | `ragas`、`openai`、`datasets` | 离线评测使用 | `0.4.3` / `2.53.0` / `5.0.0` |
-| 测试与质量 | `pytest`、`pytest-asyncio`、`ruff`、`mypy` | 缺失 | 未安装 |
+| 能力 | 包 | 声明版本 |
+|---|---|---|
+| API | `fastapi`、`uvicorn[standard]` | 0.140.8 / 0.51.0 |
+| 配置与模型 | `pydantic`、`pydantic-settings`、`python-dotenv` | 2.13.4 / 2.15.0 / 1.2.3 |
+| HTTP 客户端 | `httpx` | 0.28.1 |
+| Agent 行为配置 | `PyYAML` | 6.0.3（D07 的 YAML 配置载入） |
+| Redis 客户端 | `redis` | 6.4.0 |
+| PostgreSQL 客户端 | `SQLAlchemy[asyncio]`、`asyncpg` | 2.0.51 / 0.31.0 |
+| 迁移 | `alembic`、`psycopg[binary]` | 1.20.0 / 3.3.4 |
+| 测试与质量 | `pytest`、`pytest-asyncio`、`ruff`、`mypy` | 9.1.1 / 1.4.0 / 0.16.7 / 2.3.1 |
+| Agent Runtime | 自研 | 无新增外部依赖 |
+| LLM 抽象 | 待选 | 通过 `ModelProvider` 接口接入；**不默认绑定 LangChain**，MVP 用 `httpx` 直连即可 |
 
-其他关键已安装版本：`torch==2.6.0`、`transformers==5.14.1`、
-`datasets==5.0.0`、`numpy==2.4.6`、`pandas==3.0.5`。
+上表为直接依赖；连带的传递依赖共 44 条，完整清单以 `requirements.lock.txt` 为准。
+
+## 明确排除的依赖
+
+以下均来自此前项目的环境，**不进入 SupplyAgent 的依赖清单**：
+
+| 包 | 排除理由 |
+|---|---|
+| `torch`、`transformers`、`sentence-transformers`、`FlagEmbedding` | 本地模型推理栈。MVP 无 RAG／向量检索（D12），LLM 全外部调用，装了纯占空间；Intel Mac 无 CUDA，CPU 推理也不可用 |
+| `qdrant-client` 及任何向量库 | D12 已移除向量检索；若将来重新引入，按 D11 用 PostgreSQL 扩展而非独立向量库 |
+| `ragas`、`datasets` | 评测栈，且会连带拖入 LangChain 与 torch。EV 用例的判定由独立断言实现（见 `docs/product/acceptance-cases.md` §1），不依赖该框架 |
+| `langchain`、`langchain-openai` | 不默认绑定特定编排框架 |
+| `cn2an` | 中文数字解析，属此前项目的法规场景需求，本项目无此需求 |
 
 ## 依赖维护约定
 
-1. 直接依赖、实际版本和变更原因统一记录在本文件。
-2. 每次安装、升级或删除包，同步更新本文件的日期、原因和验证结果。
-3. 如未来需要可复现锁定，由依赖工具生成锁文件，不手工编辑。
-4. 禁止把 API Key、服务器绝对路径或本地模型文件写入依赖台账或锁文件。
-5. Python模型版本均视为运行时依赖，必须在开发说明中记录。
+1. 直接依赖、实际版本和变更原因统一记录在本文件；机器真相以 `requirements.lock.txt` 为准。
+2. 每次安装、升级或删除包，同步更新本文件的日期、原因和验证结果，并重跑 `make freeze`。
+3. 需要可复现锁定时由 `make freeze` 生成，不手工编辑锁文件。
+4. 禁止把 API Key、凭据或本地绝对路径写入依赖台账或锁文件。
+5. 新增依赖前先确认它不在「明确排除」表中；确需引入被排除项，先在 `DECISIONS.md` 记录推翻理由。
 
 ## 变更记录
 
 | 日期 | 变更 | 原因 | 验证 |
 |---|---|---|---|
-| 2026-07-29 | 建立依赖台账 | 项目初始化与迁移准备 | 已核对 Python、pip、`pip freeze` |
-| 2026-07-29 | 切换到 `agent` Conda 环境 | 使用既有项目虚拟环境 | 已核对解释器及完整 `pip freeze` |
-| 2026-07-31 | 安装 `cn2an==0.5.24`（带入 `proces==0.1.7`） | 正确解析中文 | 安装位置属于 `agent` 环境 |
-| 2026-08-04 | 从 Docker 官方 Jammy APT 仓库安装 Docker CE | Engine/CLI `29.7.1`、Compose `v5.4.0`、containerd `2.2.6`；`hello-world` 运行成功 |
-| 2026-08-19 | 安装 Redis/PostgreSQL 持久化依赖 | 验证正式 Adapter 的真实 TTL、事务和读写语义 | `redis==6.4.0`、`psycopg[binary]==3.3.4` 安装于 agent 环境；Redis 7.4.2/PostgreSQL 16.6 容器 healthy；真实 smoke 通过 |
+| 2026-09-14 | 本文由此前项目的台账适配为 SupplyAgent 版 | 该文件原不在治理索引内却持有关键事实，按 `DECISIONS.md` D17 纳入治理并剔除遗留内容 | 逐行核对，LawAgent 专属条目已移入「明确排除」表 |
+| 2026-09-14 | 本地建 `.venv`（Python 3.11.15），装入上表直接依赖 | 开发环境迁至本地（D18） | 用户本人执行并确认成功；`requirements.lock.txt` 已生成，44 条，全部 pin 解析成功且无排除项混入 |
+| 2026-09-14 | 装 Docker CE 29.7.1 + Compose v5.5.1（官方静态二进制）、colima 0.10.3 | Homebrew 停止为 Intel macOS 提供预编译包，brew 路径退化为源码编译不可行 | 用户本人执行并确认成功 |
+| 2026-09-14 | 起 PostgreSQL 16.6 + Redis 7.4.2 容器 | 支撑 `DECISIONS.md` D14 的 ③ 层集成故障注入 | 用户本人执行并确认成功；Claude 未复核 |
