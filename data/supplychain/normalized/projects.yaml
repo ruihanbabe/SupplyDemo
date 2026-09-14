@@ -59,6 +59,9 @@ projects:
       - u2,u3 上有两条用料行（MCP3208 芯片与其 DIP 座），同一位号对应两个必须一起采购的
         元件，属正常情形，非重复记录
       - 位号分隔符为逗号，其余项目为分号或空格；跨项目解析位号时需按项目区分
+      - 2 行有多候选型号（各 2 个，跨 2 家厂商），候选间无技术等价结论：
+        Spikeling-V2-002（c3，1nF）KEMET C901U102MYWDBA7317 / Vishay A102K15X7RH5TAA；
+        Spikeling-V2-004（d2~d13，led 3mm）Kingbright L-34QBC-D / Dialight 521-9901-802F
 
 # 厂商别名归一（在 normalize_domdata.py 的 MANUFACTURER_ALIASES 中声明）
 # 源 BOM 同一厂商多种写法会把同一元件拆成多条记录。归一后元件数 144 → 142。

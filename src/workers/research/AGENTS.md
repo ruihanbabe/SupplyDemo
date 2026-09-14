@@ -21,4 +21,4 @@
 
 ## 修改后验证
 
-`Makefile` 与测试待建。建立后运行本模块对应的 `make` 目标与单元测试，并按 `DEVELOPMENT.md` 的三层验证补充“发现必须可追溯到 evidence”的确认。
+`Makefile` 已建（目标见 `make help`），本模块代码与测试待建。届时运行本模块对应的 `make` 目标与单元测试，并按 `DEVELOPMENT.md` 的四层验证（`DECISIONS.md` D14）补充“发现必须可追溯到 evidence”的确认。

@@ -51,7 +51,7 @@
 | `docs/spec/interfaces.md` / `state-machine.md` / `data-model.md` | **已建**（T13 完成）；DDL 已在真实 PostgreSQL 16.6 上验证可建，BR 约束实测生效 |
 | `docs/research/procurement-platforms.md` | **已建**（T13 完成）；快照日期 2026-09-09，接入前须重新核对 |
 | `data/supplychain/` 三份归档初稿 | **已清空为指针**（T14 完成）；各含文档契约块与逐节去向对照表，原文见 `git show 5eb4dbc:<path>` |
-| `data/supplychain/normalized/projects.yaml` | 已建；Spikeling-V2 的 known_gaps 漏记 2 行多候选，待订正（见 T12） |
+| `data/supplychain/normalized/projects.yaml` | 已建；known_gaps 已订正，声明的多候选行数（20）与落库实际一致 |
 
 ## 验证记录
 
@@ -99,16 +99,17 @@
 | T08 | 初始化 Git 仓库 + `.gitignore` | 已完成 | 基线 `5eb4dbc` |
 | T06 | 建 `docs/product/GLOSSARY.md` 领域术语表 | 已完成 | 字段名以 `normalized/` 实际列名为准 |
 | T09 | 把 FR / BR / EV 从归档目录提升为正式需求与验收章节 | 已完成 | - |
-| T10 | `productinfo.md` 归位与瘦身 | 进行中 | §5/§6/§10/标题已处理；§12 开工门槛→`PROGRESS.md`、§14 存储分工→`ARCHITECTURE.md`、§15 待补充事项→`DECISIONS.md`+看板 尚未归位 |
+| T10 | `productinfo.md` 归位与瘦身 | 已完成 | 15 节压到 12 节；存储表迁 `ARCHITECTURE.md`（删 pgvector 行），开工门槛迁 `PROGRESS.md`，§15 五条各自归位（项目名一条已不成立，删除） |
 | T13 | 建 `docs/spec/` 与 `docs/research/procurement-platforms.md` | 已完成 | 四份已建。DDL 实测可建；工具 schema 的**字段级校准仍 blocked**（DigiKey 凭据已丢失，见阻塞清单） |
 | T14 | 归档三份初稿正文清空为指针 + 全局引用改写 | 已完成 | 清空前逐条核对 11 项条款均有落点；`AGENTS.md` 归档约束与文档索引一并改写 |
-| T15 | `DEVELOPMENT.md` Feature 验证契约按 D14 改为四层投影 | 未开始 | 影响 `docs/features.json` 的字段设计，须先于 T07 |
-| T16 | `CODING_RULES.md` SSOT 矩阵补入 `docs/product/` 三份、`docs/spec/`、`Makefile`、`compose.yaml`、`requirement.txt`；删除 `CODING_RULES.md:89/103` 两处 `TASKS.md` 引用；文档类型枚举补入「参考」（`docs/research/` 在用） | 未开始 | - |
-| T04 | 生成合成时间序列数据（库存/出入库/物流事件） | 未开始 | BOM 侧 schema 已定稿，但应先有 `docs/spec/data-model.md`（T13）再设计时间序列表 |
-| T12 | 元件身份核验：厂商别名、无 MPN 行、多候选行的技术等价性 | 未开始 | 3 行无 MPN；**20 行多候选**（此前记为 18，`projects.yaml` 的 Spikeling-V2 known_gaps 漏记 2 行，需一并订正） |
+| T15 | `DEVELOPMENT.md` Feature 验证契约按 D14 改为四层投影 | 已完成 | `verification`/`evidence` 四键化；修复级（A/B/C/D）与验证层显式区分 |
+| T16 | `CODING_RULES.md` 治理表与 SSOT 矩阵补新文档、删 `TASKS.md` 断言、类型枚举补「参考」 | 已完成 | 职责表补 5 行、SSOT 矩阵补 9 行 |
+| T04 | 生成合成时间序列数据（库存/出入库/物流事件） | 未开始 | `docs/spec/data-model.md` 已就位可作锚点。**表结构仍待定**：SKU 数量、时间跨度、异常注入规则未决（原 `productinfo.md` §15-3）；`inventory` 当前是快照非事件流，Monitor 算周转率需事件级历史 |
+| T12 | 元件身份核验：厂商别名、无 MPN 行、多候选行的技术等价性 | 未开始 | 3 行无 MPN、20 行多候选，清单见 `projects.yaml`。计数偏差已订正（Spikeling-V2 补记 2 行）；**核验本身未做**——142 个元件仍全部为 `source_asserted` |
 | T07 | 建 `docs/features.json` 初始清单并接入编排 Harness | 未开始 | 依赖 T15 与代码骨架 |
 | T05 | 补充语义层 / schema 暴露准则设计 | 阻塞 | 缺业务背景支撑（见 `DECISIONS.md` D09），需先有真实提问样本再反推 |
 | T17 | 跑 `make freeze` 生成 `requirements.lock.txt` | 已完成 | 44 条，全部 pin 解析成功，无排除项混入 |
+| T18 | 确定各 Worker 的 Model Provider 具体型号 | 未开始 | 能力需求矩阵已定（`productinfo.md` §12），按 D06 分旗舰/便宜快速两档；**需实测后确定**，调用真实模型前须获用户授权（原 `productinfo.md` §15-5） |
 
 ## 当前阻塞清单
 
@@ -119,13 +120,17 @@
 
 ## 交接下一步
 
-1. `DEVELOPMENT.md` 的 Feature 验证契约按 D14 改为四层投影（T15），否则 `docs/features.json` 的字段会按废弃的三层模型设计。
-2. `CODING_RULES.md` SSOT 矩阵补入七份新文档、删除 `CODING_RULES.md:89/103` 两处 `TASKS.md` 引用、文档类型枚举补「参考」（T16）。
-3. `productinfo.md` 剩余归位：§12→`PROGRESS.md`、§14→`ARCHITECTURE.md`、§15→`DECISIONS.md`+看板（T10）。
-4. 订正 `projects.yaml` 的 Spikeling-V2 多候选计数（T12，18→20）。
-5. 建 `docs/features.json` 初始清单（T07），依赖 T15 定稿字段结构。
+**文档治理已收尾，可以开始写代码。**
+
+1. 建 `docs/features.json` 初始清单（T07）——字段结构已由 T15 定稿（四键 `verification`/`evidence`），按 `depends_on` 拓扑拆分。这是 Codex 接手的第一站。
+2. 设计合成时间序列数据 schema 并生成数据（T04）——Monitor 层（FR-08）没有它就无法验证，`inventory` 当前是快照非事件流。
+3. 元件身份核验（T12）：3 行无 MPN、20 行多候选，142 个元件全部仍为 `source_asserted`。
+4. 重新申请 DigiKey 凭据，解除 `docs/spec/interfaces.md` 字段级校准的阻塞。
+5. 确定各 Worker 的 Model Provider 型号（T18），需实测且需授权。
 
 ## 最近更新
+
+2026-09-14（下半程）· (6) T15：`DEVELOPMENT.md` 的 Feature 契约按 D14 改为四层投影，`verification`/`evidence` 键名改为 `contract`/`offline`/`integration`/`e2e`；显式区分「验证层」与「修复级 A/B/C/D」两套概念，全仓不再有三层表述。(7) T16：`CODING_RULES.md` 职责表补 5 行、SSOT 矩阵补 9 行，删除把不存在的 `TASKS.md` 断言为任务验收 SSOT 的两处，文档类型枚举补「参考」。(8) T10：`productinfo.md` 由 15 节压到 12 节——存储分工表迁入 `ARCHITECTURE.md` 新增「存储分工」节并删去与 D12 冲突的 pgvector 行，开工门槛迁入本文件末尾并按 D18 改写，§15 五条各自归位（「项目名称/主语言/目录待定」已不成立，删除；Model Provider 选型立为 T18）。(9) T12 计数订正：`projects.yaml` 的 Spikeling-V2 补记 2 行多候选，声明数与落库实际现均为 20 行。
 
 2026-09-14 · (1) 建 Git 仓库与基线 `5eb4dbc`（T08）。(2) 冲突台账裁定落 `DECISIONS.md` D14～D17：验证层级归一到四层、需求正文迁出归档区、FR/BR/EV 编号留空缺不回收、`requirement.txt` 纳入治理。(3) 需求层解耦：新建 `docs/product/requirements.md`（FR/BR 正文）、`acceptance-cases.md`（EV 正文 + 追踪矩阵 + 层级归属）、`GLOSSARY.md`；`productinfo.md` 范围章节合并去重、标题占位修正。(4) 开发环境迁至本地（D18）：`.venv` + Docker CE 29.7.1（colima）+ PostgreSQL 16.6 + Redis 7.4.2；新建 `Makefile` / `compose.yaml` / `.env.example`；`AGENTS.md`、`DEVELOPMENT.md` 的命令与环境节改写为真实入口；`requirement.txt` 由遗留台账适配为 SupplyAgent 版并剔除 LawAgent 依赖。(5) 发现 `projects.yaml` 多候选计数偏差（18→20），待订正。
 
@@ -133,4 +138,6 @@
 
 ---
 
-任何状态改为「已实现」前，都必须在目标服务器的同一代码版本上重新验证。真实模型调用、远程服务器访问和付费工作必须获得用户明确授权。
+**开工门槛**（原 `productinfo.md` §12）：任何未经真实运行验证的实现状态不得标记为已完成。状态改为「已实现」前，必须在本地开发环境的同一代码版本上重新跑通该 Feature 所需的验证层级（见 `DECISIONS.md` D14）；`docs/spec/data-model.md` 的 DDL 与现有数据文件完整性是代码阶段开工的前置。
+
+真实模型调用、外部供应商 API 调用和任何产生费用的操作，必须获得用户明确授权。若将来重新启用远端环境，「本地通过」不自动等于远端通过，须按 D18 约束复测。

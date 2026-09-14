@@ -22,4 +22,4 @@
 
 ## 修改后验证
 
-`Makefile` 与测试待建。建立后运行本模块对应的 `make` 目标；`make model-smoke` 等真实调用需用户明确授权，按 `DEVELOPMENT.md` 的三层验证补充 Provider 失败路径确认。
+`Makefile` 已建（目标见 `make help`），本模块代码与测试待建。届时运行本模块对应的 `make` 目标；`make model-smoke` 等真实调用需用户明确授权，按 `DEVELOPMENT.md` 的四层验证（`DECISIONS.md` D14）补充 Provider 失败路径确认。

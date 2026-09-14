@@ -65,6 +65,23 @@ Agent Config、Business Rules → 被 Supervisor / Workers / Monitor 读取，�
 
 核心职责依赖端口，不依赖 GLM、特定供应商 API、PostgreSQL 等具体产品；具体 Provider 由 Infrastructure 层适配，替换 Provider 不改变核心数据语义。
 
+## 存储分工
+
+各模块的数据所有权见上方一级逻辑模块表；本节定的是「哪类数据放哪个存储」。
+
+| 数据类型 | 存储 | 理由 |
+|---|---|---|
+| 权威静态数据（元件身份、BOM） | PostgreSQL | 事务一致性、可追溯 |
+| 业务数据（库存、需求、在途、方案） | PostgreSQL | 结构化、需持久化 |
+| 审计与证据快照（`run` / `tool_call` / `permission_decision` / `shortage_snapshot` 等） | PostgreSQL，**只插入不更新** | 用于回溯，是审计能力的核心展示点；强制方式见 `docs/spec/data-model.md` §6 |
+| 当前库存告警清单 | Redis（定期由 PostgreSQL 刷新的物化视图） | 高频访问，避免每次扫描都跑聚合查询 |
+| 定时扫描的分布式锁、外部报价抓取的幂等去重 key | Redis | 生命周期短，丢失可重建 |
+| 正在运行的 Run / Session 上下文 | Redis | 高频存取，**不承担恢复所必需的权威事实** |
+
+MVP 不引入向量库，也不用 pgvector——RAG／向量检索已移出范围（见 `DECISIONS.md` D12）。
+
+具体表结构与约束见 `docs/spec/data-model.md`。
+
 ## 当前物理结构边界
 
 项目尚未创建代码仓库。上表“计划代码落点”是设计阶段的目录规划，Codex 搭建代码时应按本文档的模块边界创建目录，不得自行发明未在本文档出现的模块划分；如需新增或调整模块边界，先更新本文档再动代码。

@@ -12,7 +12,7 @@
 每份 Markdown 文档的开头必须有一个四行的 **文档契约块**（可见 blockquote），格式固定为：
 
 ```markdown
-> **文档契约** · 类型：<入口|状态|队列|契约|规则|模块|归档> · 读取：<何时、用什么姿势读>
+> **文档契约** · 类型：<入口|状态|队列|契约|规则|模块|参考|归档> · 读取：<何时、用什么姿势读>
 > 更新：<明确的触发条件> 由 <Claude|Codex|Harness> 写入
 > 独占：<本文是唯一正文来源的信息要素>
 > 不收录：<明确不该出现在本文的信息要素>
@@ -28,9 +28,13 @@
 | 状态 | `PROGRESS.md` | 每次会话启动，全文 | **Feature 完成、遇阻塞、验证失败后即时** | Codex |
 | 队列 | `docs/features.json` | 取任务时只读自己那条 + 被依赖条目 | Feature 状态流转 | Harness |
 | 契约 | `ARCHITECTURE.md`、`DECISIONS.md`、`productinfo.md` | **Feature 开始时定点读，禁止通读** | 架构/决策/需求变更 | Claude |
+| 契约 | `docs/product/requirements.md`、`docs/product/acceptance-cases.md`、`docs/product/GLOSSARY.md` | 按 FR/BR/EV 编号或术语定点读 | 需求条款、验收用例或术语变更 | Claude |
+| 契约 | `docs/spec/interfaces.md`、`docs/spec/state-machine.md`、`docs/spec/data-model.md` | 实现对应接口/状态/表时定点读 | 接口签名、状态迁移或表结构变更 | Claude |
+| 规则 | `requirement.txt`（依赖与环境台账） | 准备环境或增删依赖时按节读 | **安装/升级/删除依赖后即时** | Codex |
+| 参考 | `docs/research/procurement-platforms.md` | 选型或评估配额时定点读 | 重新核对平台能力或条款 | Claude |
 | 规则 | `DEVELOPMENT.md`、本文件 | 首次 + 按节 | 工具链或治理规则变更 | Claude |
 | 模块 | `src/*/AGENTS.md`、`src/*/ARCHITECTURE.md` | 进入该模块前 | 该模块接口或不变量变更 | Codex |
-| 归档 | `data/supplychain/` 下的设计初稿与讨论记录 | **除非用户明确要求，不读入** | 冻结 | — |
+| 归档 | `data/supplychain/` 下三份设计初稿 | **不读入**（正文已迁出，仅剩去向对照表） | 冻结 | — |
 
 ### SSOT 矩阵：每个信息要素只有一处正文
 
@@ -42,7 +46,15 @@
 | 模块不变量（invariant） | 见下方「不变量的双写分工」 | — |
 | 设计决策与其理由 | `DECISIONS.md` | 只写「见 D0x」，不复制理由正文 |
 | Codex 行为硬约束 | `AGENTS.md` | 其他文档不重述，可引用条目 |
-| 功能需求 / 业务规则 / 非范围 | `productinfo.md` | 引章节号或 FR/BR 编号 |
+| 产品定位 / MVP 范围 / 非范围 / 业务边界 | `productinfo.md` | 引章节号 |
+| 功能需求 FR / 业务规则 BR 条款正文 | `docs/product/requirements.md` | 只写「见 FR-0x」「见 BR-0x」，不复制条款 |
+| 验收用例 EV / 判定原则 / 追踪矩阵 | `docs/product/acceptance-cases.md` | 只写「见 EV-0x」 |
+| 工具 schema / ToolResult 信封 / 错误码 | `docs/spec/interfaces.md` | 引工具名 |
+| 任务状态取值与合法迁移 | `docs/spec/state-machine.md` | 引状态名 |
+| PostgreSQL 表结构与约束 | `docs/spec/data-model.md` | 引表名或约束名 |
+| 依赖清单与版本台账 | `requirement.txt`（机器真相为 `requirements.lock.txt`） | 一句指针 |
+| 服务拓扑 | `compose.yaml` | 一句指针 |
+| 采购平台能力与配额、ERP 候选 | `docs/research/procurement-platforms.md` | 引平台名 |
 | 当前状态、阻塞、验证记录 | `PROGRESS.md` | 其他文档一律不写状态 |
 | Feature 清单、依赖、验收证据 | `docs/features.json` | `PROGRESS.md` 不复制 Feature 列表 |
 | 命令入口与实现 | `Makefile` | `DEVELOPMENT.md` 只说明入口边界与预期结果 |
@@ -86,7 +98,7 @@
 ### 状态、任务与测试契约
 
 - `PROGRESS.md` 只记录当前状态：最新 Git checkpoint、实际验证结果、进行中事项、已知问题、阻塞和下一步；完整历史由 Git 保存。
-- `TASKS.md` 用于任务分解、优先级、owner（如需要）和 acceptance criteria；它不复制进度日志。若项目尚未建立该文件，初始化计划应将其列为待创建项，而不是假定它已存在。
+- 任务分解、优先级与验收标准由 `docs/features.json`（Feature 队列）与 `PROGRESS.md` 任务看板承担，**不另建 `TASKS.md`**：三套任务事实源会立刻漂移。`docs/features.json` 建立前用任务看板过渡。
 - 测试是开发 contract。每个初始化阶段至少要说明测试命令、当前结果、未覆盖边界和阻塞原因；不得把 mock、语法编译或历史成功结果写成完整验收。
 - 完成状态必须以实际执行的分层验证为准，不采信 agent 自评或“代码已写完”。`PROGRESS.md` 应记录每层的命令、实际结果、证据边界与阻塞情况。
 - 验证失败记录必须提供可操作信息：失败的命令或信号、观察结果、可疑原因和下一步修复方向。
@@ -100,4 +112,4 @@
 ### Hot-start 原则
 
 - 新窗口或新 Agent 应只需读取 `AGENTS.md`、`PROGRESS.md`、`DECISIONS.md`、任务入口及当前模块文档，就能知道从哪里开始、如何运行、如何验证和下一步做什么。
-- 禁止重复维护初始化事实：命令以 Makefile/scripts 为准，当前状态以 `PROGRESS.md` 为准，任务验收以 `TASKS.md` 为准，稳定设计约束以 `DECISIONS.md` 为准，完整历史以 Git 为准。
+- 禁止重复维护初始化事实：命令以 `Makefile` 为准，服务拓扑以 `compose.yaml` 为准，依赖以 `requirements.lock.txt` 为准，当前状态以 `PROGRESS.md` 为准，任务验收以 `docs/features.json` 为准，稳定设计约束以 `DECISIONS.md` 为准，完整历史以 Git 为准。
