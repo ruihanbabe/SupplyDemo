@@ -34,7 +34,7 @@ make help
 - **业务阈值与供应商特定映射不得硬编码进 Worker 代码或 prompt**：库存告警线等可变业务参数只能来自 PostgreSQL 的 `business_rule` 表（见 `DECISIONS.md` D07）；供应商字段映射等实现细节归 Tools（Skill/MCP）层，不得散落进 Query/Detail/Research 等 Worker 的推理逻辑里。
 - 读取 `DECISIONS.md`、`ARCHITECTURE.md`、`productinfo.md` 时按标题/章节号定点读取，不通读全文：`DECISIONS.md` 各条目已标注 `<!-- id: Dxx -->`，可用 `grep` 定位；`productinfo.md` 采用编号章节（`## N.`），按需只读对应节。仅当怀疑"决策理解有误"且定点读取仍无法确认时，才临时读整份文件排查，排查完不得把全文留在长期上下文。
 - 每份文档开头的**文档契约块**（`> **文档契约**` 四行）规定了该文档的读取时机、更新时机、独占信息与不收录信息；写入任何信息前先按该块判断归属，规则见 `CODING_RULES.md`。同一信息只在其 SSOT 文档保留正文，其他文档只写编号引用或一句话指针。
-- `data/supplychain/` 下的设计初稿与讨论记录为**归档**，不得作为实现依据，除非用户明确要求否则不读入。
+- `data/supplychain/` 下的三份设计初稿为**归档**，正文已按 `DECISIONS.md` D15 迁出，现仅剩指向新位置的对照表。**不读入**——需求条款直接读 `docs/product/requirements.md`，验收用例读 `docs/product/acceptance-cases.md`，接口与数据契约读 `docs/spec/`。同目录的 `domdata/` 与 `normalized/` 是数据层，不受此条约束，按下方数据层规则处理。
 - Review 或诊断任务默认只报告，不自动修改。
 - 不提交 `.env`、凭据、API Key、未脱敏的供应商报价数据或完整 Provider payload。
 - **`data/supplychain/domdata/` 是原始数据层，只读，任何情况下不得修改、清洗、重排或补字段**（文件已设 `chmod 444`，完整性由同目录 `MANIFEST.json` 的 SHA-256 保证）。需要修正数据时改 `normalize_domdata.py` 的转换逻辑并重跑，产出落在 `data/supplychain/normalized/`；发现原始数据本身有误，报告给用户，不自行订正。
@@ -50,17 +50,36 @@ make help
 
 ## Claude 与 Codex 的分工
 
-Codex 是代码实现的主力；Claude（在文档协作对话中）负责本套治理文档（`README.md` / `ARCHITECTURE.md` / `DECISIONS.md` / `PROGRESS.md` / `requirements.md` / 本文件等）的维护与迭代，不直接向代码仓库写入实现代码。Codex 应把这套文档作为需求与约束的权威来源；文档之间出现冲突时，以 `DECISIONS.md` 中日期最新的相关条目为准。
+Codex 是代码实现的主力；Claude（在文档协作对话中）负责本套治理文档（`README.md` / `ARCHITECTURE.md` / `DECISIONS.md` / `PROGRESS.md` / `productinfo.md` / `docs/product/` / `docs/spec/` / 本文件等）的维护与迭代，不直接向代码仓库写入实现代码。Codex 应把这套文档作为需求与约束的权威来源；文档之间出现冲突时，以 `DECISIONS.md` 中日期最新的相关条目为准。
 
 ## 顶层文档与模块入口
 
+**需求与验收**
+
+- 产品定位、用户、MVP 范围与非范围、业务边界：`productinfo.md`（按编号章节定点读）
+- 功能需求 FR-01～09 与业务规则 BR-01～11 条款正文：`docs/product/requirements.md`（按编号定点读；含模块反向索引，可反查本模块需满足哪些条款）
+- 验收用例 EV 与判定原则、FR→EV 追踪矩阵：`docs/product/acceptance-cases.md`
+- 领域术语（BOM / MPN / candidate / logical_action_id 等）：`docs/product/GLOSSARY.md`
+
+**接口与数据契约**（实现前必读对应章节）
+
+- 工具 schema、`ToolResult` 统一信封、错误模型：`docs/spec/interfaces.md`
+- 任务状态取值、合法迁移矩阵、状态机不变量：`docs/spec/state-machine.md`
+- PostgreSQL 表结构与约束、审计表只插入的强制方式：`docs/spec/data-model.md`
+
+**架构与治理**
+
 - 系统架构、模块边界和依赖方向：`ARCHITECTURE.md`
-- 产品需求与范围：`productinfo.md`（整合版，含定位/用户/主路径/MVP 范围/非范围/回答结构/业务边界/能力矩阵/存储分工）
 - 当前设计约束：`DECISIONS.md`
 - 当前状态、阻塞和下一步：`PROGRESS.md`
 - 开发命令、验证层级与代码规范：`DEVELOPMENT.md`（仓库根目录）
 - Codex 文档记录规则：`CODING_RULES.md`
-- Feature 清单与三层验证契约：`docs/features.json`（待建，机制见 `DEVELOPMENT.md`；建立前用 `PROGRESS.md` 任务看板过渡）
+- 依赖与环境台账：`requirement.txt`
+- Feature 清单与验证契约：`docs/features.json`（待建，机制见 `DEVELOPMENT.md`；建立前用 `PROGRESS.md` 任务看板过渡）
+
+**参考**
+
+- 采购平台能力与配额、ERP 候选评估：`docs/research/procurement-platforms.md`（快照，接入前须重新核对）
 
 进入以下模块前，先读取其局部 `AGENTS.md`（占位 stub 已建，职责与依赖以 `ARCHITECTURE.md` 一级逻辑模块表为准，细化随代码进行）：
 

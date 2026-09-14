@@ -50,7 +50,7 @@
 | `docs/product/GLOSSARY.md`（领域术语表） | **已建**（T06 完成） |
 | `docs/spec/interfaces.md` / `state-machine.md` / `data-model.md` | **已建**（T13 完成）；DDL 已在真实 PostgreSQL 16.6 上验证可建，BR 约束实测生效 |
 | `docs/research/procurement-platforms.md` | **已建**（T13 完成）；快照日期 2026-09-09，接入前须重新核对 |
-| `data/supplychain/` 三份归档初稿 | 正文待清空为指针（见 T14） |
+| `data/supplychain/` 三份归档初稿 | **已清空为指针**（T14 完成）；各含文档契约块与逐节去向对照表，原文见 `git show 5eb4dbc:<path>` |
 | `data/supplychain/normalized/projects.yaml` | 已建；Spikeling-V2 的 known_gaps 漏记 2 行多候选，待订正（见 T12） |
 
 ## 验证记录
@@ -64,11 +64,15 @@
 | 2026-09-14 | `docs/spec/data-model.md` 的 DDL 在真实 PostgreSQL 16.6 上应用 | 通过 | 22 张表全部建成，9 条 CHECK / 3 条 UNIQUE 生效；BR-06 价币配对、BR-04 重复占用、BR-10 已解决行、BR-11 幂等键、审计表 UPDATE 拒绝 五项实测均正确拒绝违规写入。**仅验证 schema 可建与约束生效，未验证业务逻辑正确性** | — | — |
 | 2026-09-14 | `docs/spec/interfaces.md` 的 JSON Schema 解析 | 通过 | 7 个 JSON 块全部解析成功（5 个工具 schema + 2 个示例）；**未用真实供应商响应校准字段** | — | — |
 | 2026-09-14 | 全仓 Markdown 引用与契约块扫描 | **发现缺口** | 45 份（已排除 `.venv`）；裸文件名按 basename 解析 | `CODING_RULES.md:89/103` 两处把不存在的 `TASKS.md` 断言为任务验收 SSOT；归档三份文档缺文档契约块 | 前者归 T16，后者归 T14 |
+| 2026-09-14 | Codex 冷启动模拟：仅用 `AGENTS.md` 启动流程可达的文档检索关键规则 | 通过 | 42 份可达文档；检索 9 项关键规则（BR-03/04 正文、审批门、approved=true 禁令、幂等键、缺口表、状态迁移、EV 算例）全部命中，反向检查确认无一处依赖归档正文 | — | — |
+| 2026-09-14 | 归档清空前的内容覆盖核对 | 通过 | 11 项条款逐条确认落点；**按关键短语检索，非逐字比对** | 初查发现 MVP-PRD §6 界面清单（六处界面 + 内部框架名称不占据用户流程）无落点 | 迁入 `productinfo.md` §11 后再清空 |
 | 2026-09-14 | 落库数据反查多候选行数 | **发现偏差** | 仅核对计数，未做元件身份核验 | `projects.yaml` 的 Spikeling-V2 known_gaps 漏记 2 行多候选，实际 20 行而非 18 行 | 待订正 `projects.yaml` 与 T12 描述（见 T12） |
 
 新增记录必须同时填写「失败原因」与「修复动作」两列；`阻塞`/`失败` 结果不得留空这两列。跨 Feature 的自动修复达到单级 3 次上限后，在此表标注升级报告位置，不得继续自行重试（结构化上报格式待设计，见 `AGENTS.md`）。
 
 ## 已实现
+
+- **文档解耦（D15 闭环）**：`docs/product/` 三份、`docs/spec/` 三份、`docs/research/` 一份共七份新文档承接全部正文；归档三份清空为指针；全局引用改写完毕。冷启动模拟验证：仅按 `AGENTS.md` 启动流程可达的 42 份文档中，BR-03／BR-04 缺口规则、审批门、幂等键、状态机迁移、EV 算例九项全部可达，且无一处仍依赖归档正文。**`AGENTS.md` 禁止读归档区与需求正文只存于归档区的自相矛盾已解除。**
 
 - **数据层落库**：`data/supplychain/domdata/` 原始层设为只读（`chmod 444`）并生成 `MANIFEST.json`（SHA-256 / 字节数 / 行数）；`normalize_domdata.py` 单向产出规范化层 `data/supplychain/normalized/`，含 `component`(142) / `bom_line`(121) / `bom_line_candidate`(148) / `bom_line_distributor_sku`(160) 四张长表与项目注册表 `projects.yaml`。Spikeling-V2 的 3 处源表笔误已依据项目 README 订正（位号缺前缀、两处数量少计），订正在 `normalize_domdata.py` 的 `CORRECTIONS` 中逐条声明并附依据，原始层未改。宽表中重复的 `Manufacturer,MPN` 列组已按列位置展开，未被解析器静默丢弃。
 
@@ -76,7 +80,6 @@
 
 ## 部分实现
 
-- **文档解耦（对应 D15）**：需求层与 spec 层均已完成——`docs/product/` 三份、`docs/spec/` 三份、`docs/research/` 一份共七份新文档已建（771 行）。**剩余**：归档三份初稿的正文尚未清空为指针（仍缺文档契约块），全局引用尚未改写（见 T14）。
 - **`productinfo.md` 归位（对应 T10）**：§5/§6 已合并归档稿的范围条款并去重，§10 已瘦身为硬门禁一句话加指针，标题占位已改；§12/§14/§15 归位尚未完成。
 
 ## 未实现
@@ -95,10 +98,10 @@
 | T03 | 建 `DEVELOPMENT.md` 代码规范 | 部分完成 | 环境与命令节已按真实 `Makefile` 改写；Feature 验证契约仍是三层，待按 D14 改为四层投影（见 T15） |
 | T08 | 初始化 Git 仓库 + `.gitignore` | 已完成 | 基线 `5eb4dbc` |
 | T06 | 建 `docs/product/GLOSSARY.md` 领域术语表 | 已完成 | 字段名以 `normalized/` 实际列名为准 |
-| T09 | 把 FR / BR / EV 从归档目录提升为正式需求与验收章节 | 进行中 | `docs/product/requirements.md` 与 `acceptance-cases.md` 已建；归档正文尚未清空、全局引用尚未改写（见 T14） |
+| T09 | 把 FR / BR / EV 从归档目录提升为正式需求与验收章节 | 已完成 | - |
 | T10 | `productinfo.md` 归位与瘦身 | 进行中 | §5/§6/§10/标题已处理；§12 开工门槛→`PROGRESS.md`、§14 存储分工→`ARCHITECTURE.md`、§15 待补充事项→`DECISIONS.md`+看板 尚未归位 |
 | T13 | 建 `docs/spec/` 与 `docs/research/procurement-platforms.md` | 已完成 | 四份已建。DDL 实测可建；工具 schema 的**字段级校准仍 blocked**（DigiKey 凭据已丢失，见阻塞清单） |
-| T14 | 归档三份初稿正文清空为指针 + 全局引用改写 | **可开始** | T13 已完成，去处齐备。三份归档文档目前仍缺文档契约块 |
+| T14 | 归档三份初稿正文清空为指针 + 全局引用改写 | 已完成 | 清空前逐条核对 11 项条款均有落点；`AGENTS.md` 归档约束与文档索引一并改写 |
 | T15 | `DEVELOPMENT.md` Feature 验证契约按 D14 改为四层投影 | 未开始 | 影响 `docs/features.json` 的字段设计，须先于 T07 |
 | T16 | `CODING_RULES.md` SSOT 矩阵补入 `docs/product/` 三份、`docs/spec/`、`Makefile`、`compose.yaml`、`requirement.txt`；删除 `CODING_RULES.md:89/103` 两处 `TASKS.md` 引用；文档类型枚举补入「参考」（`docs/research/` 在用） | 未开始 | - |
 | T04 | 生成合成时间序列数据（库存/出入库/物流事件） | 未开始 | BOM 侧 schema 已定稿，但应先有 `docs/spec/data-model.md`（T13）再设计时间序列表 |
@@ -116,11 +119,11 @@
 
 ## 交接下一步
 
-1. 建 `docs/spec/` 三份与 `docs/research/procurement-platforms.md`（T13）——接口契约与 DDL 是交接 Codex 前最大的缺口，业务/审计/`business_rule` 表一张都还没有。
-2. 归档三份初稿清空为指针 + 全局引用改写（T14），彻底解掉「正文在归档区、`AGENTS.md` 又禁止读归档区」的自相矛盾。
-3. `DEVELOPMENT.md` 的 Feature 验证契约按 D14 改为四层投影（T15），否则 `docs/features.json` 的字段会按废弃的三层模型设计。
-4. `CODING_RULES.md` SSOT 矩阵补入新增文档、删除 `TASKS.md` 引用（T16）。
-5. 订正 `projects.yaml` 的 Spikeling-V2 多候选计数（T12，18→20）。
+1. `DEVELOPMENT.md` 的 Feature 验证契约按 D14 改为四层投影（T15），否则 `docs/features.json` 的字段会按废弃的三层模型设计。
+2. `CODING_RULES.md` SSOT 矩阵补入七份新文档、删除 `CODING_RULES.md:89/103` 两处 `TASKS.md` 引用、文档类型枚举补「参考」（T16）。
+3. `productinfo.md` 剩余归位：§12→`PROGRESS.md`、§14→`ARCHITECTURE.md`、§15→`DECISIONS.md`+看板（T10）。
+4. 订正 `projects.yaml` 的 Spikeling-V2 多候选计数（T12，18→20）。
+5. 建 `docs/features.json` 初始清单（T07），依赖 T15 定稿字段结构。
 
 ## 最近更新
 
