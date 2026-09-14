@@ -120,7 +120,7 @@
 
 ## 交接下一步
 
-**文档治理已收尾，已交接 Codex 进入实现阶段。** 首切片为采购业务核 + Persistence（`docs/features.json`），选它because 零外部依赖——不需要 LLM、供应商 API 或 ERP，①②③ 三层全部能在本地跑完。DigiKey 凭据丢失与 T04 时间序列缺失均不阻塞本切片。
+**文档治理已收尾，已交接 Codex 进入实现阶段。** 首切片为采购业务核 + Persistence（`docs/features.json`），选它是因为零外部依赖——不需要 LLM、供应商 API 或 ERP，①②③ 三层全部能在本地跑完。DigiKey 凭据丢失与 T04 时间序列缺失均不阻塞本切片。
 
 1. **F01 项目骨架 + Alembic 建表**——Codex 的第一站。目录须按 `ARCHITECTURE.md`「计划代码落点」创建，不得自行发明模块划分；pytest 需注册 `integration` marker，否则 `make test` 的 `-m` 过滤无效。
 2. 按 `docs/features.json` 拓扑顺序推进 F02～F07。编排 Harness 未实现，过渡期人工把关 `state` 与 `evidence`，Agent 不得自行标 `passing`。
