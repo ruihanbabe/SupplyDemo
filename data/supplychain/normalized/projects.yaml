@@ -1,0 +1,73 @@
+# 项目注册表 —— index.csv 的消费形态。
+# 文件完整性由 domdata/MANIFEST.json 机器生成，不在此重复。
+# known_gaps 全部由 domdata/ 原始文件落库后反查得出，不引用任何既有归纳文档。
+
+projects:
+  - project_id: Glasgow_revC3
+    github: https://github.com/GlasgowEmbedded/glasgow
+    kitspace: https://kitspace.org/GlasgowEmbedded/glasgow/Glasgow_revC3
+    source_file: Glasgow_revC3.csv
+    bom_lines: 53
+    total_quantity: 224
+    known_gaps:
+      - 1 行无 MPN：reference "R15 R16"，qty 2，"1k Resistor_SMD:R_0402_1005Metric"；
+        保留为未解决项，不猜测填补
+
+  - project_id: ArdPromSD
+    github: https://github.com/dtomcat/ArdPromSD
+    kitspace: https://kitspace.org/dtomcat/ArdPromSD
+    source_file: ArdPromSD.csv
+    bom_lines: 18
+    total_quantity: 28
+    known_gaps: []
+
+  - project_id: PCB-Stimulator
+    github: https://github.com/BadenLab/LED-Zappelin
+    kitspace: https://kitspace.org/BadenLab/LED-Zappelin/PCB-Stimulator
+    source_file: PCB-Stimulator.csv
+    bom_lines: 18
+    total_quantity: 62
+    known_gaps:
+      - 1 行无 MPN：reference "S1"，qty 1，"Rocker LED switch"；保留为未解决项
+      - 5 行有多候选型号（2~3 个），候选间无技术等价结论
+
+  - project_id: hbridge_driver
+    github: https://github.com/BeeHive-org/BeeHive
+    kitspace: https://kitspace.org/BeeHive-org/BeeHive/hbridge_driver
+    source_file: hbridge_driver.csv
+    bom_lines: 17
+    total_quantity: 61
+    known_gaps:
+      - 13 行有多候选型号，其中 1 行达 9 个候选
+      - 分销商 SKU 列挂在行级，多候选行无法判定 SKU 归属哪个候选
+
+  - project_id: Spikeling-V2
+    github: https://github.com/MaxZimmer/Spikeling-V2
+    kitspace: https://kitspace.org/MaxZimmer/Spikeling-V2
+    source_file: Spikeling-V2.csv
+    bom_lines: 15
+    total_quantity: 45
+    corrections:   # 原始层未改；订正在 normalize_domdata.py 的 CORRECTIONS 中声明
+      - 源行 5（3mm LED）：位号末项 "13" 补为 "d13"，qty 11→12。
+        依据：项目 README "12 proxy LED indicate continuously which mode is currently being set."
+      - 源行 15（MCP3208）：qty 1→2。
+        依据：项目 README "2 ADC 8bit expander chips"；芯片座 qty=2 互证
+      - 源行 16（MCP3208 芯片座）：位号由空补为 "u2,u3"。
+        依据：DIP 座焊于 u2/u3 焊盘，芯片插入其中；源表漏填该字段
+    known_gaps:
+      - 1 行无 MPN 无厂商：reference "u1"，qty 1，"esp32"；保留为未解决项
+      - u2,u3 上有两条用料行（MCP3208 芯片与其 DIP 座），同一位号对应两个必须一起采购的
+        元件，属正常情形，非重复记录
+      - 位号分隔符为逗号，其余项目为分号或空格；跨项目解析位号时需按项目区分
+
+# 厂商别名归一（在 normalize_domdata.py 的 MANUFACTURER_ALIASES 中声明）
+# 源 BOM 同一厂商多种写法会把同一元件拆成多条记录。归一后元件数 144 → 142。
+# 原始写法保留在 bom_line_candidate.manufacturer_raw，未丢失。
+manufacturer_aliases:
+  - Bivar            -> Bivar Inc              # 同 MPN "ELM 5-065" 被拆成两条
+  - TE               -> TE Connectivity        # 同 MPN "1-1337542-0" 被拆成两条
+  - Microchip        -> Microchip Technology
+  - Murata           -> Murata Electronics
+  - Samtec           -> Samtec Inc.
+# 核查方法：按 MPN 分组看厂商写法是否多于一种，以及厂商名去标点/去后缀后是否重名。
+# 当前 53 种厂商写法，无同 MPN 多写法残留。

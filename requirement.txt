@@ -1,0 +1,79 @@
+# SupplyAgent 当前环境与依赖台账
+
+> 用途：记录“服务器上实际安装了什么”以及“项目准备安装什么”。
+> 本文件同时作为实际环境、目标依赖与依赖变更的人工审计台账；
+> 最后核对：2026-09-03（Asia/Shanghai）
+
+## 当前解释器
+
+- Conda 环境：`agent`
+- Python：3.11.15
+- 路径：`/root/miniconda3/envs/agent/bin/python`
+- pip：26.1.2
+- 环境性质：SupplyAgent 独立 Conda 环境
+- 计算资源：8 CPU、43 GB 内存、RTX 3090 24GB；宿主终端 CUDA 可用，Codex 默认沙箱不映射 GPU 设备节点，需要时按开发切片申请单次授权
+
+## 当前环境结论
+
+- 已有 Python 3.11 独立环境，可直接作为当前开发环境。
+- FastAPI、Qdrant Client、FlagEmbedding、Sentence Transformers、Torch 等已安装。
+- 环境实测已有 `ragas==0.4.3`、`openai==2.53.0` 及其带入/共存的 LangChain、LangGraph 依赖；RAGAS仅用于离线评测，不改变MVP继续使用自研轻量Agent Runtime的架构决策。旧 Agent/API 原型仍暂作历史对照。
+- 环境包含 CUDA 版 Torch。2026-08-04 宿主终端核验 `nvidia-smi` 与 PyTorch CUDA 正常，并使用 RTX 3090 完成法规向量入库；Codex 默认沙箱仍因设备隔离不可见。GPU 操作不设长期授权，按具体开发切片单次申请；代码使用 `device=auto|cpu|cuda`。
+- 不直接把完整 `pip freeze` 当作顶层依赖；待依赖选型稳定后生成锁定文件。
+- Docker Engine 已从官方 Ubuntu Jammy APT 仓库安装并完成容器运行验证。当前环境无可用 systemd bus，daemon 使用项目专用目录和 Unix socket 手动运行。
+
+## 系统运行依赖
+
+[未完成, 未创建docker镜像用于本项目]
+当前 Docker 客户端连接变量：
+
+```bash
+export DOCKER_HOST=unix:///tmp/supplyagent-docker.sock
+```
+
+该 socket 位于 `/tmp`，服务器或任务环境重启后需要重新启动 daemon；不得改成无认证的 TCP 监听。
+
+| 能力 | 当前版本 | 当前运行方式 |
+|---|---:|---|
+| Docker Engine / CLI | `29.7.1` | daemon 手动启动；`data-root=/root/lawagent/.runtime/docker-data` |
+| Docker Compose | `v5.4.0` | Docker CLI 插件 |
+| containerd | `2.2.6` | 由 Docker daemon 使用 |
+| Redis Server | `7.4.2` | `compose.yaml`；仅绑定 `127.0.0.1:6379`，AOF 持久化至 `.runtime/redis-data` |
+| PostgreSQL Server | `16.6` | `compose.yaml`；仅绑定 `127.0.0.1:5432`，数据保存至 `.runtime/postgres-data` |
+
+
+## 项目直接依赖
+
+| 能力 | 候选包 | 当前声明 | 当前环境 |
+|---|---|---:|---|
+| Agent Runtime | 自研 `lawagent_runtime` | 已开始 | 无新增外部依赖 |
+| LLM 抽象 | 待选；不默认绑定 LangChain | 缺失 | `langchain==1.3.14`、`langchain-openai==1.4.1`（环境已有） |
+| API | `fastapi`、`uvicorn` | 已声明 | `0.140.8` / `0.51.0` |
+| 配置与模型 | `pydantic`、`pydantic-settings`、`python-dotenv` | 部分声明 | `2.13.4` / 未安装 / 未安装 |
+| 中文解析 | `cn2an` | `==0.5.24` | `0.5.24`（直接依赖；带入 `proces==0.1.7`） |
+| HTTP | `httpx` | `>=0.27.0` | `0.28.1` |
+| Redis客户端 | `redis` | `>=5,<7` | `6.4.0` |
+| PostgreSQL客户端 | `SQLAlchemy[asyncio]`、`asyncpg` | `SQLAlchemy>=2,<3`、`asyncpg>=0.29,<1` | `2.0.51` / `0.31.0` |
+| 评估 | `ragas`、`openai`、`datasets` | 离线评测使用 | `0.4.3` / `2.53.0` / `5.0.0` |
+| 测试与质量 | `pytest`、`pytest-asyncio`、`ruff`、`mypy` | 缺失 | 未安装 |
+
+其他关键已安装版本：`torch==2.6.0`、`transformers==5.14.1`、
+`datasets==5.0.0`、`numpy==2.4.6`、`pandas==3.0.5`。
+
+## 依赖维护约定
+
+1. 直接依赖、实际版本和变更原因统一记录在本文件。
+2. 每次安装、升级或删除包，同步更新本文件的日期、原因和验证结果。
+3. 如未来需要可复现锁定，由依赖工具生成锁文件，不手工编辑。
+4. 禁止把 API Key、服务器绝对路径或本地模型文件写入依赖台账或锁文件。
+5. Python模型版本均视为运行时依赖，必须在开发说明中记录。
+
+## 变更记录
+
+| 日期 | 变更 | 原因 | 验证 |
+|---|---|---|---|
+| 2026-07-29 | 建立依赖台账 | 项目初始化与迁移准备 | 已核对 Python、pip、`pip freeze` |
+| 2026-07-29 | 切换到 `agent` Conda 环境 | 使用既有项目虚拟环境 | 已核对解释器及完整 `pip freeze` |
+| 2026-07-31 | 安装 `cn2an==0.5.24`（带入 `proces==0.1.7`） | 正确解析中文 | 安装位置属于 `agent` 环境 |
+| 2026-08-04 | 从 Docker 官方 Jammy APT 仓库安装 Docker CE | Engine/CLI `29.7.1`、Compose `v5.4.0`、containerd `2.2.6`；`hello-world` 运行成功 |
+| 2026-08-19 | 安装 Redis/PostgreSQL 持久化依赖 | 验证正式 Adapter 的真实 TTL、事务和读写语义 | `redis==6.4.0`、`psycopg[binary]==3.3.4` 安装于 agent 环境；Redis 7.4.2/PostgreSQL 16.6 容器 healthy；真实 smoke 通过 |

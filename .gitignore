@@ -1,0 +1,24 @@
+# 凭据与本地配置
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials*
+secrets*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# 本地运行数据与服务卷
+.runtime/
+*.log
+
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/
