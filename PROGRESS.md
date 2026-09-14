@@ -48,8 +48,8 @@
 | `docs/product/requirements.md`（FR/BR 正文） | **已建**（T09 部分完成） |
 | `docs/product/acceptance-cases.md`（EV 验收用例） | **已建**（T09 部分完成） |
 | `docs/product/GLOSSARY.md`（领域术语表） | **已建**（T06 完成） |
-| `docs/spec/interfaces.md` / `state-machine.md` / `data-model.md` | 待建（见 T13） |
-| `docs/research/procurement-platforms.md` | 待建（见 T13） |
+| `docs/spec/interfaces.md` / `state-machine.md` / `data-model.md` | **已建**（T13 完成）；DDL 已在真实 PostgreSQL 16.6 上验证可建，BR 约束实测生效 |
+| `docs/research/procurement-platforms.md` | **已建**（T13 完成）；快照日期 2026-09-09，接入前须重新核对 |
 | `data/supplychain/` 三份归档初稿 | 正文待清空为指针（见 T14） |
 | `data/supplychain/normalized/projects.yaml` | 已建；Spikeling-V2 的 known_gaps 漏记 2 行多候选，待订正（见 T12） |
 
@@ -61,6 +61,9 @@
 | 2026-09-09 | 落库结果反查（无 MPN 行、多候选行分布） | 通过 | 仅结构性核对，未做元件身份核验（见 T12） | — | — |
 | 2026-09-09 | 对照 Spikeling-V2 项目 README 核验 3 处源表数量/位号异常 | 通过 | 仅核验该项目 3 行；其余项目未逐行对照上游文档 | — | — |
 | 2026-09-14 | 本地装 Docker CE / Compose / colima，起 PostgreSQL 16.6 + Redis 7.4.2 | 通过 | 用户本人执行并确认成功，**Claude 未复核**；仅证明服务能起，未验证应用级接入或 schema | 首次尝试失败三次：brew 停供 Intel 预编译包导致退化为源码编译；curl 无续传导致 docker 包截断；lima 镜像下载被污染致 SHA512 失配 | 改用官方静态二进制绕开 brew；改用 `curl -C -` 续传循环；删除污染文件后从零重下并校验 SHA512 通过 |
+| 2026-09-14 | `docs/spec/data-model.md` 的 DDL 在真实 PostgreSQL 16.6 上应用 | 通过 | 22 张表全部建成，9 条 CHECK / 3 条 UNIQUE 生效；BR-06 价币配对、BR-04 重复占用、BR-10 已解决行、BR-11 幂等键、审计表 UPDATE 拒绝 五项实测均正确拒绝违规写入。**仅验证 schema 可建与约束生效，未验证业务逻辑正确性** | — | — |
+| 2026-09-14 | `docs/spec/interfaces.md` 的 JSON Schema 解析 | 通过 | 7 个 JSON 块全部解析成功（5 个工具 schema + 2 个示例）；**未用真实供应商响应校准字段** | — | — |
+| 2026-09-14 | 全仓 Markdown 引用与契约块扫描 | **发现缺口** | 45 份（已排除 `.venv`）；裸文件名按 basename 解析 | `CODING_RULES.md:89/103` 两处把不存在的 `TASKS.md` 断言为任务验收 SSOT；归档三份文档缺文档契约块 | 前者归 T16，后者归 T14 |
 | 2026-09-14 | 落库数据反查多候选行数 | **发现偏差** | 仅核对计数，未做元件身份核验 | `projects.yaml` 的 Spikeling-V2 known_gaps 漏记 2 行多候选，实际 20 行而非 18 行 | 待订正 `projects.yaml` 与 T12 描述（见 T12） |
 
 新增记录必须同时填写「失败原因」与「修复动作」两列；`阻塞`/`失败` 结果不得留空这两列。跨 Feature 的自动修复达到单级 3 次上限后，在此表标注升级报告位置，不得继续自行重试（结构化上报格式待设计，见 `AGENTS.md`）。
@@ -73,14 +76,13 @@
 
 ## 部分实现
 
-- **文档解耦（对应 D15）**：需求层已完成——`docs/product/` 下 `requirements.md`（FR/BR 正文）、`acceptance-cases.md`（EV 正文 + 追踪矩阵）、`GLOSSARY.md` 三份已建。spec 层与 research 层未建，归档三份初稿的正文尚未清空为指针，全局引用尚未改写。
+- **文档解耦（对应 D15）**：需求层与 spec 层均已完成——`docs/product/` 三份、`docs/spec/` 三份、`docs/research/` 一份共七份新文档已建（771 行）。**剩余**：归档三份初稿的正文尚未清空为指针（仍缺文档契约块），全局引用尚未改写（见 T14）。
 - **`productinfo.md` 归位（对应 T10）**：§5/§6 已合并归档稿的范围条款并去重，§10 已瘦身为硬门禁一句话加指针，标题占位已改；§12/§14/§15 归位尚未完成。
 
 ## 未实现
 
 - 全部代码模块（API / Supervisor / 各 Worker / 采购业务核 / Monitor / Runtime 契约层 / Tools / Persistence / Infrastructure）。
 - `docs/features.json`、`config/agents/*.yaml`。
-- `docs/spec/` 三份（接口契约、状态机、DDL）与 `docs/research/procurement-platforms.md`。
 - 合成时间序列数据（库存/出入库/在途事件）——已落库的 BOM 数据只有身份与用量，不含时间序列，不足以支撑库存周转率/缺货率计算（见 `DECISIONS.md` D11）。
 - 语义层 / schema 暴露准则（见 `DECISIONS.md` D09，暂缓）。
 
@@ -95,10 +97,10 @@
 | T06 | 建 `docs/product/GLOSSARY.md` 领域术语表 | 已完成 | 字段名以 `normalized/` 实际列名为准 |
 | T09 | 把 FR / BR / EV 从归档目录提升为正式需求与验收章节 | 进行中 | `docs/product/requirements.md` 与 `acceptance-cases.md` 已建；归档正文尚未清空、全局引用尚未改写（见 T14） |
 | T10 | `productinfo.md` 归位与瘦身 | 进行中 | §5/§6/§10/标题已处理；§12 开工门槛→`PROGRESS.md`、§14 存储分工→`ARCHITECTURE.md`、§15 待补充事项→`DECISIONS.md`+看板 尚未归位 |
-| T13 | 建 `docs/spec/`（interfaces / state-machine / data-model）与 `docs/research/procurement-platforms.md` | 未开始 | 接口 schema 与 DDL 是交接 Codex 前最大缺口；DigiKey 凭据已丢失，字段级校准需重新申请后才能做 |
-| T14 | 归档三份初稿正文清空为指针 + 全局引用改写 | 未开始 | 依赖 T13 完成（spec 有了去处才能清空 `PROCUREMENT-API-MCP.md`） |
+| T13 | 建 `docs/spec/` 与 `docs/research/procurement-platforms.md` | 已完成 | 四份已建。DDL 实测可建；工具 schema 的**字段级校准仍 blocked**（DigiKey 凭据已丢失，见阻塞清单） |
+| T14 | 归档三份初稿正文清空为指针 + 全局引用改写 | **可开始** | T13 已完成，去处齐备。三份归档文档目前仍缺文档契约块 |
 | T15 | `DEVELOPMENT.md` Feature 验证契约按 D14 改为四层投影 | 未开始 | 影响 `docs/features.json` 的字段设计，须先于 T07 |
-| T16 | `CODING_RULES.md` SSOT 矩阵补入 `docs/product/` 三份、`docs/spec/`、`Makefile`、`compose.yaml`、`requirement.txt`；删除两处 `TASKS.md` 引用 | 未开始 | - |
+| T16 | `CODING_RULES.md` SSOT 矩阵补入 `docs/product/` 三份、`docs/spec/`、`Makefile`、`compose.yaml`、`requirement.txt`；删除 `CODING_RULES.md:89/103` 两处 `TASKS.md` 引用；文档类型枚举补入「参考」（`docs/research/` 在用） | 未开始 | - |
 | T04 | 生成合成时间序列数据（库存/出入库/物流事件） | 未开始 | BOM 侧 schema 已定稿，但应先有 `docs/spec/data-model.md`（T13）再设计时间序列表 |
 | T12 | 元件身份核验：厂商别名、无 MPN 行、多候选行的技术等价性 | 未开始 | 3 行无 MPN；**20 行多候选**（此前记为 18，`projects.yaml` 的 Spikeling-V2 known_gaps 漏记 2 行，需一并订正） |
 | T07 | 建 `docs/features.json` 初始清单并接入编排 Harness | 未开始 | 依赖 T15 与代码骨架 |
