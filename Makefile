@@ -49,14 +49,14 @@ compile: ## ① 静态契约：语法与类型编译检查
 	$(VPY) -m compileall -q $(SRC) && echo ">> compile 通过"
 
 lint: ## ① 静态契约：ruff 检查
-	@command -v $(VENV)/bin/ruff >/dev/null 2>&1 || { echo ">> ruff 未装配，lint 跳过（须在 evidence.static 注明）"; exit 0; }
-	@n=$$(find $(SRC) -name '*.py' 2>/dev/null | wc -l | tr -d ' '); \
+	@if [ ! -x $(VENV)/bin/ruff ]; then echo ">> ruff 未装配，lint 跳过（须在 evidence.static 注明）"; exit 0; fi; \
+	n=$$(find $(SRC) -name '*.py' 2>/dev/null | wc -l | tr -d ' '); \
 	if [ "$$n" = "0" ]; then echo ">> 尚无 Python 源码，lint 跳过"; exit 0; fi; \
 	$(VENV)/bin/ruff check $(SRC)
 
 test: ## ② 离线测试：pytest，不访问外部供应商
-	@test -d tests || { echo ">> 尚无 tests/ 目录，test 跳过（不算通过）"; exit 0; }
-	@$(VPY) -m pytest -q tests
+	@if [ ! -d tests ]; then echo ">> 尚无 tests/ 目录，test 跳过（不算通过）"; exit 0; fi; \
+	$(VPY) -m pytest -q tests
 
 check: compile lint test ## ①② 两层的离线门禁（不证明真实服务与业务正确性）
 	@echo ">> check 完成：仅覆盖离线语法/lint/测试"
