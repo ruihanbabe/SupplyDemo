@@ -54,12 +54,21 @@ lint: ## ① 静态契约：ruff 检查
 	if [ "$$n" = "0" ]; then echo ">> 尚无 Python 源码，lint 跳过"; exit 0; fi; \
 	$(VENV)/bin/ruff check $(SRC)
 
-test: ## ② 离线测试：pytest，不访问外部供应商
+test: ## ② 离线测试：pytest，固定数据与 mock，不连服务也不访问供应商
 	@if [ ! -d tests ]; then echo ">> 尚无 tests/ 目录，test 跳过（不算通过）"; exit 0; fi; \
-	$(VPY) -m pytest -q tests
+	$(VPY) -m pytest -q -m "not integration" tests
 
 check: compile lint test ## ①② 两层的离线门禁（不证明真实服务与业务正确性）
 	@echo ">> check 完成：仅覆盖离线语法/lint/测试"
+
+test-integration: ## ③ 集成故障注入：连本地真实 PostgreSQL / Redis，需先 services-up
+	@if [ ! -d tests ]; then echo ">> 尚无 tests/ 目录，test-integration 跳过（不算通过）"; exit 0; fi; \
+	$(COMPOSE) ps --status running --quiet postgres >/dev/null 2>&1 || { echo ">> 服务未启动，先跑 make services-up"; exit 1; }; \
+	$(VPY) -m pytest -q -m integration tests
+
+migrate: ## 把 docs/spec/data-model.md 的目标 schema 迁到本地数据库
+	@test -d alembic || { echo ">> alembic/ 未初始化，随 F01 一并建立"; exit 1; }
+	@$(VENV)/bin/alembic upgrade head
 
 # ---------- 应用 ----------
 

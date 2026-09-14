@@ -43,7 +43,7 @@
 | `src/*/AGENTS.md`、`src/*/ARCHITECTURE.md`（模块级占位 stub） | 已建（占位，细化随代码进行） |
 | `Makefile` / `compose.yaml` / `.env.example` | **已建**，是命令与拓扑的权威来源 |
 | `requirement.txt`（依赖与环境台账） | 已建；按 D17 纳入治理并剔除遗留内容 |
-| `docs/features.json`（Feature 清单 + 验证契约） | 待建（机制见 `DEVELOPMENT.md`；建立前用下方任务看板过渡） |
+| `docs/features.json`（Feature 清单 + 验证契约） | **已建**（T07）；首切片 7 个 Feature，拓扑 F01→F02→F03→(F04,F05)→F06→F07，静态校验通过 |
 | `productinfo.md`（产品需求，整合版） | 已建；§5/§6/§10 已归位，§12/§14/§15 **待归位**（见 T10） |
 | `docs/product/requirements.md`（FR/BR 正文） | **已建**（T09 部分完成） |
 | `docs/product/acceptance-cases.md`（EV 验收用例） | **已建**（T09 部分完成） |
@@ -85,7 +85,7 @@
 ## 未实现
 
 - 全部代码模块（API / Supervisor / 各 Worker / 采购业务核 / Monitor / Runtime 契约层 / Tools / Persistence / Infrastructure）。
-- `docs/features.json`、`config/agents/*.yaml`。
+- 全部 Feature（F01～F07 均为 `planned`）；`config/agents/*.yaml`；编排 Harness。
 - 合成时间序列数据（库存/出入库/在途事件）——已落库的 BOM 数据只有身份与用量，不含时间序列，不足以支撑库存周转率/缺货率计算（见 `DECISIONS.md` D11）。
 - 语义层 / schema 暴露准则（见 `DECISIONS.md` D09，暂缓）。
 
@@ -106,7 +106,7 @@
 | T16 | `CODING_RULES.md` 治理表与 SSOT 矩阵补新文档、删 `TASKS.md` 断言、类型枚举补「参考」 | 已完成 | 职责表补 5 行、SSOT 矩阵补 9 行 |
 | T04 | 生成合成时间序列数据（库存/出入库/物流事件） | 未开始 | `docs/spec/data-model.md` 已就位可作锚点。**表结构仍待定**：SKU 数量、时间跨度、异常注入规则未决（原 `productinfo.md` §15-3）；`inventory` 当前是快照非事件流，Monitor 算周转率需事件级历史 |
 | T12 | 元件身份核验：厂商别名、无 MPN 行、多候选行的技术等价性 | 未开始 | 3 行无 MPN、20 行多候选，清单见 `projects.yaml`。计数偏差已订正（Spikeling-V2 补记 2 行）；**核验本身未做**——142 个元件仍全部为 `source_asserted` |
-| T07 | 建 `docs/features.json` 初始清单并接入编排 Harness | 未开始 | 依赖 T15 与代码骨架 |
+| T07 | 建 `docs/features.json` 初始清单并接入编排 Harness | 部分完成 | 清单已建（F01～F07，首切片=采购业务核+Persistence）；**编排 Harness 本身未实现**，过渡期由人工按拓扑顺序推进 |
 | T05 | 补充语义层 / schema 暴露准则设计 | 阻塞 | 缺业务背景支撑（见 `DECISIONS.md` D09），需先有真实提问样本再反推 |
 | T17 | 跑 `make freeze` 生成 `requirements.lock.txt` | 已完成 | 44 条，全部 pin 解析成功，无排除项混入 |
 | T18 | 确定各 Worker 的 Model Provider 具体型号 | 未开始 | 能力需求矩阵已定（`productinfo.md` §12），按 D06 分旗舰/便宜快速两档；**需实测后确定**，调用真实模型前须获用户授权（原 `productinfo.md` §15-5） |
@@ -120,13 +120,13 @@
 
 ## 交接下一步
 
-**文档治理已收尾，可以开始写代码。**
+**文档治理已收尾，已交接 Codex 进入实现阶段。** 首切片为采购业务核 + Persistence（`docs/features.json`），选它because 零外部依赖——不需要 LLM、供应商 API 或 ERP，①②③ 三层全部能在本地跑完。DigiKey 凭据丢失与 T04 时间序列缺失均不阻塞本切片。
 
-1. 建 `docs/features.json` 初始清单（T07）——字段结构已由 T15 定稿（四键 `verification`/`evidence`），按 `depends_on` 拓扑拆分。这是 Codex 接手的第一站。
-2. 设计合成时间序列数据 schema 并生成数据（T04）——Monitor 层（FR-08）没有它就无法验证，`inventory` 当前是快照非事件流。
-3. 元件身份核验（T12）：3 行无 MPN、20 行多候选，142 个元件全部仍为 `source_asserted`。
-4. 重新申请 DigiKey 凭据，解除 `docs/spec/interfaces.md` 字段级校准的阻塞。
-5. 确定各 Worker 的 Model Provider 型号（T18），需实测且需授权。
+1. **F01 项目骨架 + Alembic 建表**——Codex 的第一站。目录须按 `ARCHITECTURE.md`「计划代码落点」创建，不得自行发明模块划分；pytest 需注册 `integration` marker，否则 `make test` 的 `-m` 过滤无效。
+2. 按 `docs/features.json` 拓扑顺序推进 F02～F07。编排 Harness 未实现，过渡期人工把关 `state` 与 `evidence`，Agent 不得自行标 `passing`。
+3. 设计合成时间序列数据 schema 并生成数据（T04）——Monitor 层（FR-08）没有它无法验证，`inventory` 当前是快照非事件流。
+4. 元件身份核验（T12）：3 行无 MPN、20 行多候选，142 个元件仍全部 `source_asserted`。
+5. 重新申请 DigiKey 凭据，解除 `docs/spec/interfaces.md` 字段级校准的阻塞；之后才谈得上 ④ 层。
 
 ## 最近更新
 
