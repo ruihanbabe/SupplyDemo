@@ -44,7 +44,7 @@
 | `Makefile` / `compose.yaml` / `.env.example` | **已建**，是命令与拓扑的权威来源 |
 | `requirement.txt`（依赖与环境台账） | 已建；按 D17 纳入治理并剔除遗留内容 |
 | `docs/features.json`（Feature 清单 + 验证契约） | 待建（机制见 `DEVELOPMENT.md`；建立前用下方任务看板过渡） |
-| `productinfo.md`（产品需求，整合版） | 已建；§5/§6 已合并归档稿范围条款，§10/§12/§14/§15 归位**进行中**（见 T10） |
+| `productinfo.md`（产品需求，整合版） | 已建；§5/§6/§10 已归位，§12/§14/§15 **待归位**（见 T10） |
 | `docs/product/requirements.md`（FR/BR 正文） | **已建**（T09 部分完成） |
 | `docs/product/acceptance-cases.md`（EV 验收用例） | **已建**（T09 部分完成） |
 | `docs/product/GLOSSARY.md`（领域术语表） | **已建**（T06 完成） |
@@ -74,7 +74,7 @@
 ## 部分实现
 
 - **文档解耦（对应 D15）**：需求层已完成——`docs/product/` 下 `requirements.md`（FR/BR 正文）、`acceptance-cases.md`（EV 正文 + 追踪矩阵）、`GLOSSARY.md` 三份已建。spec 层与 research 层未建，归档三份初稿的正文尚未清空为指针，全局引用尚未改写。
-- **`productinfo.md` 归位（对应 T10）**：§5/§6 已合并归档稿的范围条款并去重，标题占位已改；§10 瘦身、§12/§14/§15 归位尚未完成。
+- **`productinfo.md` 归位（对应 T10）**：§5/§6 已合并归档稿的范围条款并去重，§10 已瘦身为硬门禁一句话加指针，标题占位已改；§12/§14/§15 归位尚未完成。
 
 ## 未实现
 
@@ -94,7 +94,7 @@
 | T08 | 初始化 Git 仓库 + `.gitignore` | 已完成 | 基线 `5eb4dbc` |
 | T06 | 建 `docs/product/GLOSSARY.md` 领域术语表 | 已完成 | 字段名以 `normalized/` 实际列名为准 |
 | T09 | 把 FR / BR / EV 从归档目录提升为正式需求与验收章节 | 进行中 | `docs/product/requirements.md` 与 `acceptance-cases.md` 已建；归档正文尚未清空、全局引用尚未改写（见 T14） |
-| T10 | `productinfo.md` 归位与瘦身 | 进行中 | §5/§6/标题已处理；§10 瘦身、§12/§14/§15 归位未完成 |
+| T10 | `productinfo.md` 归位与瘦身 | 进行中 | §5/§6/§10/标题已处理；§12 开工门槛→`PROGRESS.md`、§14 存储分工→`ARCHITECTURE.md`、§15 待补充事项→`DECISIONS.md`+看板 尚未归位 |
 | T13 | 建 `docs/spec/`（interfaces / state-machine / data-model）与 `docs/research/procurement-platforms.md` | 未开始 | 接口 schema 与 DDL 是交接 Codex 前最大缺口；DigiKey 凭据已丢失，字段级校准需重新申请后才能做 |
 | T14 | 归档三份初稿正文清空为指针 + 全局引用改写 | 未开始 | 依赖 T13 完成（spec 有了去处才能清空 `PROCUREMENT-API-MCP.md`） |
 | T15 | `DEVELOPMENT.md` Feature 验证契约按 D14 改为四层投影 | 未开始 | 影响 `docs/features.json` 的字段设计，须先于 T07 |
