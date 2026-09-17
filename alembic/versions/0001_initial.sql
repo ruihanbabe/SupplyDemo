@@ -1,38 +1,3 @@
-# SupplyAgent 数据契约（PostgreSQL DDL）
-
-> **文档契约** · 类型：契约层 · 读取：实现某张表或改 schema 时按表名定点读，禁止通读
-> 更新：表结构、约束、索引或灌数方向变更时由 Claude 写入
-> 独占：PostgreSQL 表结构与约束正文、审计表的只插入强制方式、灌数方向、`tenant_id` 预留口径
-> 不收录：业务规则条款（见 `docs/product/requirements.md`）、状态取值与迁移（见 `docs/spec/state-machine.md`）、工具契约（见 `docs/spec/interfaces.md`）、数据现状与缺口（见 `data/supplychain/normalized/projects.yaml`）、术语含义（见 `docs/product/GLOSSARY.md`）
-
-本文是表结构的唯一正文来源。DDL 以 PostgreSQL 16 为目标，迁移由 Alembic 管理——**本文定义目标形态，`alembic/versions/` 定义如何到达**，两者冲突时以本文为准并修迁移脚本。
-
-## 1. 全局约定
-
-- **时间**：一律 `TIMESTAMPTZ`，存 UTC。禁止 `TIMESTAMP`（无时区）。
-- **数量与金额**：一律 `NUMERIC`，禁止 `FLOAT` / `DOUBLE PRECISION`。BR-03 要求精确数值类型，浮点会在阶梯价与倍数计算中引入误差。数量 `NUMERIC(18,6)`，金额 `NUMERIC(18,6)`。
-- **标识符**：业务主键用文本自然键（`line_id`、`component_id` 等，与 `normalized/` 一致）；运行时对象用 `UUID`。
-- **多租户**：业务表一律带 `tenant_id TEXT NOT NULL DEFAULT 'default'`，**仅作架构预留**，MVP 不实现隔离逻辑（见 `DECISIONS.md` D10）。审计表同样带，便于将来按租户裁剪。
-- **模拟数据标注**：任何合成数据的表带 `is_simulated BOOLEAN NOT NULL DEFAULT FALSE`。最终回答必须能区分模拟与真实来源（见 `productinfo.md` §7 第 7 条）。
-- **证据引用**：`evidence_ref` 统一为 `JSONB`，形如 `{"kind": "tool_call", "id": "...", "retrieved_at": "..."}`。每个实质性判断都要能回指。
-- **命名**：表名单数、蛇形；外键列名为 `<引用表>_id`；索引 `ix_<表>_<列>`，唯一索引 `uq_<表>_<列>`。
-
-## 2. 分层与依赖方向
-
-```text
-① 权威静态层（元件身份与 BOM）   ← 由 normalized/ 单向灌入，不接受应用写入
-② 业务层（需求/库存/在途/方案）  ← 应用读写
-③ 审计层（run/tool_call/...）     ← 只插入，永不更新或删除
-④ 规则层（business_rule）         ← 版本化，变更留痕
-```
-
-灌数方向只能是 `domdata/（只读原始层）→ normalize_domdata.py → normalized/ → PostgreSQL`，不得反向回写，也不得跳过规范化层直读原始 CSV（见 `ARCHITECTURE.md`）。
-
-## 3. ① 权威静态层
-
-列名与 `data/supplychain/normalized/` 的 CSV 表头逐一对应，不另起别名。
-
-```sql
 CREATE TABLE project (
     project_id      TEXT PRIMARY KEY,
     github_url      TEXT,
@@ -86,15 +51,7 @@ CREATE TABLE bom_line_distributor_sku (
 
 CREATE INDEX ix_bom_line_project  ON bom_line (project_id);
 CREATE INDEX ix_candidate_component ON bom_line_candidate (component_id);
-```
 
-**`bom_line_distributor_sku` 挂在行级不挂在候选级**，这是源数据的固有限制：多候选行无法判定 SKU 归属哪个候选（见 `projects.yaml`）。不得在灌数时臆断归属。
-
-一条用料行可以没有任何候选（源 BOM 无 MPN），这是合法状态，保留为未解决项（BR-10），不用占位行填补。
-
-## 4. ② 业务层
-
-```sql
 CREATE TABLE demand (
     demand_id       UUID PRIMARY KEY,
     tenant_id       TEXT        NOT NULL DEFAULT 'default',
@@ -113,14 +70,12 @@ CREATE TABLE demand_line (
     demand_id     UUID  NOT NULL REFERENCES demand(demand_id),
     line_id       TEXT  NOT NULL REFERENCES bom_line(line_id),
     component_id  TEXT  REFERENCES component(component_id),  -- 未选定候选时为 NULL
-    required_qty  NUMERIC(18,6),                 -- NULL = 数量口径未核验，尚未计算
+    required_qty  NUMERIC(18,6) NOT NULL,
     unresolved_reason TEXT,                       -- 无 MPN / 候选未选定 / 数量口径未核验
     PRIMARY KEY (demand_id, line_id),
     CONSTRAINT ck_demand_line_resolved CHECK (
-        (component_id IS NOT NULL AND unresolved_reason IS NULL
-         AND required_qty IS NOT NULL AND required_qty > 0)
-        OR (component_id IS NULL AND unresolved_reason IS NOT NULL
-            AND (required_qty IS NULL OR required_qty > 0))
+        (component_id IS NOT NULL AND unresolved_reason IS NULL)
+        OR (component_id IS NULL AND unresolved_reason IS NOT NULL)
     )
 );
 
@@ -161,13 +116,7 @@ CREATE TABLE in_transit (
 );
 
 CREATE INDEX ix_in_transit_component ON in_transit (tenant_id, component_id, eta);
-```
 
-`eta IS NULL` 的在途**不计入可分配量**，必须在结果中显式列为不确定项，不得按乐观假设折算。
-
-## 5. ③ 方案与审批
-
-```sql
 CREATE TABLE plan (
     plan_id      UUID PRIMARY KEY,
     tenant_id    TEXT        NOT NULL DEFAULT 'default',
@@ -200,13 +149,7 @@ CREATE TABLE plan_line (
         (unit_price IS NOT NULL AND currency IS NOT NULL)
     )
 );
-```
 
-`ck_plan_line_price_currency` 是 BR-06 的结构化落地：有金额就必须有币种，不允许出现无币种的裸数字被后续误当作可比值。税费与运费**不建模**——未知即排除，不设默认 0 的列，避免被聚合成"到岸总价"。
-
-## 6. ④ 审计层（只插入）
-
-```sql
 CREATE TABLE run (
     run_id        UUID PRIMARY KEY,
     tenant_id     TEXT        NOT NULL DEFAULT 'default',
@@ -315,26 +258,7 @@ CREATE TABLE operator_log (
     after_value JSONB,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-```
 
-### 只插入的强制方式
-
-审计表不靠约定，靠权限强制。应用角色只授 `INSERT` 与 `SELECT`：
-
-```sql
-CREATE ROLE supplyagent_app;
-GRANT SELECT, INSERT ON run_state_event, tool_call, llm_call, permission_decision,
-      shortage_snapshot, metrics_snapshot, operator_log TO supplyagent_app;
--- 显式不授 UPDATE / DELETE。迁移由独立的 owner 角色执行。
-REVOKE UPDATE, DELETE ON run_state_event, tool_call, llm_call, permission_decision,
-      shortage_snapshot, metrics_snapshot, operator_log FROM supplyagent_app;
-```
-
-`run` 与 `external_action` 是例外，它们持有当前状态需要更新；**状态变化的历史由 `run_state_event` 追加保存**，所以即便 `run.state` 被改写也不丢审计链。
-
-## 7. ⑤ 规则层
-
-```sql
 CREATE TABLE business_rule (
     rule_id     TEXT        NOT NULL,             -- 如 inventory.alert_threshold
     version     INTEGER     NOT NULL,
@@ -349,18 +273,3 @@ CREATE TABLE business_rule (
 
 CREATE INDEX ix_business_rule_current
     ON business_rule (tenant_id, rule_id, effective_from DESC);
-```
-
-版本只增不改：改阈值是插入新版本，不是 `UPDATE`。读取时取 `effective_from <= now()` 的最大版本。每次变更必须同时写一条 `operator_log`（谁改的、改前改后值、生效时间）。
-
-**本表存的是可变业务参数**（库存告警线、审批期限、提醒频率、D13 的扇出升级阈值）；Agent 的 system prompt／模型／工具列表走 YAML + Git，两者不混放（见 `DECISIONS.md` D07）。
-
-## 8. 未决与已知缺口
-
-| 项 | 状态 |
-|---|---|
-| 合成时间序列数据的表结构（库存/出入库/在途事件的时间维） | 未定。`inventory` 当前是快照而非事件流，Monitor 计算库存周转率需要事件级历史，schema 待 T04 设计 |
-| `component` 的技术规格字段（参数、分类、规格书链接） | 不建模。D12 移除 RAG 后，技术信息在运行时由供应查询工具返回，不预先建库 |
-| 目标业务系统（ERP）侧的表 | 不在本项目库内。Agent 自有 PostgreSQL 与 ERP 是两个独立系统 |
-| `identity_status` 的 `verified` 取值 | CHECK 已允许，但核验流程未建（T12），当前数据全部为 `source_asserted` |
-| 税费与运费 | 有意不建模，见 §5 |

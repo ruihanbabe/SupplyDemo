@@ -1,0 +1,14 @@
+[project]
+name = "supplyagent"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = ["integration: requires local PostgreSQL; isolated transactional fixtures"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

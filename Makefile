@@ -11,7 +11,7 @@ SRC         := src
 
 .DEFAULT_GOAL := help
 .PHONY: help setup status check compile lint test run health \
-        services-up services-status services-smoke services-down model-smoke freeze
+        services-up services-status services-smoke services-down model-smoke freeze migrate test-integration
 
 help: ## 列出所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -46,13 +46,13 @@ freeze: ## 把当前虚拟环境固化为锁文件
 compile: ## ① 静态契约：语法与类型编译检查
 	@n=$$(find $(SRC) -name '*.py' 2>/dev/null | wc -l | tr -d ' '); \
 	if [ "$$n" = "0" ]; then echo ">> 尚无 Python 源码，compile 跳过（不算通过）"; exit 0; fi; \
-	$(VPY) -m compileall -q $(SRC) && echo ">> compile 通过"
+	$(VPY) -m compileall -q $(SRC) alembic tests && echo ">> compile 通过"
 
 lint: ## ① 静态契约：ruff 检查
 	@if [ ! -x $(VENV)/bin/ruff ]; then echo ">> ruff 未装配，lint 跳过（须在 evidence.static 注明）"; exit 0; fi; \
 	n=$$(find $(SRC) -name '*.py' 2>/dev/null | wc -l | tr -d ' '); \
 	if [ "$$n" = "0" ]; then echo ">> 尚无 Python 源码，lint 跳过"; exit 0; fi; \
-	$(VENV)/bin/ruff check $(SRC)
+	$(VENV)/bin/ruff check $(SRC) alembic tests
 
 test: ## ② 离线测试：pytest，固定数据与 mock，不连服务也不访问供应商
 	@if [ ! -d tests ]; then echo ">> 尚无 tests/ 目录，test 跳过（不算通过）"; exit 0; fi; \
@@ -98,3 +98,7 @@ services-down: ## 停服务（保留数据卷）
 
 model-smoke: ## 调用真实模型，执行前必须获得用户明确授权并确认费用
 	@echo ">> 该目标会产生真实费用，未获授权不得执行；实现随 Infrastructure 层落地"; exit 1
+
+.PHONY: import-data
+import-data: ## F02：事务性导入 normalized 静态数据，重跑幂等
+	@PYTHONPATH=src $(VPY) -m persistence.import_normalized

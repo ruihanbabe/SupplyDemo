@@ -5,4 +5,6 @@
 > 独占：本模块在根 `ARCHITECTURE.md` 模块表中那一行的展开说明
 > 不收录：不变量正文（见同目录 `AGENTS.md`）、跨模块依赖方向（见根 `ARCHITECTURE.md`）
 
-尚未成立（占位）。提供 LLM、PostgreSQL、Redis、供应商 API 等可替换外部实现。把核心端口调用转为 Provider 调用与规范化结果。MVP 不含向量库 / RAG。实现与测试待建，边界以仓库根 `ARCHITECTURE.md` 的 Infrastructure 行为准。
+`database.py` 提供 `database_url()`，从项目 `.env` 与进程环境读取 `SUPPLYAGENT_DATABASE_URL`（进程环境优先），返回 SQLAlchemy URL；迁移使用已锁定的 psycopg 同步驱动。配置缺失或格式错误明确失败，错误信息不包含连接凭据。
+
+迁移 owner 与受限应用角色的职责见 `docs/spec/data-model.md` §6。应用运行入口、LLM、Redis 及供应商 Adapter 不在本次骨架范围内。

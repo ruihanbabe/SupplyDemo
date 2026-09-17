@@ -9,7 +9,6 @@
   },
   "_context_refs_note": "context_refs 是该 Feature 的最小上下文投影，Codex 按 DEVELOPMENT.md「每 Feature 的上下文投影」定点读取，禁止通读整份文件。decisions=DECISIONS.md 的 Dxx 锚点；architecture_sections=ARCHITECTURE.md 的 ## 标题；requirements_sections=productinfo.md 的编号章节；rules=docs/product/requirements.md 的 FR/BR 编号；specs=docs/spec/ 下的文件与章节；cases=docs/product/acceptance-cases.md 的 EV 编号。",
   "_slice": "首个切片：采购业务核 + Persistence。选它是因为零外部依赖——不需要 LLM、供应商 API 或 ERP，①②③ 三层全部能在本地跑完，且它是其余一切的底座。DigiKey 凭据丢失与合成时间序列缺失（PROGRESS.md T04）都不阻塞本切片。",
-
   "features": [
     {
       "id": "F01",
@@ -21,17 +20,26 @@
         "integration": "make services-up && make migrate && make test-integration",
         "e2e": null
       },
-      "state": "planned",
+      "state": "passing",
       "evidence": {
-        "contract": null,
-        "offline": null,
-        "integration": null,
+        "contract": "2026-09-14: make compile + make lint passed (src/alembic/tests).",
+        "offline": "2026-09-14: make test: 3 passed, 3 integration deselected.",
+        "integration": "2026-09-14: services-up + services-smoke + migrate passed; test-integration: 3 passed. Verified 22 tables, repeat upgrade, downgrade/rebuild, seven audit ACLs and identity INSERT, atomic DDL failure and cleanup. User authorized status update.",
         "e2e": "not_applicable: 本 Feature 不触达任何外部系统"
       },
       "context_refs": {
-        "decisions": ["D14", "D18"],
-        "architecture_sections": ["一级逻辑模块", "存储分工", "当前物理结构边界"],
-        "specs": ["docs/spec/data-model.md"],
+        "decisions": [
+          "D14",
+          "D18"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块",
+          "存储分工",
+          "当前物理结构边界"
+        ],
+        "specs": [
+          "docs/spec/data-model.md"
+        ],
         "rules": [],
         "cases": []
       },
@@ -40,24 +48,32 @@
     {
       "id": "F02",
       "behavior": "把 data/supplychain/normalized/ 的五个文件灌入权威静态层五张表，行数与源文件逐表一致（component 142 / bom_line 121 / bom_line_candidate 148 / bom_line_distributor_sku 160 / project 5）；重跑幂等。",
-      "depends_on": ["F01"],
+      "depends_on": [
+        "F01"
+      ],
       "verification": {
         "contract": "make compile && make lint",
         "offline": "make test",
         "integration": "make test-integration",
         "e2e": null
       },
-      "state": "planned",
+      "state": "passing",
       "evidence": {
-        "contract": null,
-        "offline": null,
-        "integration": null,
+        "contract": "2026-09-14 make compile + make lint passed.",
+        "offline": "2026-09-14 make test: 4 passed, 5 integration deselected; exact source counts and Decimal quantities.",
+        "integration": "2026-09-14 make test-integration: 5 passed; make import-data executed twice: project 5/component 142/bom_line 121/candidates 148/SKU 160 each time. Late conflict rolls back earlier inserts; three no-candidate lines preserved.",
         "e2e": "not_applicable: 本 Feature 不触达任何外部系统"
       },
       "context_refs": {
-        "decisions": ["D11"],
-        "architecture_sections": ["当前物理结构边界"],
-        "specs": ["docs/spec/data-model.md"],
+        "decisions": [
+          "D11"
+        ],
+        "architecture_sections": [
+          "当前物理结构边界"
+        ],
+        "specs": [
+          "docs/spec/data-model.md"
+        ],
         "rules": [],
         "cases": []
       },
@@ -66,129 +82,209 @@
     {
       "id": "F03",
       "behavior": "给定 demand（产品版本 + 生产数量 + 需求日期），把 BOM 展开为 demand_line；qty_basis_verified 为 false 的行不参与展开，改记 unresolved_reason 并在结果中列为未解决项。",
-      "depends_on": ["F02"],
+      "depends_on": [
+        "F02"
+      ],
       "verification": {
         "contract": "make compile && make lint",
         "offline": "make test",
         "integration": "make test-integration",
         "e2e": null
       },
-      "state": "planned",
+      "state": "passing",
       "evidence": {
-        "contract": null,
-        "offline": null,
-        "integration": null,
+        "contract": "2026-09-14 make compile + make lint passed; user-approved required_qty NULL migration 0002.",
+        "offline": "2026-09-14 make test: 14 passed, 8 integration deselected; EV-08 and exact Decimal boundary tests.",
+        "integration": "2026-09-14 make migrate passed; make test-integration: 8 passed. NULL roundtrip, resolved-NULL constraint rejection, mixed verified/unverified rows, idempotent demand and atomic rollback covered.",
         "e2e": "not_applicable: 本 Feature 不触达任何外部系统"
       },
       "context_refs": {
-        "decisions": ["D01"],
-        "architecture_sections": ["一级逻辑模块"],
-        "requirements_sections": ["8"],
-        "rules": ["FR-02", "BR-01", "BR-03"],
-        "specs": ["docs/spec/data-model.md"],
-        "cases": ["EV-08", "EV-05"]
+        "decisions": [
+          "D01"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块"
+        ],
+        "requirements_sections": [
+          "8"
+        ],
+        "rules": [
+          "FR-02",
+          "BR-01",
+          "BR-03"
+        ],
+        "specs": [
+          "docs/spec/data-model.md"
+        ],
+        "cases": [
+          "EV-08",
+          "EV-05"
+        ]
       },
       "notes": "BR-03 要求精确数值类型：一律 NUMERIC，禁 float。BR-01 的口径核验是硬前置——数量口径不明的行直接乘生产数量是本 Feature 的主要失败模式。"
     },
     {
       "id": "F04",
       "behavior": "按元件计算需求日期前的可分配量与缺口，写入 shortage_snapshot 含逐项抵扣 breakdown；隔离/待检库存不计入，无 ETA 的在途列为不确定项，同一库存不重复抵扣。",
-      "depends_on": ["F03"],
+      "depends_on": [
+        "F03"
+      ],
       "verification": {
         "contract": "make compile && make lint",
         "offline": "make test",
         "integration": "make test-integration",
         "e2e": null
       },
-      "state": "planned",
+      "state": "passing",
       "evidence": {
-        "contract": null,
-        "offline": null,
-        "integration": null,
+        "contract": "2026-09-14 make compile + make lint passed.",
+        "offline": "2026-09-14 make test: 22 passed, 10 integration deselected. EV-01=30, exclusions, own allocations counted once, duplicate/conflicting records and missing inventory.",
+        "integration": "2026-09-14 make test-integration: 10 passed. Evidence snapshot persisted; source stock/allocation/transit unchanged; injected database insert failure rolls back and retry succeeds.",
         "e2e": "not_applicable: 本 Feature 不触达任何外部系统"
       },
       "context_refs": {
-        "decisions": ["D01"],
-        "architecture_sections": ["一级逻辑模块"],
-        "requirements_sections": ["8"],
-        "rules": ["FR-02", "BR-04", "BR-05"],
-        "specs": ["docs/spec/data-model.md"],
-        "cases": ["EV-01", "EV-02", "EV-05"]
+        "decisions": [
+          "D01"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块"
+        ],
+        "requirements_sections": [
+          "8"
+        ],
+        "rules": [
+          "FR-02",
+          "BR-04",
+          "BR-05"
+        ],
+        "specs": [
+          "docs/spec/data-model.md"
+        ],
+        "cases": [
+          "EV-01",
+          "EV-02",
+          "EV-05"
+        ]
       },
       "notes": "EV-01 是本 Feature 的基准算例（需求 100、单件用量 1、实物 60、占用 10、在途 20 按期 → 缺口 30）。BR-05：建议计算不得修改库存或建立真实预留；多订单竞争时提示资源竞争而非各自宣称已预留（EV-02）。算术不得交给 LLM。"
     },
     {
       "id": "F05",
       "behavior": "多候选用料行在未显式选定候选前，不展开为具体元件需求、不按候选数量倍增，改为请求人工确认。",
-      "depends_on": ["F03"],
+      "depends_on": [
+        "F03"
+      ],
       "verification": {
         "contract": "make compile && make lint",
         "offline": "make test",
         "integration": null,
         "e2e": null
       },
-      "state": "planned",
+      "state": "passing",
       "evidence": {
-        "contract": null,
-        "offline": null,
+        "contract": "2026-09-14 make compile + make lint passed.",
+        "offline": "2026-09-14 make test: 27 passed, 10 integration deselected. EV-03/04/05/07: 20 multicandidate and 3 missing-candidate source lines preserved; explicit selection, no suffix normalization or identity auto-approval; confirmation request retains candidates.",
         "integration": "not_applicable: 纯确定性规则，无跨进程或故障语义",
         "e2e": "not_applicable: 本 Feature 不触达任何外部系统"
       },
       "context_refs": {
-        "decisions": ["D01"],
-        "rules": ["FR-02", "FR-04", "BR-02"],
-        "specs": ["docs/spec/data-model.md"],
-        "cases": ["EV-07", "EV-03", "EV-04"]
+        "decisions": [
+          "D01"
+        ],
+        "rules": [
+          "FR-02",
+          "FR-04",
+          "BR-02"
+        ],
+        "specs": [
+          "docs/spec/data-model.md"
+        ],
+        "cases": [
+          "EV-07",
+          "EV-03",
+          "EV-04"
+        ]
       },
       "notes": "当前落库数据中有 20 行多候选、3 行无 MPN，清单见 normalized/projects.yaml，可直接作 fixture。源候选关系不自动构成技术批准；不得删型号后缀再匹配（EV-04）。"
     },
     {
       "id": "F06",
       "behavior": "给定净缺口与阶梯报价，按 MOQ 与订购倍数上调得出建议采购数量，并按建议数量所在的那一档阶梯计算金额；缺价格、缺库存或缺交期时明确标注，不伪装为完整报价。",
-      "depends_on": ["F04"],
+      "depends_on": [
+        "F04"
+      ],
       "verification": {
         "contract": "make compile && make lint",
         "offline": "make test",
         "integration": null,
         "e2e": null
       },
-      "state": "planned",
+      "state": "passing",
       "evidence": {
-        "contract": null,
-        "offline": null,
+        "contract": "2026-09-14 make compile + make lint passed.",
+        "offline": "2026-09-14 make test: 43 passed, 10 integration deselected. EV-13/14 quantities/tiers, missing price/stock/lead-time, invalid quotes, identity uncertainty; currencies and packaging preserved; no supplier calls.",
         "integration": "not_applicable: 纯算术，输入为固定报价结构",
         "e2e": "not_applicable: 真实供应商查询属后续切片，且 DigiKey 凭据待重新申请"
       },
       "context_refs": {
-        "decisions": ["D13"],
-        "rules": ["FR-03", "FR-05", "BR-06", "BR-07"],
-        "specs": ["docs/spec/interfaces.md", "docs/spec/data-model.md"],
-        "cases": ["EV-13", "EV-14", "EV-12"]
+        "decisions": [
+          "D13"
+        ],
+        "rules": [
+          "FR-03",
+          "FR-05",
+          "BR-06",
+          "BR-07"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md",
+          "docs/spec/data-model.md"
+        ],
+        "cases": [
+          "EV-13",
+          "EV-14",
+          "EV-12"
+        ]
       },
       "notes": "EV-13 是基准算例（MOQ=10、倍数 5、净缺口 12 → 建议 15，按 15 所在阶梯计价）。常见错误是按缺口 12 所在的阶梯计价。BR-06：不同币种不自动混合比较；税费运费不建模，未知即排除，不得聚合出「到岸总价」。本 Feature 只消费报价结构，不发起供应商查询。"
     },
     {
       "id": "F07",
       "behavior": "把缺口与采购建议固化为版本化方案：写入 plan 与 plan_line，版本号按 demand 递增，content_hash 绑定方案实质内容；实质内容改变则哈希改变，单源方案显式标注。",
-      "depends_on": ["F06"],
+      "depends_on": [
+        "F06"
+      ],
       "verification": {
         "contract": "make compile && make lint",
         "offline": "make test",
         "integration": "make test-integration",
         "e2e": null
       },
-      "state": "planned",
+      "state": "passing",
       "evidence": {
-        "contract": null,
-        "offline": null,
-        "integration": null,
+        "contract": "2026-09-15 make compile + make lint passed; migration/schema contract checks passed.",
+        "offline": "2026-09-15 make test: 57 passed, 15 integration deselected. Hash coverage, partial plans, unknown quote fields, readback payloads and no approval/external action side effects.",
+        "integration": "2026-09-15 make test-integration: 15 passed. Version 1/2 concurrency, independent reconnect readback, plan-line failure rollback, mixed unresolved/unknown quote persistence, target schema column/constraint comparison.",
         "e2e": "not_applicable: 审批与外部写入属后续切片"
       },
       "context_refs": {
-        "decisions": ["D01"],
-        "rules": ["FR-05", "BR-07", "BR-08", "BR-10"],
-        "specs": ["docs/spec/data-model.md", "docs/spec/state-machine.md"],
-        "cases": ["EV-19", "EV-05"]
+        "decisions": [
+          "D01"
+        ],
+        "rules": [
+          "FR-05",
+          "BR-07",
+          "BR-08",
+          "BR-10"
+        ],
+        "specs": [
+          "docs/spec/data-model.md",
+          "docs/spec/state-machine.md"
+        ],
+        "cases": [
+          "EV-19",
+          "EV-05"
+        ]
       },
       "notes": "哈希的覆盖范围必须明确且可测：供应商、商品、数量、金额与关键条件任一改变都要改变哈希，否则 BR-08 的审批绑定失效（EV-19）。BR-10：混合已解决/未解决用料时允许出部分分析，但整单不得标为就绪。本 Feature 只产出方案，不实现审批门与状态流转——那属下一切片。"
     }

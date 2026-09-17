@@ -1,4 +1,4 @@
-# Infrastructure 模块指引（占位 stub）
+# Infrastructure 模块指引
 
 > **文档契约** · 类型：模块层 · 读取：进入本模块前读，全文（篇幅短）
 > 更新：本模块接口、不变量或验证方式变更时由 Codex 写入
@@ -11,7 +11,7 @@
 
 ## 修改前
 
-阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的 Infrastructure 行、`DEVELOPMENT.md`「环境」、`.env.example` 与 `compose.yaml`（均待建）；代码与测试待建。
+阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的 Infrastructure 行、`DEVELOPMENT.md`「环境」、`.env.example` 与 `compose.yaml`；数据库配置入口见 `database.py`。
 
 ## 不变量与 contract
 
@@ -22,4 +22,4 @@
 
 ## 修改后验证
 
-`Makefile` 已建（目标见 `make help`），本模块代码与测试待建。届时运行本模块对应的 `make` 目标；`make model-smoke` 等真实调用需用户明确授权，按 `DEVELOPMENT.md` 的四层验证（`DECISIONS.md` D14）补充 Provider 失败路径确认。
+数据库配置改动执行 `make compile`、`make lint`、`make test`，真实连接验证执行 `make test-integration`；`make model-smoke` 等真实调用需用户明确授权，按 `DEVELOPMENT.md` 的四层验证（`DECISIONS.md` D14）补充 Provider 失败路径确认。

@@ -9,8 +9,8 @@
 
 ## 当前状态
 
-- 阶段：需求/架构设计阶段，开发环境已就位。尚无产品代码；当前工作是完成需求/验收/spec 文档的解耦与补全，为进入编码阶段做准备。
-- 工作树：文档协作阶段，无产品代码改动需要保护；当前是否有未提交内容以 `git status --short --branch` 为准。
+- 阶段：F01 项目骨架与初始迁移已实现，本次①②③验证通过；用户已授权依执行证据转换队列状态；F02 已通过并实际落库，F03 已通过，用户批准的 NULL 契约修订已迁移；F04 已通过，F05 已通过，F06 已通过，F07 已通过，F01～F07 首切片全部通过。
+- 工作树：F01 实现、测试、Makefile 和模块文档存在未提交改动；以 `git status --short --branch` 为准。
 - 语言/框架：已锁定 Python 3.11（见 `DECISIONS.md`、`ARCHITECTURE.md`）。
 - 开发环境：**本地 MacBook Pro**，借用的 GPU 服务器不再是默认环境（见 `DECISIONS.md` D18）。
 
@@ -68,9 +68,30 @@
 | 2026-09-14 | 归档清空前的内容覆盖核对 | 通过 | 11 项条款逐条确认落点；**按关键短语检索，非逐字比对** | 初查发现 MVP-PRD §6 界面清单（六处界面 + 内部框架名称不占据用户流程）无落点 | 迁入 `productinfo.md` §11 后再清空 |
 | 2026-09-14 | 落库数据反查多候选行数 | **发现偏差** | 仅核对计数，未做元件身份核验 | `projects.yaml` 的 Spikeling-V2 known_gaps 漏记 2 行多候选，实际 20 行而非 18 行 | 待订正 `projects.yaml` 与 T12 描述（见 T12） |
 
+| 2026-09-14 | F01：原始数据 MANIFEST 校验 | 通过 | 6 个文件 SHA-256/字节数匹配；未改原始数据 | — | — |
+| 2026-09-14 | F01：`make compile`、`make lint` | 通过 | 最终版本包含 src、alembic、tests；compile 是语法编译，不代表类型检查 | B 级首次出现导入排序、宽泛异常捕获等 8 个 lint 问题 | 收窄异常、修复 lint；1 次修复后通过 |
+| 2026-09-14 | F01：`make test` | 通过 | 3 passed、3 deselected；契约 DDL 对照与配置错误处理 | — | — |
+| 2026-09-14 | F01：`make services-up`、`make services-smoke`、`make migrate`、`make test-integration` | 通过 | 本地真实 PostgreSQL/Redis 冒烟；迁移成功；3 项集成测试通过：22 张表、重复升级/回退重建、7 表权限拒绝与 identity INSERT、后段 DDL 冲突原子回滚、临时 schema 清理；最终重跑 migrate/test-integration 无警告 | 首次沙箱拒绝 Docker socket；初次集成有 Alembic path_separator 弃用警告 | 授权后本地执行成功；补 path_separator 后按层序复验通过；未调用外部 API |
+
+| 2026-09-14 | F02：`make compile`、`make lint`、`make test` | 通过 | 4 passed，5 integration deselected；精确数值与源行计数 | B 级首次出现 2 处 dict 构造 lint 问题 | 改为字面量后通过 |
+| 2026-09-14 | F02：`make test-integration`、两次 `make import-data` | 通过 | 5 passed；5/142/121/148/160 行实际落库，两次一致；冲突回滚，不修改源文件或核验状态 | — | — |
+
+| 2026-09-14 | F03 部分实现：`make compile`、`make lint`、`make test` | 通过 | 14 passed、5 integration deselected；仅纯计算与既有离线回归，不代表 F03 验收完成 | 导入排序 lint 问题 | 修正排序后通过 |
+| 2026-09-14 | F03 持久化/集成验证 | 阻塞 | 未执行；后续 Feature 不推进 | 未核验行数量不可计算，现有 required_qty NOT NULL 无未知值表示 | 已请求用户裁定 NULL+约束迁移或显式 0 占位；纯计算层以 None 表示未知，尚未落库 |
+
+| 2026-09-14 | F03：`make compile`、`make lint`、`make test`、`make migrate`、`make test-integration` | 通过 | 14 离线、8 集成通过；NULL、正数混合持久化、约束拒绝、重复请求、原子回滚 | C 级首次发现契约编辑误及 shortage_snapshot | 还原非任务字段；保留 0001 迁移，新增 0002；用户已确认 NULL 方案，阻塞解除 |
+
+| 2026-09-14 | F04：`make compile`、`make lint`、`make test`、`make test-integration` | 通过 | 22 离线、10 集成通过；EV-01=30，重复记录不重复抵扣、在途排除明细、只追加快照、注入写入失败回滚 | — | — |
+
+| 2026-09-14 | F05：`make compile`、`make lint`、`make test` | 通过 | 27 离线通过；20 多候选、3 无候选、原始后缀及厂商名保留；③④按 Feature 契约不适用 | — | — |
+
+| 2026-09-14 | F06：`make compile`、`make lint`、`make test` | 通过 | 43 离线通过；MOQ/倍数/阶梯、缺字段、币种包装分别保留；③④按 Feature 契约不适用 | B 级无时区负例触发 lint | 为该拒绝用例单独注明 noqa 理由，生产校验不变 |
+
 新增记录必须同时填写「失败原因」与「修复动作」两列；`阻塞`/`失败` 结果不得留空这两列。跨 Feature 的自动修复达到单级 3 次上限后，在此表标注升级报告位置，不得继续自行重试（结构化上报格式待设计，见 `AGENTS.md`）。
 
 ## 已实现
+
+- **F01 实现与验证**：按顶层架构建立 Python 模块包、`pyproject.toml`、Alembic 初始迁移与数据库配置入口。22 张表按数据契约建立，审计应用角色具备 SELECT/INSERT 及 identity 序列权限，拒绝 UPDATE/DELETE/TRUNCATE。测试使用独立 schema 与事务清理；`make run` 仍无产品入口。`docs/features.json` 的 state/evidence 未改，遵守 DEVELOPMENT.md 的人工/Harness 裁定边界。
 
 - **文档解耦（D15 闭环）**：`docs/product/` 三份、`docs/spec/` 三份、`docs/research/` 一份共七份新文档承接全部正文；归档三份清空为指针；全局引用改写完毕。冷启动模拟验证：仅按 `AGENTS.md` 启动流程可达的 42 份文档中，BR-03／BR-04 缺口规则、审批门、幂等键、状态机迁移、EV 算例九项全部可达，且无一处仍依赖归档正文。**`AGENTS.md` 禁止读归档区与需求正文只存于归档区的自相矛盾已解除。**
 
@@ -84,8 +105,8 @@
 
 ## 未实现
 
-- 全部代码模块（API / Supervisor / 各 Worker / 采购业务核 / Monitor / Runtime 契约层 / Tools / Persistence / Infrastructure）。
-- 全部 Feature（F01～F07 均为 `planned`）；`config/agents/*.yaml`；编排 Harness。
+- API / Supervisor / 各 Worker / 采购业务核 / Monitor / Runtime 契约层 / Tools 的功能实现，以及 Persistence/Infrastructure 除 F01 迁移和连接配置之外的功能。
+- `config/agents/*.yaml`、编排 Harness，以及后续 API/Supervisor/Workers/Tools/Monitor 功能。F01～F07 已依用户授权和本次执行证据标为 `passing`。
 - 合成时间序列数据（库存/出入库/在途事件）——已落库的 BOM 数据只有身份与用量，不含时间序列，不足以支撑库存周转率/缺货率计算（见 `DECISIONS.md` D11）。
 - 语义层 / schema 暴露准则（见 `DECISIONS.md` D09，暂缓）。
 
@@ -116,14 +137,14 @@
 - **T05**：语义层设计缺业务背景支撑，暂缓，等实际场景/数据跑起来后再回来做。
 - **T13 的部分范围**：`.env.digikey` 凭据已丢失且无备份，需重新申请 DigiKey Client ID/Secret。接口 schema 可按官方文档先写，但无法用实测响应样本校准字段，字段级验证记为 blocked。
 
-无硬阻塞。原唯一硬阻塞 T01 已因开发环境迁至本地而关闭。
+F01～F07 验证通过；无本切片技术阻塞。编排 Harness 尚未实现，Feature 状态由用户授权后依实际证据更新。
 
 ## 交接下一步
 
 **文档治理已收尾，已交接 Codex 进入实现阶段。** 首切片为采购业务核 + Persistence（`docs/features.json`），选它是因为零外部依赖——不需要 LLM、供应商 API 或 ERP，①②③ 三层全部能在本地跑完。DigiKey 凭据丢失与 T04 时间序列缺失均不阻塞本切片。
 
-1. **F01 项目骨架 + Alembic 建表**——Codex 的第一站。目录须按 `ARCHITECTURE.md`「计划代码落点」创建，不得自行发明模块划分；pytest 需注册 `integration` marker，否则 `make test` 的 `-m` 过滤无效。
-2. 按 `docs/features.json` 拓扑顺序推进 F02～F07。编排 Harness 未实现，过渡期人工把关 `state` 与 `evidence`，Agent 不得自行标 `passing`。
+1. 首切片 F01～F07 已完成；下一步按新 Feature 清单规划 API/Supervisor 或补充 Harness。当前改动未提交。
+2. 后续 Feature 需先进入 `docs/features.json`，并继续按四层验证顺序执行。
 3. 设计合成时间序列数据 schema 并生成数据（T04）——Monitor 层（FR-08）没有它无法验证，`inventory` 当前是快照非事件流。
 4. 元件身份核验（T12）：3 行无 MPN、20 行多候选，142 个元件仍全部 `source_asserted`。
 5. 重新申请 DigiKey 凭据，解除 `docs/spec/interfaces.md` 字段级校准的阻塞；之后才谈得上 ④ 层。

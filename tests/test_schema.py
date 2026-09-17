@@ -1,0 +1,132 @@
+"""F01 contract checks and real PostgreSQL permission/rollback verification."""
+import importlib.util
+import re
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import DBAPIError
+
+from alembic import command
+from infrastructure.database import database_url
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = ROOT / "docs/spec/data-model.md"
+REVISION = ROOT / "alembic/versions/0001_initial.py"
+
+
+def revision():
+    spec = importlib.util.spec_from_file_location("initial", REVISION)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def spec_ddl():
+    blocks = re.findall(r"```sql\n(.*?)```", SPEC.read_text(), re.DOTALL)
+    return "\n".join(block for block in blocks if "CREATE TABLE" in block)
+
+
+def test_frozen_migration_matches_contract():
+    # F03 has an explicitly approved ALTER migration; all other initial DDL stays frozen.
+    def without_demand_line(ddl):
+        return re.sub(r"CREATE TABLE demand_line .*?\n\);", "", ddl, flags=re.DOTALL)
+    assert without_demand_line(REVISION.with_suffix(".sql").read_text()) == without_demand_line(spec_ddl())
+    assert len(re.findall(r"CREATE TABLE", spec_ddl())) == 22
+
+
+def test_environment_url_overrides_dotenv(monkeypatch):
+    monkeypatch.setenv("SUPPLYAGENT_DATABASE_URL", "postgresql+asyncpg://test:secret@localhost/demo")
+    url = database_url()
+    assert url.drivername == "postgresql+psycopg"
+    assert url.database == "demo"
+    assert "secret" not in str(url)
+
+
+def test_invalid_url_does_not_disclose_credentials(monkeypatch):
+    monkeypatch.setenv("SUPPLYAGENT_DATABASE_URL", "secret-invalid-value")
+    with pytest.raises(ValueError, match="^SUPPLYAGENT_DATABASE_URL is invalid$"):
+        database_url()
+
+
+@pytest.mark.integration
+def test_upgrade_repeat_and_downgrade(migrated):
+    conn, config, schema = migrated
+    expected = set(re.findall(r"CREATE TABLE (\w+)", spec_ddl()))
+    assert set(inspect(conn).get_table_names(schema=schema)) == expected | {"alembic_version"}
+    command.upgrade(config, "head")
+    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+    for table in expected:
+        for column in inspect(conn).get_columns(table, schema=schema):
+            assert str(column["type"]) not in {"FLOAT", "DOUBLE PRECISION"}
+    command.downgrade(config, "base")
+    assert inspect(conn).get_table_names(schema=schema) == ["alembic_version"]
+    command.upgrade(config, "head")
+    assert set(inspect(conn).get_table_names(schema=schema)) == expected | {"alembic_version"}
+
+
+@pytest.mark.integration
+def test_app_audit_permissions_and_identity_insert(migrated):
+    conn, _, schema = migrated
+    conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO supplyagent_app'))
+    run_id = uuid4()
+    conn.execute(text("INSERT INTO run(run_id,trigger_kind,state) VALUES (:id,'user','created')"),
+                 {"id": run_id})
+    conn.execute(text("SET LOCAL ROLE supplyagent_app"))
+    # Identity sequence USAGE must permit a real append, not just an ACL check.
+    conn.execute(text("""INSERT INTO run_state_event(run_id,to_state,reason,evidence_ref)
+                        VALUES (:id,'created','test','{}')"""), {"id": run_id})
+    assert conn.scalar(text("SELECT count(*) FROM run_state_event")) == 1
+    for table in revision().AUDIT_TABLES:
+        for action in ("SELECT", "INSERT"):
+            assert conn.scalar(text("SELECT has_table_privilege(current_user,:table,:action)"),
+                               {"table": f"{schema}.{table}", "action": action})
+        for sql in (f"UPDATE {table} SET occurred_at=now()" if table in
+                    {"run_state_event", "tool_call", "llm_call", "operator_log"} else
+                    f"UPDATE {table} SET snapshot_id=snapshot_id" if table in
+                    {"shortage_snapshot", "metrics_snapshot"} else
+                    f"UPDATE {table} SET decision_id=decision_id",
+                    f"DELETE FROM {table}", f"TRUNCATE {table}"):
+            with pytest.raises(DBAPIError) as error, conn.begin_nested():
+                conn.execute(text(sql))
+            assert error.value.orig.sqlstate == "42501"
+    conn.execute(text("RESET ROLE"))
+
+
+@pytest.mark.integration
+def test_ddl_failure_is_atomic(migrated):
+    conn, config, schema = migrated
+    command.downgrade(config, "base")
+    # A late collision must roll back all earlier CREATE TABLE statements.
+    conn.execute(text("CREATE TABLE business_rule (sentinel INTEGER)"))
+    with pytest.raises(DBAPIError), conn.begin_nested():
+        command.upgrade(config, "head")
+    assert set(inspect(conn).get_table_names(schema=schema)) == {"alembic_version", "business_rule"}
+    assert conn.scalar(text("SELECT count(*) FROM alembic_version")) == 0
+    conn.execute(text("DROP TABLE business_rule"))
+    command.upgrade(config, "head")
+    assert len(inspect(conn).get_table_names(schema=schema)) == 23
+
+
+@pytest.mark.integration
+def test_migrated_columns_and_constraints_match_current_contract(migrated):
+    """Compare migrated schema with an independently created target from the spec."""
+    conn, _, actual_schema = migrated
+    expected_schema = "test_target_" + uuid4().hex
+    conn.execute(text(f'CREATE SCHEMA "{expected_schema}"'))
+    conn.execute(text(f'SET LOCAL search_path TO "{expected_schema}"'))
+    for statement in re.sub(r"--[^\n]*", "", spec_ddl()).split(";"):
+        if statement.strip():
+            conn.execute(text(statement))
+    inspector = inspect(conn)
+    for table in re.findall(r"CREATE TABLE (\w+)", spec_ddl()):
+        def columns(schema, table=table):
+            return [(c["name"], str(c["type"]), c["nullable"], c["default"])
+                    for c in inspector.get_columns(table, schema=schema)]
+        assert columns(actual_schema) == columns(expected_schema), table
+        assert inspector.get_check_constraints(table, schema=actual_schema) == inspector.get_check_constraints(
+            table, schema=expected_schema), table
+        assert inspector.get_unique_constraints(table, schema=actual_schema) == inspector.get_unique_constraints(
+            table, schema=expected_schema), table
+    conn.execute(text(f'SET LOCAL search_path TO "{actual_schema}"'))

@@ -1,4 +1,4 @@
-# 采购业务核模块指引（占位 stub）
+# 采购业务核模块指引
 
 > **文档契约** · 类型：模块层 · 读取：进入本模块前读，全文（篇幅短）
 > 更新：本模块接口、不变量或验证方式变更时由 Codex 写入
@@ -11,15 +11,15 @@
 
 ## 修改前
 
-阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的采购业务核行、`DECISIONS.md` D01 / D07、`productinfo.md` §5 与 §8，以及 `docs/product/requirements.md` 中本模块需满足的条款（FR-02/04/05/07、BR-01～07、BR-10，反向索引见该文 §3）。**不要读 `data/supplychain/` 归档区**。代码与测试待建。
+阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的采购业务核行、`DECISIONS.md` D01 / D07、`productinfo.md` §5 与 §8，以及 `docs/product/requirements.md` 中本模块需满足的条款（FR-02/04/05/07、BR-01～07、BR-10，反向索引见该文 §3）。**不要读 `data/supplychain/` 归档区**。
 
 ## 不变量与 contract
 
-- 算术与硬规则（缺口计算、去重抵扣等）由程序实现，LLM 不裁定。
-- 候选歧义等不确定项转人工审核，不自动批准。
-- 方案版本化并绑定内容哈希；审批与特定方案版本绑定（BR）。
-- 业务阈值（如库存告警线）只来自 PostgreSQL `business_rule` 表（见 `DECISIONS.md` D07），不硬编码进代码或 prompt。
+- 未计算的 required_qty 用 None/NULL 表示；已解决行必须有正数需求量（数据契约见 `docs/spec/data-model.md` §4）。不得把 None 当作零汇总。
+- `Offer` 的金额及数量必须是 Decimal；供应商返回结构应由 Tools 校准，不在本模块猜测缺失 MOQ/倍数。
+- `generate_plan` 消费显式快照 ID；不得通过省略有缺口的元件形成“完整”方案。`ready_for_review` 不等于批准或可执行。
+- 调整哈希内容或序列化时，必须验证存库读回可重建同一哈希，以及采购条件变化会改变哈希。
 
 ## 修改后验证
 
-`Makefile` 已建（目标见 `make help`），本模块代码与测试待建。届时运行本模块对应的 `make` 目标与单元测试，并按 `DEVELOPMENT.md` 的四层验证（`DECISIONS.md` D14）补充缺口 / 报价计算的确定性用例。
+执行 `make compile`、`make lint`、`make test`；持久化行为修改后执行 `make test-integration`。场景覆盖见 `tests/test_demand.py`、`test_candidates.py`、`test_shortage.py`、`test_offers.py`、`test_plans.py`。集成场景只使用隔离 schema 中显式模拟的数据，不得把真实规范化层批量标记为已核验。
