@@ -287,6 +287,98 @@
         ]
       },
       "notes": "哈希的覆盖范围必须明确且可测：供应商、商品、数量、金额与关键条件任一改变都要改变哈希，否则 BR-08 的审批绑定失效（EV-19）。BR-10：混合已解决/未解决用料时允许出部分分析，但整单不得标为就绪。本 Feature 只产出方案，不实现审批门与状态流转——那属下一切片。"
+    },
+    {
+      "id": "F08",
+      "behavior": "FastAPI 把 F01–F07 的确定性能力暴露为 HTTP 接口：项目与 BOM 只读查询、需求提交与展开、缺口计算、方案生成与读回。路由层只做 DTO 校验与序列化，不含任何业务规则；所有数量与金额以字符串序列化，不经过 float；响应包络与 docs/spec/interfaces.md 的 ToolResult 同构。",
+      "depends_on": [
+        "F07"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 本层不触达外部供应商或 ERP；FR-07 的外部写入属后续切片"
+      },
+      "context_refs": {
+        "decisions": [
+          "D04",
+          "D19"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块",
+          "依赖方向"
+        ],
+        "requirements_sections": [
+          "8",
+          "11"
+        ],
+        "rules": [
+          "FR-01",
+          "FR-02",
+          "FR-05",
+          "BR-03"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md",
+          "docs/spec/data-model.md"
+        ],
+        "cases": [
+          "EV-05",
+          "EV-07"
+        ]
+      },
+      "notes": "ARCHITECTURE 的 API 行规定「不拥有业务规则或 Agent 编排逻辑」——路由里出现任何算术或规则判断即违约。主要失败模式：用 float 或 JSON number 序列化 Decimal，会破坏 BR-03 的精确数值要求；必须走 procurement_core 已有的字符串序列化。本 Feature 不实现审批门，因为这些端点只写内部建议记录，不产生外部副作用（BR-05）。"
+    },
+    {
+      "id": "F09",
+      "behavior": "Vue 3 对话式界面可完成：提交生产需求、查看展开结果与未解决项、对多候选行做人工选型、触发缺口计算、查看版本化方案与其证据、查看工具调用轨迹。未核验身份与模拟数据在界面上有明确标记。",
+      "depends_on": [
+        "F08"
+      ],
+      "verification": {
+        "contract": "npm --prefix frontend run build",
+        "offline": "npm --prefix frontend run test",
+        "integration": "make services-up && make run 后对真实 API 的界面冒烟",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 前端不直接触达外部系统"
+      },
+      "context_refs": {
+        "decisions": [
+          "D19"
+        ],
+        "requirements_sections": [
+          "7",
+          "11"
+        ],
+        "rules": [
+          "FR-01",
+          "FR-04",
+          "FR-05"
+        ],
+        "specs": [
+          "docs/spec/state-machine.md"
+        ],
+        "cases": [
+          "EV-03",
+          "EV-04",
+          "EV-07"
+        ]
+      },
+      "notes": "按 D19：只借鉴 procureflow-agent 的交互设计思想，不复制其任何源代码，不逐行改写。productinfo §7 的七段式回答结构是报告渲染的依据；§8 要求查不到不等于停产或缺货，界面不得把未知渲染成零。unresolved_reason 的五个取值（None / quantity_basis_unverified / missing_candidate / candidate_selection_required / candidate_identity_unverified）决定每行渲染哪种交互。"
     }
   ]
 }

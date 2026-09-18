@@ -33,7 +33,8 @@ cron Scheduler（自主监控入口，与上方交互式入口共用同一条权
 
 | 模块 | 状态与计划代码落点 | 职责与数据所有权 | 关键语义变化 | 必须维护的 invariants | 主要依赖 |
 |---|---|---|---|---|---|
-| API | 尚未成立：计划 `src/api/` | 拥有 HTTP 请求 DTO、路由分发、鉴权中间件；不拥有业务规则或 Agent 编排逻辑 | HTTP 输入 → 已校验请求 → Supervisor 调用 | 鉴权失败必须拒绝而非降级放行；业务推理不进入路由层 | Supervisor |
+| UI | 尚未成立：计划 `frontend/` | 拥有视图组织、交互状态与呈现规则；不拥有任何业务判断，不自行计算数量或金额 | API 响应 → 视图与交互 | 未知不得渲染为零；`status=partial` 时整单不得显示为就绪；不得存在跳过审批的入口。呈现规则见 `docs/spec/ui-contract.md` | API |
+| API | 已建：`src/api/`（验证进度见 `PROGRESS.md`） | 拥有 HTTP 请求 DTO、响应包络、路由分发、鉴权中间件与异常到状态码的映射；不拥有业务规则或 Agent 编排逻辑 | HTTP 输入 → 已校验请求 → 采购业务核 / Supervisor 调用 | 鉴权失败必须拒绝而非降级放行；业务推理不进入路由层；一次请求一个事务，失败不得留下半写状态；精确数值以字符串进出，不经 float。端点契约见 `docs/spec/http-api.md` | 采购业务核、Supervisor、Persistence |
 | Supervisor | 尚未成立：计划 `src/supervisor/` | 拥有意图路由、复杂度判断（简单/分析）、结构化对话 state、worker 调度 | 用户输入 / TriggerEvent → 路由决策 → Worker 调用序列 | 升级到分析路径必须命中显式规则，不由 LLM 每次自行判断；state 落库为结构化对象，不常驻原始对话历史 | API、各 Worker、Persistence |
 | Query Agent | 尚未成立：计划 `src/workers/query/` | 拥有 NL2SQL 生成与只读执行、MCP 外部查询调用 | 自然语言 → 结构化查询 → 查询结果 | 仅生成只读 SELECT；schema 暴露范围受限（具体准则待定）；不执行写操作 | Tools（Skill/MCP）、Persistence（只读副本） |
 | Detail Agent | 尚未成立：计划 `src/workers/detail/` | 拥有多维度信息收集（供货余量、价格、项目资料、规格书等）的 fan-out 编排与中间产物 | ResearchTask → 并行工具调用结果 | 只做采集编排，不做语义判断；采集失败必须显式标记，不得拼凑摘要 | Tools（Skill/MCP）、采购业务核 |
@@ -52,7 +53,9 @@ cron Scheduler（自主监控入口，与上方交互式入口共用同一条权
 ## 依赖方向
 
 ```text
-API → Supervisor
+UI → API（仅经 HTTP 契约，不直连数据库或业务核）
+API → 采购业务核（确定性能力）
+API → Supervisor（对话与编排）
 Supervisor → Query / Detail / Research / Summary / Action
 Supervisor → Persistence（对话 state）
 Detail / Research / Action → 采购业务核
@@ -97,7 +100,9 @@ Persistence 模块未来把规范化层灌入 PostgreSQL 时，方向只能是 `
 
 | 修改目标 | 首先阅读 |
 |---|---|
-| API 鉴权与路由 | 本文 API 行；`src/api/AGENTS.md` 中的接口约束 |
+| API 鉴权与路由 | 本文 API 行；`docs/spec/http-api.md`；`src/api/AGENTS.md` 中的接口约束 |
+| 新增或修改 HTTP 端点 | `docs/spec/http-api.md` 的端点清单；预留位见其 §6.2，不得绕过其三条硬约束 |
+| 界面视图、交互与呈现 | `docs/spec/ui-contract.md`；产品层的六处界面要求见 `productinfo.md` §11 |
 | Supervisor 路由与复杂度判断规则 | 本文 Supervisor 行；`DECISIONS.md` D02、D03 |
 | Worker 行为、system prompt、模型选择 | 本文各 Worker 行；`config/agents/`（待建）；`DECISIONS.md` D06、D07 |
 | 缺口计算、候选选型、报价等业务规则 | 本文“采购业务核”行；`productinfo.md` §5、§8 |

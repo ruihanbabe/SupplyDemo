@@ -106,3 +106,9 @@
 - 决策：日常开发与 `DECISIONS.md` D14 的 ①②③ 层验证（静态契约、离线测试、集成故障注入）全部在本地 MacBook Pro 上进行。本地已装 Python 3.11.15、Docker CE 29.7.1（colima + Virtualization.framework）、PostgreSQL 16.6 与 Redis 7.4.2 容器，版本与此前借用的服务器一致。服务拓扑以 `compose.yaml` 为权威，命令入口以 `Makefile` 为权威。借用服务器不再作为默认开发环境，仅在后续确有需要时（例如 ④ 层需要一台常开宿主跑 ERPNext 实例，或将来重新引入需要 GPU 的能力）再启用。
 - 原因：服务器唯一不可替代的资源是 RTX 3090，而 D12 已把 RAG／向量检索移出 MVP，LLM 调用全部走外部 API，本地不跑任何模型推理——GPU 对当前范围没有用处。本地 32 GB 内存运行「FastAPI + PostgreSQL + Redis」的纯 IO 负载绰绰有余，且省掉了远程登录、沙箱设备隔离与单次授权申请的往返成本。
 - 约束：本地服务端口只绑 `127.0.0.1`，不得改成 `0.0.0.0` 或无认证 TCP 监听。本地与服务器的组件版本必须保持一致，版本台账见 `requirement.txt`；任何一侧升级都要同步另一侧，否则「本地通过」不能作为服务器行为的证据。④ 层的授权端到端验证仍需真实供应只读接口与自己控制的业务系统，本地跑不了的部分如实记为 blocked，不得以 ①②③ 层通过代替。笔记本休眠会中断长时运行的定时扫描，FR-08 与恢复类用例（EV-23、EV-24）若受此影响，须在证据中注明运行环境限制。
+
+## 2026-09-18：借鉴 procureflow-agent 的交互设计，不复用其代码 <!-- id: D19 -->
+
+- 决策：参考外部项目 `Running-hue/procureflow-agent` 的对话式 UI 交互设计（SSE 流式输出、中断与恢复式人工介入、工具调用面板、会话历史侧栏）与 FastAPI 分层组织方式，**全部自行实现，不复制其任何源代码**。其 Agent 层（LangGraph／DeepAgents／MongoDB checkpoints／OpenSandbox）与 8 张摩托车配件 ERP 业务表一律不引入。
+- 原因：三条独立成立。(1) **该仓库无任何许可声明**——无 `LICENSE` 文件，`pyproject.toml` 与 `frontend/package.json` 均无 license 字段，README 与 SECURITY.md 无版权或许可字样。无许可默认保留所有权利，公开在 GitHub 上不等于授权衍生使用；本项目是要公开展示的求职作品，不能承担这个风险。(2) 其 Agent 层与四处已锁约束冲突：D01／D02 的自研 Supervisor-Workers、`productinfo.md` §14 存储分工（只有 PostgreSQL 与 Redis）、`ARCHITECTURE.md` 的 Infrastructure 边界（无沙箱执行）、依赖台账「不默认绑定 LangChain」。引入即推翻既有架构，且会把「自研 Harness 工程能力」这个核心卖点降级为「会用现成框架」。(3) 其 8 张业务表是摩托车配件采购领域模型，与本项目的 BOM／候选／证据链近乎零重叠——它没有 `bom_line`、没有候选、没有 `shortage_snapshot`、没有 `evidence_ref`、没有 `content_hash`、没有 append-only 审计；本项目没有客户、没有物流、没有用户表。这不是 MySQL 转 PostgreSQL 的工程问题，是两个不同的业务。
+- 约束：借鉴范围限于**思想与结构**，不得出现逐行改写式的等价代码；不复制其常量表、字段命名映射或组件内部实现。HTTP 响应包络采用本项目自有设计，与 `docs/spec/interfaces.md` 的 `ToolResult` 字段保持同构（`schema_version` / `status` / `data` / `warnings` / `error` / `trace_id`），不沿用外部项目为兼容原 Java 契约而设的 `{code, message, data, timestamp}` camelCase 协议。前端技术栈同为 Vue 3 是独立选择，不构成复用。

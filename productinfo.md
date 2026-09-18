@@ -122,7 +122,8 @@ EV 用例清单、判定原则、每例的验证层级归属、FR→EV 追踪矩
 
 - UI：对话式交互（桌面/Web 形态待定）。界面至少包含需求提交、风险清单、任务详情、来源查看、审批对比与草稿结果六处。展示业务状态和需要用户做的决定；**内部框架名称不占据主要用户流程**——运营人员看到的是缺料与审批，不是 Supervisor / Worker 这类实现词汇。
 - 元件技术信息在运行时由供应查询工具返回，不预先建库、不做正文检索；身份未核验的须在界面标明状态（见 `DECISIONS.md` D12）。
-- API：FastAPI 承担鉴权与路由分发，不引入独立 API Gateway（见 `DECISIONS.md` D04）。
+- 上述六处界面的呈现规则、状态到交互的映射与不确定性标注要求，见 `docs/spec/ui-contract.md`。
+- API：FastAPI 承担鉴权与路由分发，不引入独立 API Gateway（见 `DECISIONS.md` D04）。端点清单、响应包络与留给业务逻辑的接口位见 `docs/spec/http-api.md`。
 - Trace 查看能力：对应三层可观测性设计中的 Agent Trace。
 - 多 Model Provider：按 Worker 职责分层选模型（Detail 用便宜快速模型做工具编排，Research 用旗舰模型做语义判断），具体型号待架构阶段实测确定（见 §12）。
 

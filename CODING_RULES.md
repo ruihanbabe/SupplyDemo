@@ -29,7 +29,7 @@
 | 队列 | `docs/features.json` | 取任务时只读自己那条 + 被依赖条目 | Feature 状态流转 | Harness |
 | 契约 | `ARCHITECTURE.md`、`DECISIONS.md`、`productinfo.md` | **Feature 开始时定点读，禁止通读** | 架构/决策/需求变更 | Claude |
 | 契约 | `docs/product/requirements.md`、`docs/product/acceptance-cases.md`、`docs/product/GLOSSARY.md` | 按 FR/BR/EV 编号或术语定点读 | 需求条款、验收用例或术语变更 | Claude |
-| 契约 | `docs/spec/interfaces.md`、`docs/spec/state-machine.md`、`docs/spec/data-model.md` | 实现对应接口/状态/表时定点读 | 接口签名、状态迁移或表结构变更 | Claude |
+| 契约 | `docs/spec/interfaces.md`、`docs/spec/state-machine.md`、`docs/spec/data-model.md`、`docs/spec/http-api.md`、`docs/spec/ui-contract.md` | 实现对应接口/状态/表/端点/视图时定点读 | 接口签名、状态迁移、表结构、端点或呈现规则变更 | Claude |
 | 规则 | `requirement.txt`（依赖与环境台账） | 准备环境或增删依赖时按节读 | **安装/升级/删除依赖后即时** | Codex |
 | 参考 | `docs/research/procurement-platforms.md` | 选型或评估配额时定点读 | 重新核对平台能力或条款 | Claude |
 | 规则 | `DEVELOPMENT.md`、本文件 | 首次 + 按节 | 工具链或治理规则变更 | Claude |
@@ -52,6 +52,8 @@
 | 工具 schema / ToolResult 信封 / 错误码 | `docs/spec/interfaces.md` | 引工具名 |
 | 任务状态取值与合法迁移 | `docs/spec/state-machine.md` | 引状态名 |
 | PostgreSQL 表结构与约束 | `docs/spec/data-model.md` | 引表名或约束名 |
+| HTTP 响应包络、端点清单、错误映射 | `docs/spec/http-api.md` | 引路径或 `error.code` |
+| 视图清单、交互映射、不确定性标注规则 | `docs/spec/ui-contract.md` | 引视图名或 warning 取值 |
 | 依赖清单与版本台账 | `requirement.txt`（机器真相为 `requirements.lock.txt`） | 一句指针 |
 | 服务拓扑 | `compose.yaml` | 一句指针 |
 | 采购平台能力与配额、ERP 候选 | `docs/research/procurement-platforms.md` | 引平台名 |

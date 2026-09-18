@@ -7,6 +7,7 @@ VENV        := .venv
 VPY         := $(VENV)/bin/python
 VPIP        := $(VENV)/bin/pip
 COMPOSE     := docker compose
+API_PORT    ?= 8000
 SRC         := src
 
 .DEFAULT_GOAL := help
@@ -72,11 +73,15 @@ migrate: ## 把 docs/spec/data-model.md 的目标 schema 迁到本地数据库
 
 # ---------- 应用 ----------
 
-run: ## 启动应用（尚无入口）
-	@echo ">> 尚无应用入口：src/ 下无 API 实现，见 PROGRESS.md「未实现」"; exit 1
+run: ## 启动 API（127.0.0.1:8000，仅本地绑定）
+	@$(VENV)/bin/uvicorn api.main:app --app-dir src --host 127.0.0.1 --port $(API_PORT)
 
-health: ## 应用就绪探针（尚无入口）
-	@echo ">> 尚无 health 端点，随 API 模块一并落地"; exit 1
+health: ## 应用就绪探针：要求 status=ok 才算通过
+	@curl -fsS --max-time 5 http://127.0.0.1:$(API_PORT)/health \
+	  | $(VPY) -c "import json,sys; d=json.load(sys.stdin); \
+	    sys.exit(0) if d.get('status')=='ok' else sys.exit('health 返回非 ok: '+json.dumps(d))" \
+	  && echo ">> health 通过" \
+	  || { echo ">> health 失败：服务未启动或未就绪（先在另一个终端跑 make run）"; exit 1; }
 
 # ---------- 服务：对应 D14 的 ③ 层前置 ----------
 

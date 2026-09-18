@@ -83,7 +83,8 @@ FR-04 的范围已由 D12 收窄为「核验候选型号身份与差异」，不
 
 | 模块 | 需满足的 FR / BR |
 |---|---|
-| API | FR-01 |
+| UI | FR-01、04、05、06 |
+| API | FR-01、02、05、BR-03、BR-10 |
 | Supervisor | FR-01 |
 | Detail Agent | FR-03 |
 | Research Agent | FR-04 |
@@ -95,4 +96,4 @@ FR-04 的范围已由 D12 收窄为「核验候选型号身份与差异」，不
 | Tools（Skill/MCP） | FR-02、03、07、BR-06、BR-11 |
 | Persistence | FR-02、09、BR-05 |
 
-状态取值（`rejected` / `approval_expired` / `reconciling` 等）与合法迁移见 `docs/spec/state-machine.md`；供应查询与草稿创建的工具契约见 `docs/spec/interfaces.md`。
+状态取值（`rejected` / `approval_expired` / `reconciling` 等）与合法迁移见 `docs/spec/state-machine.md`；供应查询与草稿创建的工具契约见 `docs/spec/interfaces.md`；HTTP 端点契约见 `docs/spec/http-api.md`；界面呈现规则见 `docs/spec/ui-contract.md`。

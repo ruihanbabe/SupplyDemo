@@ -49,6 +49,7 @@
 | `docs/product/acceptance-cases.md`（EV 验收用例） | **已建**（T09 部分完成） |
 | `docs/product/GLOSSARY.md`（领域术语表） | **已建**（T06 完成） |
 | `docs/spec/interfaces.md` / `state-machine.md` / `data-model.md` | **已建**（T13 完成）；DDL 已在真实 PostgreSQL 16.6 上验证可建，BR 约束实测生效 |
+| `docs/spec/http-api.md` / `ui-contract.md` | **已建**（T19）；HTTP 端点契约含预留给业务逻辑的九个接口位，界面契约含 `unresolved_reason` 与 `warnings` 到交互的映射 |
 | `docs/research/procurement-platforms.md` | **已建**（T13 完成）；快照日期 2026-09-09，接入前须重新核对 |
 | `data/supplychain/` 三份归档初稿 | **已清空为指针**（T14 完成）；各含文档契约块与逐节去向对照表，原文见 `git show 5eb4dbc:<path>` |
 | `data/supplychain/normalized/projects.yaml` | 已建；known_gaps 已订正，声明的多候选行数（20）与落库实际一致 |
@@ -86,6 +87,9 @@
 | 2026-09-14 | F05：`make compile`、`make lint`、`make test` | 通过 | 27 离线通过；20 多候选、3 无候选、原始后缀及厂商名保留；③④按 Feature 契约不适用 | — | — |
 
 | 2026-09-14 | F06：`make compile`、`make lint`、`make test` | 通过 | 43 离线通过；MOQ/倍数/阶梯、缺字段、币种包装分别保留；③④按 Feature 契约不适用 | B 级无时区负例触发 lint | 为该拒绝用例单独注明 noqa 理由，生产校验不变 |
+| 2026-09-18 | `make compile` + `make lint`（含新增 `src/api/`） | 通过 | 仅证明语法与 ruff 规则；不证明端点行为 | — | — |
+| 2026-09-18 | `pytest -m "not integration" tests/test_api.py` | 通过（14 例） | 用桩仓储，仅证明包络形状、精确数值序列化与错误映射；未连数据库 | — | — |
+| 2026-09-18 | `pytest -m integration tests/test_api_integration.py` | **失败（4/7）** | 连真实 PostgreSQL；3 例通过，4 例返回 500 | 未排查——用户指示暂停 F08 推进，转为先补需求文档 | 待恢复 F08 时从兜底日志取堆栈；`src/api/main.py` 已补 `logger.exception` |
 
 新增记录必须同时填写「失败原因」与「修复动作」两列；`阻塞`/`失败` 结果不得留空这两列。跨 Feature 的自动修复达到单级 3 次上限后，在此表标注升级报告位置，不得继续自行重试（结构化上报格式待设计，见 `AGENTS.md`）。
 

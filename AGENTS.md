@@ -66,6 +66,8 @@ Codex 是代码实现的主力；Claude（在文档协作对话中）负责本�
 - 工具 schema、`ToolResult` 统一信封、错误模型：`docs/spec/interfaces.md`
 - 任务状态取值、合法迁移矩阵、状态机不变量：`docs/spec/state-machine.md`
 - PostgreSQL 表结构与约束、审计表只插入的强制方式：`docs/spec/data-model.md`
+- HTTP 响应包络、端点清单、错误映射、留给业务逻辑的接口位：`docs/spec/http-api.md`
+- 界面视图、交互映射、不确定性标注规则：`docs/spec/ui-contract.md`
 
 **架构与治理**
 

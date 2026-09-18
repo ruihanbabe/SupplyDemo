@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(sed -n '/^### 完成定义与终止校验/,/^### Feature 选择顺序/p' DEVELOPMENT.md)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

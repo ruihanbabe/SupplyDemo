@@ -65,3 +65,11 @@ def confirmation_requests(bom_lines, expanded_lines):
     return [{"line_id": line["line_id"], "reason": line["unresolved_reason"],
              "candidates": [dict(c) for c in by_id[line["line_id"]]["candidates"]]}
             for line in expanded_lines if line["unresolved_reason"] is not None]
+
+'''
+核心设计思想：
+事务原子性：主表写入、BOM 展开、明细保存要么全成功，要么全回滚。
+数量校验前置：任何数学运算前后都要调 quantity() 校验，绝不把越界数塞进数据库。
+状态机驱动：通过 unresolved_reason 的不同值（None / quantity_basis_unverified / missing_candidate / candidate_selection_required / candidate_identity_unverified）精准标记每一行的卡点，前端据此渲染不同的交互界面。
+数据隔离：confirmation_requests 中用 dict(c) 浅拷贝候选数据，避免前端拿到的是内存中的原始对象引用。
+'''

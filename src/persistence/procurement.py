@@ -63,6 +63,30 @@ class ProcurementRepository:
         return [dict(row) for row in self.connection.execute(select(table).where(
             table.c.demand_id == demand_id).order_by(table.c.line_id)).mappings()]
 
+    def list_projects(self):
+        table = self.table("project")
+        return [dict(row) for row in self.connection.execute(
+            select(table).order_by(table.c.project_id)).mappings()]
+
+    def read_demand(self, demand_id):
+        """Lock-free read for query endpoints; get_demand locks for write paths."""
+        table = self.table("demand")
+        return dict(self.connection.execute(select(table).where(
+            table.c.demand_id == demand_id)).mappings().one())
+
+    def create_run(self, values):
+        table = self.table("run")
+        self.connection.execute(pg_insert(table).values(**values).on_conflict_do_nothing())
+        stored = self.get_run(values["run_id"])
+        if any(stored[key] != value for key, value in values.items()):
+            raise ValueError("Run ID already exists with different content")
+        return stored
+
+    def demand_plans(self, demand_id):
+        table = self.table("plan")
+        return [dict(row) for row in self.connection.execute(select(table).where(
+            table.c.demand_id == demand_id).order_by(table.c.version)).mappings()]
+
     def get_run(self, run_id):
         table = self.table("run")
         return dict(self.connection.execute(select(table).where(
