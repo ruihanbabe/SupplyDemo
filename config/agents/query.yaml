@@ -1,0 +1,4 @@
+worker: query
+model: glm-4-flash
+max_tokens: 2048
+# NL2SQL 只生成只读 SELECT，schema 白名单与 AST 校验在 Tools 层执行（D02）。

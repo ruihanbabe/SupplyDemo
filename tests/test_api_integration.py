@@ -37,10 +37,11 @@ def committed_api(schema):
     engine = create_engine(database_url(), hide_parameters=True)
 
     def dependency():
-        with engine.connect() as connection:
-            connection.execute(text(f'SET search_path TO "{schema}"'))
-            with connection.begin():
-                yield ProcurementRepository(connection)
+        # begin() first: an execute() would autobegin and make begin() raise. SET LOCAL
+        # reverts when the transaction ends, so the pooled connection stays clean.
+        with engine.connect() as connection, connection.begin():
+            connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+            yield ProcurementRepository(connection)
 
     app.dependency_overrides[get_repository] = dependency
     try:
@@ -52,15 +53,16 @@ def committed_api(schema):
 
 def test_full_flow_over_http(api):
     """EV-01 end to end through the API: 100 required, 60 on hand, 10 held, 20 inbound."""
-    client, (_, demand_id, run_id) = api
+    client, (_, _demand_id, run_id) = api
 
     shortages = client.post(f"/api/runs/{run_id}/shortages")
     assert shortages.status_code == 200, shortages.text
     body = shortages.json()
     snapshot = body["data"]["snapshots"][0]
-    assert snapshot["shortage_qty"] == "30"
-    assert snapshot["required_qty"] == "100"
-    assert snapshot["allocatable_qty"] == "70"
+    # NUMERIC(18,6) round-trips at its declared scale; these are exact, not padded.
+    assert snapshot["shortage_qty"] == "30.000000"
+    assert snapshot["required_qty"] == "100.000000"
+    assert snapshot["allocatable_qty"] == "70.000000"
 
     offer = {"component_id": "part", "distributor": "digikey", "distributor_sku": "SKU-1",
              "region": "US", "packaging": "reel", "evidence_ref": "ev-1",
@@ -75,6 +77,9 @@ def test_full_flow_over_http(api):
     line = plan["lines"][0]
     # Shortage 30 already clears MOQ 10 and is a multiple of 5, so 30 stands; the tier is
     # the one 30 falls into (min_qty 25), not the one the raw shortage would suggest.
+    # Plan lines are the canonical form that was hashed, where trailing zeros are
+    # stripped so the hash does not change with a column's scale. Snapshot readback
+    # above keeps the storage scale. Both are exact; the difference is deliberate.
     assert line["suggested_qty"] == "30"
     assert line["price_break_qty"] == "25"
     assert line["unit_price"] == "1.5"
@@ -85,15 +90,14 @@ def test_full_flow_over_http(api):
     assert stored["content_hash"] == plan["content_hash"]
     assert stored["version"] == 1
     assert stored["lines"][0]["suggested_qty"] == "30"
+    assert stored["lines"][0]["unit_price"] == "1.5"
 
 
 def test_quantities_survive_storage_as_exact_strings(api):
     client, (_, _, run_id) = api
     response = client.post(f"/api/runs/{run_id}/shortages")
-    text_body = response.text
-    # NUMERIC(18,6) round-trips through JSONB evidence; a float would show up as 30.0.
-    assert '"shortage_qty":"30"' in text_body.replace(" ", "")
-    assert "30.0" not in text_body.replace('"30.000001"', "")
+    # Quoted, so the value never passed through a JSON number on the way out.
+    assert '"shortage_qty":"30.000000"' in response.text.replace(" ", "")
 
     def scalars(value):
         if isinstance(value, dict):
@@ -161,7 +165,7 @@ def test_failed_request_writes_nothing(committed_procurement_case):
 
 def test_successful_request_commits(committed_procurement_case):
     """The mirror of the rollback test: a clean request must actually persist."""
-    engine, schema, run_id, snapshot_ids = committed_procurement_case
+    engine, schema, run_id, _snapshots = committed_procurement_case
     with committed_api(schema) as client:
         response = client.post("/api/runs", json={"demand_id": str(
             _demand_of(engine, schema, run_id))})

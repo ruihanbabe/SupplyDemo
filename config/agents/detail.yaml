@@ -1,0 +1,4 @@
+worker: detail
+model: glm-4-flash
+max_tokens: 4096
+# IO 密集而非推理密集：并发扇出多次调用，单价是主要成本项（DECISIONS.md D06）。

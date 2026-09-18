@@ -1,0 +1,5 @@
+worker: research
+model: glm-4-plus
+max_tokens: 8192
+# 唯一愿为质量付费的档位：语义推理与证据整合，延迟容忍度高（D06）。
+# 数值比较仍由采购业务核计算，本 worker 只判断哪些差异重要。
