@@ -1,4 +1,4 @@
 worker: action
-model: glm-4-air
+model: glm-4.7-flash
 max_tokens: 2048
 # 所有写操作必须先过 PermissionDecision；本 worker 只生成待审批的请求。

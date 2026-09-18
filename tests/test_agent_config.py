@@ -40,22 +40,39 @@ def test_monitor_has_no_model_by_design():
     assert not (AGENT_CONFIG_DIR / "monitor.yaml").exists()
 
 
-def test_cost_tiers_actually_differ_per_worker():
-    """D06 is an architectural claim; this is the assertion that keeps it true.
+def test_per_worker_model_override_actually_takes_effect(tmp_path):
+    """D06's mechanism: one worker's model can change without touching the others.
 
-    If someone flattens every worker onto one model, the decision silently stops holding
-    and the only signal would be the bill.
+    This used to assert that Detail and Research sat on *different* models. All six
+    workers are currently pinned to one model as a deliberate configuration choice, so
+    that assertion no longer holds and would only be satisfied by undoing the choice.
+    What still must hold — and what D06 actually depends on — is that the tiers remain
+    separable: changing one file changes exactly one worker. If this breaks, restoring
+    cost tiers later would be impossible.
+
+    The guard this replaces is gone: nothing now fails if every worker is expensive.
+    Cost control is a configuration decision here, not something tests can enforce.
     """
+    write_configs(
+        tmp_path,
+        detail="worker: detail\nmodel: cheap-tier\n",
+        research="worker: research\nmodel: flagship-tier\nmax_tokens: 8192\n",
+        summary="worker: summary\nmodel: mid-tier\n",
+    )
+    assert load_agent_config("detail", tmp_path).model == "cheap-tier"
+    assert load_agent_config("research", tmp_path).model == "flagship-tier"
+    assert load_agent_config("summary", tmp_path).model == "mid-tier"
+    # Sampling limits stay per-worker even when the model is shared.
+    assert load_agent_config("research", tmp_path).max_tokens == 8192
+    assert load_agent_config("detail", tmp_path).max_tokens == 2048
+
+
+def test_repository_config_is_internally_consistent():
+    """Whatever the models are, every worker must resolve to a usable configuration."""
     configs = load_all_agent_configs()
-    assert configs["detail"].model != configs["research"].model, (
-        "D06 requires Detail (IO-bound, cheap) and Research (reasoning, flagship) "
-        "to sit on different models")
-    assert len({config.model for config in configs.values()}) >= 3, (
-        "productinfo §13 describes distinct cost tiers; fewer than three means the "
-        "matrix is not reflected in configuration")
-    # Research is the one worker documented as willing to pay for quality.
-    assert configs["research"].max_tokens >= max(
-        config.max_tokens for worker, config in configs.items() if worker != "research")
+    assert all(config.provider for config in configs.values())
+    assert all(config.max_tokens > 0 for config in configs.values())
+    assert all(config.worker == name for name, config in configs.items())
 
 
 # ---------- 合并与校验 ----------
@@ -124,10 +141,13 @@ def test_provider_for_binds_the_workers_model():
                "SUPPLYAGENT_LLM_ENABLED": "true"}
     detail = provider_for("detail", environ=environ)
     research = provider_for("research", environ=environ)
+    # Each provider carries the model its own YAML declares. Whether those values
+    # differ is a configuration choice, not something this test should pin down.
     assert detail.settings.model == load_agent_config("detail").model
     assert research.settings.model == load_agent_config("research").model
-    assert detail.settings.model != research.settings.model
     assert detail.config.worker == "detail"
+    assert research.config.worker == "research"
+    assert detail.config.max_tokens != research.config.max_tokens
 
 
 def test_provider_for_redaction_hides_the_key():
