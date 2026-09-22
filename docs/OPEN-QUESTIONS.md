@@ -9,13 +9,21 @@
 
 在某项冻结前，任何文档不得把其中一个选项写成既定事实；实现者不得自行补成产品决策。
 
-## Q-01 · 首个真实供应数据源与凭据
+## Q-01 · 首个真实供应数据源与凭据 —— 已冻结（2026-09-22）
 
-**待定**：`sourcing` Worker 接入的第一个真实分销/报价源是哪一个，凭据如何取得。原 DigiKey 凭据已失效。
+**结论**：三家同时接入，均为只读产品查询：
 
-**当前对策**：用 `sample` / `replay` 标注的数据打通全链路，不声称真实库存、报价或交期。
+| 分销商 | 认证 | 端点 |
+|---|---|---|
+| Mouser | API key（query string） | `api.mouser.com/api/v1/search/partnumber` |
+| element14 / Farnell | API key（query string） | `api.element14.com/catalog/products` |
+| DigiKey | OAuth 2-legged，token 只存进程内存 | `api.digikey.com/products/v4` |
 
-**冻结条件**：凭据到位 + 字段映射校准样本 + 一次授权的只读调用证据。
+凭据走 `SUPPLYAGENT_SUPPLIER_*`，只透传给 MCP 子进程（白名单按名字列出）。
+
+**冻结条件的三项证据**：凭据到位 ✓；字段映射按实测响应校准而非按文档猜测 ✓（三家的库存、交期、价格形状各不相同，见 `mcp_servers/supplier/adapters/`）；授权的只读调用 ✓（`make probe-suppliers`，IRFZ44NPBF 与 TC4420EPA 各跑通一次）。
+
+**仍然成立的约束**：只做采购信息读取，不调用任何下单接口。DigiKey 的 sandbox 主机前置了 bot 挑战、对普通客户端一律 403，因此走生产主机；响应头带 `x-ratelimit-remaining`，进程内另有按家的令牌桶。
 
 ## Q-03 · 外部采购草稿的目标系统与其幂等能力
 
@@ -69,6 +77,20 @@ D21 已定 Monitor 属第二期。**待定**：巡检周期、去重窗口时长
 **当前对策**：只做对话入口；工作台不开工。
 
 **冻结条件**：用户确认工作台的首屏形态。
+
+## Q-09 · 跨币种价格如何呈现与比较
+
+**由 Q-01 接通后暴露**：三家返回三种币种——Mouser 随账户地区给 RMB，element14 随 store 给 GBP，DigiKey 按 locale 给 USD。BR-03 要求有金额必须有币种，且无币种的裸数字不得参与比较。
+
+**待定**：
+
+1. 是否统一到单一币种呈现（需要经核验的汇率来源，本系统目前没有）；
+2. 还是保持各源原币并显式标注不可比；
+3. element14 的 store 是否改为 `www.newark.com`（USD）以减少币种数——但 Mouser 的币种跟随账户地区，改不掉。
+
+**当前对策**：各源原币并列，`prices_comparable=false` 时界面显式告知不可直接比价，不做任何未经核验的换算。
+
+**冻结条件**：用户确定呈现方式；若选统一币种，须同时确定汇率来源、取得时刻与它自身的证据留痕。
 
 ## Q-08 · 认证、角色与证据原文访问权限
 

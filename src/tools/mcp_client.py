@@ -37,6 +37,22 @@ class MCPError(RuntimeError):
         self.code = code
 
 
+def _configuration() -> dict[str, str]:
+    """Same precedence as everywhere else in this project: .env first, real environment
+    on top.
+
+    Reading .env here is not optional. Credentials live in that file, not in the shell
+    the server was started from, and a client that only consulted os.environ would
+    silently fall back to recorded data on a machine that is fully configured — which is
+    exactly the failure that looks like everything working.
+    """
+    from dotenv import dotenv_values
+
+    root = Path(__file__).resolve().parents[2]
+    loaded = {key: value for key, value in dotenv_values(root / ".env").items() if value}
+    return {**loaded, **os.environ}
+
+
 def child_environment(passthrough: tuple[str, ...] = (),
                       source: dict[str, str] | None = None) -> dict[str, str]:
     """Build the child's environment from an allow-list.
@@ -45,7 +61,7 @@ def child_environment(passthrough: tuple[str, ...] = (),
     name shows up in config review. Inheriting the parent's environment would put every
     secret in the process by default and make its absence the thing nobody notices.
     """
-    origin = os.environ if source is None else source
+    origin = _configuration() if source is None else source
     allowed = {*BASE_ENVIRONMENT, *passthrough}
     return {key: value for key, value in origin.items() if key in allowed}
 
@@ -191,12 +207,25 @@ class MCPClient:
         return line
 
 
+#: Named one by one rather than matched by prefix. A prefix rule quietly widens the
+#: moment someone adds a variable that happens to start the same way, and the whole
+#: point of the allow-list is that widening it is a visible edit.
+SUPPLIER_CREDENTIALS = (
+    "SUPPLYAGENT_SUPPLIER_MOUSER_API_KEY",
+    "SUPPLYAGENT_SUPPLIER_ELEMENT14_API_KEY",
+    "SUPPLYAGENT_SUPPLIER_ELEMENT14_STORE",
+    "SUPPLYAGENT_SUPPLIER_DIGIKEY_CLIENT_ID",
+    "SUPPLYAGENT_SUPPLIER_DIGIKEY_CLIENT_SECRET",
+    "SUPPLYAGENT_SUPPLIER_DIGIKEY_BASE_URL",
+    "SUPPLYAGENT_SUPPLIER_REGION",
+    "SUPPLYAGENT_SUPPLIER_CURRENCY",
+)
+
 SUPPLIER_SERVER = MCPServerSpec(
     name="supplier",
     command=[sys.executable, "-u",
              str(Path(__file__).resolve().parents[2] / "mcp_servers" / "supplier" / "server.py")],
-    # Nothing to pass through yet. When a real distributor key exists it is named here
-    # and nowhere else, which is what keeps "who can see this credential" reviewable.
-    passthrough=(),
-    call_timeout=5.0,
+    passthrough=SUPPLIER_CREDENTIALS,
+    # Three providers, each a network round trip plus an OAuth exchange for one of them.
+    call_timeout=25.0,
 )

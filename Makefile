@@ -108,6 +108,10 @@ model-smoke: ## 调用真实模型，执行前必须获得用户明确授权并�
 import-data: ## F02：事务性导入 normalized 静态数据，重跑幂等
 	@PYTHONPATH=src $(VPY) -m persistence.import_normalized
 
+.PHONY: probe-suppliers
+probe-suppliers: ## ④ 授权端到端：对真实分销商 API 跑一次只读查询（会消耗配额）
+	@PYTHONPATH=src $(VPY) -m tools.probe_suppliers --mpn $(or $(MPN),IRFZ44NPBF)
+
 .PHONY: explain
 explain: ## 解释某个 worker 实际能调用哪些工具，以及每条允许/拒绝来自哪一层
 	@PYTHONPATH=src $(VPY) -m permissions.explain --worker $(WORKER) $(ARGS)

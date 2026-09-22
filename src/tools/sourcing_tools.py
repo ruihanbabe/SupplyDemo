@@ -24,7 +24,7 @@ from tools.registry import RegisteredTool, RetryPolicy, ToolOutcome
 
 logger = logging.getLogger("supplyagent.sourcing")
 
-PROVIDERS = ("digikey", "mouser", "farnell")
+PROVIDERS = ("digikey", "mouser", "element14")
 
 #: Which response fields become Evidence, and under which evidence kind. Only facts the
 #: distributor asserted — nothing derived, because derived numbers belong to the
@@ -43,24 +43,28 @@ def _digest(provider: str, method: str, arguments: dict[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:24]
 
 
-def _unit_price_at_moq(offer: dict[str, Any]) -> str | None:
-    """The price a buyer would actually pay at this distributor's minimum order.
+def _price_at_moq(breaks: list[dict[str, Any]], moq: Any) -> dict[str, Any] | None:
+    """The tier a buyer lands in at this distributor's minimum order.
 
     Picked rather than computed: it is one of the tiers the distributor published, so it
     stays an observation. Interpolating between tiers would be arithmetic, and arithmetic
-    belongs to the procurement core.
+    belongs to the procurement core where it can be checked.
     """
-    breaks = offer.get("price_breaks") or []
     if not breaks:
         return None
-    moq = offer.get("moq") or 1
-    applicable = [tier for tier in breaks if float(tier["min_qty"]) <= float(moq)]
-    chosen = max(applicable, key=lambda tier: float(tier["min_qty"])) if applicable else breaks[0]
-    return str(chosen["unit_price"])
+    floor = float(moq or 1)
+    applicable = [tier for tier in breaks if float(tier.get("min_qty") or 1) <= floor]
+    chosen = (max(applicable, key=lambda tier: float(tier["min_qty"]))
+              if applicable else breaks[0])
+    return {"unit_price": chosen.get("unit_price"), "currency": chosen.get("currency"),
+            "raw": chosen.get("raw")}
 
 
 def _query_provider(provider: str, mpn: str, spec=SUPPLIER_SERVER) -> dict[str, Any]:
-    """Search then quote, on this provider's own connection.
+    """One call per provider, on its own connection.
+
+    The server does the search and the quote together because every provider answers
+    both from one response; asking twice would spend quota to learn the same fields.
 
     Failures are classified, not swallowed: a timeout and an empty catalogue lead to
     different purchasing decisions, so they come back as different statuses (BR-05).
@@ -71,60 +75,87 @@ def _query_provider(provider: str, mpn: str, spec=SUPPLIER_SERVER) -> dict[str, 
     arguments = {"provider": provider, "mpn": mpn}
     try:
         with MCPClient(spec) as client:
-            found = client.call_tool("search_supplier_parts", arguments)
-            hits = found.get("results") or []
-            if not hits:
-                return {"provider": provider, "status": "not_found",
-                        "request_digest": _digest(provider, "search_supplier_parts", arguments),
-                        "message": "该分销商目录中没有这个型号"}
-            hit = hits[0]
-            offer_arguments = {"provider": provider,
-                               "distributor_sku": hit["distributor_sku"]}
-            offer = client.call_tool("get_supplier_offer", offer_arguments)
+            offer = client.call_tool("get_supplier_offer", arguments)
     except MCPError as exc:
         return {"provider": provider, "status": "error", "error_code": exc.code,
-                "request_digest": _digest(provider, "search_supplier_parts", arguments),
+                "provenance": "unknown",
+                "request_digest": _digest(provider, "get_supplier_offer", arguments),
                 "message": str(exc)[:160]}
-    if offer.get("response_status") == "not_found":
-        return {"provider": provider, "status": "not_found",
-                "request_digest": _digest(provider, "get_supplier_offer", offer_arguments),
-                "message": "SKU 存在于目录但取不到报价"}
+
+    digest = _digest(provider, "get_supplier_offer", arguments)
+    # Per row, not per response: with one provider answering for real and another falling
+    # back to a recording, a single label on the answer would be false for half of it.
+    provenance = offer.get("provenance", "unknown")
+    status = offer.get("response_status", "error")
+    if status == "not_found":
+        return {"provider": provider, "status": "not_found", "provenance": provenance,
+                "request_digest": digest, "message": "该分销商目录中没有这个型号"}
+    if status == "error":
+        return {"provider": provider, "status": "error", "provenance": provenance,
+                "error_code": offer.get("error_code") or "provider_error",
+                "request_digest": digest,
+                "message": offer.get("message") or "分销商返回错误"}
+
+    breaks = offer.get("price_breaks") or []
+    at_moq = _price_at_moq(breaks, offer.get("moq"))
     return {
         "provider": provider,
-        "status": "partial" if offer.get("response_status") == "partial" else "ok",
-        "request_digest": _digest(provider, "get_supplier_offer", offer_arguments),
-        "distributor_sku": hit["distributor_sku"],
-        "distributor_mpn": hit["mpn"],
+        "status": "partial" if status == "partial" else "ok",
+        "provenance": provenance,
+        "request_digest": digest,
+        "distributor_sku": offer.get("distributor_sku"),
+        "distributor_mpn": offer.get("mpn"),
         # Never silently adopted: an inexact match is a question for a person, and the
         # answer changes which part gets ordered (EV-04).
-        "match_status": hit["match_status"],
+        "match_status": offer.get("match_status"),
         "packaging": offer.get("packaging"),
         "currency": offer.get("currency"),
         "moq": offer.get("moq"),
         "order_multiple": offer.get("order_multiple"),
         "stock_qty": offer.get("stock_qty"),
         "lead_time_days": offer.get("lead_time_days"),
-        "unit_price_at_moq": _unit_price_at_moq(offer),
+        "lifecycle_status": offer.get("lifecycle_status"),
+        "unit_price_at_moq": at_moq["unit_price"] if at_moq else None,
+        # Price without currency is not a comparable number (BR-03), so the two always
+        # travel together and neither is ever shown without the other.
+        "price_currency": at_moq["currency"] if at_moq else None,
+        # What the source itself printed, kept for evidence.value_raw.
+        "raw": offer.get("raw") or {},
     }
 
 
 def _record_evidence(ledger: EvidenceLedger, run_id, mpn: str, row: dict[str, Any]) -> list[str]:
     """File what each distributor said, one observation per fact.
 
-    Per field rather than per response: a conclusion cites the lead time, not "the
-    Mouser reply", and a citation that points at a whole payload cannot be checked.
+    Per field rather than per response: a conclusion cites the lead time, not "the Mouser
+    reply", and a citation pointing at a whole payload cannot be checked.
+
+    value_raw is the source's own rendering — '224 Days', '¥10.54', '0'. The parsed
+    number goes in value_normalized, and where parsing failed that stays empty rather
+    than carrying a guess. Keeping both is what lets someone check our reading against
+    what the supplier actually wrote.
     """
+    raw = row.get("raw") or {}
     recorded = []
     for kind, field in EVIDENCE_FIELDS:
-        value = row.get(field)
-        if value is None:
-            # Unknown is not zero and not an observation. Filing it would make an
-            # absent answer indistinguishable from a reported one.
+        normalized = row.get(field)
+        original = raw.get(field, normalized)
+        if normalized is None and original is None:
+            # Unknown is not zero and not an observation. Filing it would make an absent
+            # answer indistinguishable from a reported one.
             continue
+        attribute = field
+        if field == "unit_price_at_moq" and row.get("price_currency"):
+            # Currency is part of the fact, not a footnote: 1.32 and 1.44 are not
+            # comparable when one is GBP and the other USD (BR-03).
+            attribute = f"{field}[{row['price_currency']}]"
         evidence_id, _ = ledger.record(Observation(
-            run_id=run_id, kind=kind, subject_ref=mpn, attribute=field,
-            value_raw=str(value), value_normalized=str(value),
-            retrieved_at=datetime.now(UTC), provenance="sample",
+            run_id=run_id, kind=kind, subject_ref=mpn, attribute=attribute,
+            value_raw=str(original if original is not None else normalized),
+            value_normalized=None if normalized is None else str(normalized),
+            retrieved_at=datetime.now(UTC),
+            provenance=row.get("provenance") if row.get("provenance") in
+            ("real", "cache", "sample", "replay") else "sample",
             locator=FieldLocator(source_name=row["provider"],
                                  request_digest=row["request_digest"],
                                  field_path=field,
@@ -144,27 +175,40 @@ def compare_supplier_offers(arguments: dict[str, Any], context) -> ToolOutcome:
             row["evidence_ids"] = _record_evidence(ledger, context.run_id, mpn, row)
 
     usable = [row for row in rows if row["status"] in {"ok", "partial"}]
-    stocks = {row["provider"]: row.get("stock_qty") for row in usable}
-    distinct = {value for value in stocks.values() if value is not None}
+    distinct_stock = {row.get("stock_qty") for row in usable if row.get("stock_qty") is not None}
+    currencies = {row.get("price_currency") for row in usable if row.get("price_currency")}
     content = {
         "mpn": mpn,
         "providers_queried": list(PROVIDERS),
         "rows": rows,
         # Stated rather than resolved. Which number is right is a question about the
-        # world, and this layer only reports that the sources disagree.
-        "stock_disagreement": len(distinct) > 1,
+        # world; this layer only reports that the sources disagree (BR-06).
+        "stock_disagreement": len(distinct_stock) > 1,
+        # Prices in different currencies are not comparable without a verified rate, and
+        # this system does not have one. Saying so beats letting someone read the column
+        # downwards (BR-03).
+        "currencies": sorted(currencies),
+        "prices_comparable": len(currencies) <= 1,
         "inexact_matches": sorted({row["provider"] for row in usable
                                    if row.get("match_status") not in (None, "exact")}),
+        "provenance_by_provider": {row["provider"]: row.get("provenance") for row in rows},
     }
-    failures = [row["provider"] for row in rows if row["status"] not in {"ok"}]
+    failures = [row["provider"] for row in rows if row["status"] != "ok"]
     if not usable:
         return ToolOutcome("error", render="offers", content=content,
-                           error_code="all_sources_failed", provenance="sample",
+                           error_code="all_sources_failed",
                            message="三家分销商都没有可用结果")
-    status = "ok" if not failures else "partial"
-    message = None if not failures else f"{len(failures)} 家未给出完整结果：{'、'.join(failures)}"
-    return ToolOutcome(status, render="offers", content=content, message=message,
-                       provenance="sample")
+    notes = []
+    if failures:
+        notes.append(f"{len(failures)} 家未给出完整结果：{'、'.join(failures)}")
+    if not content["prices_comparable"]:
+        notes.append(f"价格币种不一致（{'、'.join(content['currencies'])}），不可直接比较")
+    # The tool's own provenance is the weakest of its rows: one recorded answer among
+    # live ones makes the whole comparison partly simulated.
+    provenance = "real" if all(row.get("provenance") == "real" for row in usable) else "sample"
+    return ToolOutcome("ok" if not failures else "partial", render="offers",
+                       content=content, message="；".join(notes) or None,
+                       provenance=provenance)
 
 
 SOURCING_TOOLS = (

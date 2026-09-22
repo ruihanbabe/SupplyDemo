@@ -1,11 +1,14 @@
 {
-  "_note": "模拟分销商数据。SKU 与 covers_mpns 取自库里真实的 bom_line_distributor_sku 映射；库存、阶梯价、交期是编的，因此调用方一律标 provenance=sample（BR-09）。behaviour 用来在真实链路上触发四态：ok / partial / not_found / timeout。Q-01 冻结后换掉数据源即可，协议与上层不动。",
+  "_note": "模拟分销商数据，仅在某家凭据缺失时作为回退。SKU 与 covers_mpns 取自库里真实的 bom_line_distributor_sku 映射；库存、阶梯价、交期是编的，因此调用方一律标 provenance=sample（BR-09）。behaviour 用来在真实链路上触发四态：ok / partial / not_found / timeout。Q-01 冻结后换掉数据源即可，协议与上层不动。",
   "offers": {
     "digikey": {
       "IRFZ44NPBF-ND": {
         "manufacturer": "Infineon",
         "mpn": "IRFZ44NPBF",
-        "covers_mpns": ["IRFZ44NPBF", "IRFZ44NPbF"],
+        "covers_mpns": [
+          "IRFZ44NPBF",
+          "IRFZ44NPbF"
+        ],
         "packaging": "Tube",
         "currency": "USD",
         "moq": 1,
@@ -13,15 +16,27 @@
         "stock_qty": 4200,
         "lead_time_days": 42,
         "price_breaks": [
-          {"min_qty": 1, "unit_price": "1.09"},
-          {"min_qty": 100, "unit_price": "0.87"},
-          {"min_qty": 500, "unit_price": "0.74"}
+          {
+            "min_qty": 1,
+            "unit_price": "1.09"
+          },
+          {
+            "min_qty": 100,
+            "unit_price": "0.87"
+          },
+          {
+            "min_qty": 500,
+            "unit_price": "0.74"
+          }
         ]
       },
       "TC4420EPA-ND": {
         "manufacturer": "Microchip Technology",
         "mpn": "TC4420EPA",
-        "covers_mpns": ["TC4420EPA", "TC4420CPA"],
+        "covers_mpns": [
+          "TC4420EPA",
+          "TC4420CPA"
+        ],
         "packaging": "Tube",
         "currency": "USD",
         "moq": 1,
@@ -29,14 +44,23 @@
         "stock_qty": 860,
         "lead_time_days": 21,
         "price_breaks": [
-          {"min_qty": 1, "unit_price": "2.41"},
-          {"min_qty": 25, "unit_price": "2.02"}
+          {
+            "min_qty": 1,
+            "unit_price": "2.41"
+          },
+          {
+            "min_qty": 25,
+            "unit_price": "2.02"
+          }
         ]
       },
       "RLB9012-330KL-ND": {
         "manufacturer": "Bourns",
         "mpn": "RLB9012-330KL",
-        "covers_mpns": ["RLB9012-330KL", "RLB0914-330KL"],
+        "covers_mpns": [
+          "RLB9012-330KL",
+          "RLB0914-330KL"
+        ],
         "packaging": "Bulk",
         "currency": "USD",
         "moq": 1,
@@ -44,8 +68,14 @@
         "stock_qty": 900,
         "lead_time_days": 28,
         "price_breaks": [
-          {"min_qty": 1, "unit_price": "0.64"},
-          {"min_qty": 100, "unit_price": "0.49"}
+          {
+            "min_qty": 1,
+            "unit_price": "0.64"
+          },
+          {
+            "min_qty": 100,
+            "unit_price": "0.49"
+          }
         ]
       }
     },
@@ -53,7 +83,10 @@
       "942IRFZ44NPBF": {
         "manufacturer": "Infineon",
         "mpn": "IRFZ44NPBF",
-        "covers_mpns": ["IRFZ44NPBF", "IRFZ44NPbF"],
+        "covers_mpns": [
+          "IRFZ44NPBF",
+          "IRFZ44NPbF"
+        ],
         "packaging": "Tube",
         "currency": "USD",
         "moq": 10,
@@ -62,15 +95,24 @@
         "_why_lead_time": "98 天 = 14 周，超过切片那条「交期 > 8 周」的阈值",
         "lead_time_days": 98,
         "price_breaks": [
-          {"min_qty": 10, "unit_price": "1.02"},
-          {"min_qty": 100, "unit_price": "0.91"}
+          {
+            "min_qty": 10,
+            "unit_price": "1.02"
+          },
+          {
+            "min_qty": 100,
+            "unit_price": "0.91"
+          }
         ]
       },
       "579TC4420EPA": {
         "_why": "本 SKU 在 mouser 侧查不到：not_found 与 error 必须分开呈现（BR-05）",
         "manufacturer": "Microchip Technology",
         "mpn": "TC4420EPA",
-        "covers_mpns": ["TC4420EPA", "TC4420CPA"],
+        "covers_mpns": [
+          "TC4420EPA",
+          "TC4420CPA"
+        ],
         "packaging": "Tube",
         "moq": 1,
         "order_multiple": 1,
@@ -80,7 +122,10 @@
         "_why": "与 digikey 对同一颗料给出不同库存：多源分歧必须各自保留，不得取平均（BR-06）",
         "manufacturer": "Bourns",
         "mpn": "RLB9012-330KL",
-        "covers_mpns": ["RLB9012-330KL", "RLB0914-330KL"],
+        "covers_mpns": [
+          "RLB9012-330KL",
+          "RLB0914-330KL"
+        ],
         "packaging": "Tape & Reel",
         "currency": "USD",
         "moq": 100,
@@ -88,16 +133,22 @@
         "stock_qty": 150,
         "lead_time_days": 35,
         "price_breaks": [
-          {"min_qty": 100, "unit_price": "0.58"}
+          {
+            "min_qty": 100,
+            "unit_price": "0.58"
+          }
         ]
       }
     },
-    "farnell": {
+    "element14": {
       "1544411": {
         "_why": "超时分支：fan-in 处不得把它当成「查到了没有」",
         "manufacturer": "Infineon",
         "mpn": "IRFZ44NPBF",
-        "covers_mpns": ["IRFZ44NPBF", "IRFZ44NPbF"],
+        "covers_mpns": [
+          "IRFZ44NPBF",
+          "IRFZ44NPbF"
+        ],
         "packaging": "Tube",
         "moq": 1,
         "order_multiple": 1,
@@ -108,7 +159,10 @@
         "_why": "有货但没给价：partial 不等于 ok，也不等于 error",
         "manufacturer": "Microchip Technology",
         "mpn": "TC4420EPA",
-        "covers_mpns": ["TC4420EPA", "TC4420CPA"],
+        "covers_mpns": [
+          "TC4420EPA",
+          "TC4420CPA"
+        ],
         "packaging": "Tube",
         "currency": null,
         "moq": 1,
@@ -121,7 +175,10 @@
       "2309242": {
         "manufacturer": "Bourns",
         "mpn": "RLB9012-330KL",
-        "covers_mpns": ["RLB9012-330KL", "RLB0914-330KL"],
+        "covers_mpns": [
+          "RLB9012-330KL",
+          "RLB0914-330KL"
+        ],
         "packaging": "Bulk",
         "currency": "USD",
         "moq": 1,
@@ -129,7 +186,10 @@
         "stock_qty": 0,
         "lead_time_days": 70,
         "price_breaks": [
-          {"min_qty": 1, "unit_price": "0.71"}
+          {
+            "min_qty": 1,
+            "unit_price": "0.71"
+          }
         ]
       }
     }

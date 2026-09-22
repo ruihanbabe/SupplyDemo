@@ -26,7 +26,8 @@
 | 证据账本（字段型）：只插入、内容去重、取代链、读取时判新鲜度 | `src/contracts/evidence.py`、`src/persistence/evidence.py`、`src/procurement_core/freshness.py` | 已验证，含真库列级权限断言 |
 | ToolRegistry：元数据、按场景注入、重试收口、幂等分级、审计落库、外部内容标记 | `src/tools/registry.py`、`src/tools/catalog_tools.py`、`src/persistence/tool_audit.py` | 已验证，含真实模型端到端 |
 | 分层权限（全局→worker→会话，交集语义）与 `make explain` | `src/permissions/`、`config/permissions.yaml`、`config/agents/*.yaml` | 已验证：同一工具 supervisor 可调、manufacturer 被拒，且指出来自哪一层 |
-| MCP 子进程（自实现 stdio JSON-RPC）+ 环境变量白名单 + 多源分销商比价，结果落 Evidence | `mcp_servers/supplier/`、`src/tools/mcp_client.py`、`src/tools/sourcing_tools.py` | 已验证：三家并查，分歧保留、超时与 not_found 不合并、型号非精确匹配不自动采纳 |
+| MCP 子进程（自实现 stdio JSON-RPC）+ 环境变量白名单 | `src/tools/mcp_client.py`、`mcp_servers/supplier/server.py` | 已验证：子进程只收到白名单变量 |
+| **三家真实分销商接入**（Mouser / element14 / DigiKey），按家降级、按行标 provenance | `mcp_servers/supplier/adapters/` | **已验证：真实 API 三家全通**，字段按实测响应校准 |
 | 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据
@@ -37,6 +38,7 @@
 | 离线测试 | 2026-09-22：`make test` 154 passed / 27 deselected |
 | 集成 | 2026-09-22：`make test-integration` 27 passed（真 PostgreSQL / Redis） |
 | 模型后端 | 2026-09-22：真实 GLM 端到端两轮工具对话；录制后断网重放逐字重现，零花费 |
+| 分销商 API | 2026-09-22：`make probe-suppliers` 对 IRFZ44NPBF 与 TC4420EPA 各跑通一次，三家全部返回真实库存/交期/阶梯价；对话页同样走真实数据 |
 
 ## 尚未实现
 
@@ -45,7 +47,7 @@
 - **T01 / T02 / T03** Graph 编排器、Worker 名册、fan-out/fan-in、部分失败语义、RiskEvent 异步流——全部未建，是第一期主体
 - **T04** 分层权限与 `explain` 已就位（F26）；三档会话模式只做了 explore / ask，auto 的低金额放行待 Human Gate（F16）
 - **T05** 能力探测套件、本地部署后端——未建（端口与回放已就绪）
-- **T06** MCP 侧已建（分销商 server + 客户端 + 环境变量过滤）；进程内 skill 侧（厂商资料检索）待 Q-04 冻结寻址策略后做（F17）
+- **T06** MCP 侧已建且接通三家真实分销商；进程内 skill 侧（厂商资料检索）待 Q-04 冻结寻址策略后做（F17）
 - **T07** 树状调用轨迹、三类日志分离——未建
 - **T08** Human Gate、审批绑定哈希、重启后仍等待——未建
 - **T09** 父子预算与沿边扣除——未建
@@ -68,7 +70,7 @@
 
 ## 阻塞
 
-无技术阻塞。Q-01 / Q-03 / Q-04 / Q-05 未冻结，但第一期切片用 `sample` / `replay` 数据即可跑完前三层验证。
+无技术阻塞。**Q-01 已冻结**（三家真实分销商接通）；Q-03 / Q-04 / Q-05 / Q-09 未冻结，但第一期切片用 `sample` / `replay` 数据即可跑完前三层验证。
 
 ## 下一步
 
