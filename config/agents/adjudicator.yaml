@@ -1,0 +1,5 @@
+worker: adjudicator
+model: glm-4-flash
+max_tokens: 2048
+# 系统内核：判错停产会让人用错料，被四项业务能力复用（D02）。
+# 同上，D06 的旗舰档待余额到位后再切。

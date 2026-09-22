@@ -11,8 +11,13 @@ import json
 import httpx
 import pytest
 
-from contracts.llm import ChatMessage, ModelError, ToolCall, ToolSpec
-from infrastructure.llm import MAX_ATTEMPTS, LLMSettings, ZhipuProvider, load_settings
+from contracts.llm import ChatMessage, ModelError, ModelRequest, ToolCall, ToolSpec
+from infrastructure.llm import (
+    MAX_ATTEMPTS,
+    LLMSettings,
+    OpenAICompatibleBackend,
+    load_settings,
+)
 
 SECRET = "sk-super-secret-key-value-do-not-leak"
 
@@ -24,9 +29,9 @@ def settings(**overrides) -> LLMSettings:
     return LLMSettings(**{**base, **overrides})
 
 
-def provider(handler, **overrides) -> ZhipuProvider:
+def provider(handler, **overrides) -> OpenAICompatibleBackend:
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    return ZhipuProvider(settings(**overrides), client=client)
+    return OpenAICompatibleBackend(settings(**overrides), client=client)
 
 
 def ok_payload(**overrides):
@@ -37,8 +42,13 @@ def ok_payload(**overrides):
     return payload
 
 
-def user(text="hi"):
-    return [ChatMessage(role="user", content=text)]
+def user(text="hi", messages=None, **overrides) -> ModelRequest:
+    """One request, ready to send. call_id is fixed so assertions stay readable."""
+    return ModelRequest(
+        call_id="test-call",
+        model="glm-4-flash",
+        messages=tuple(messages or [ChatMessage(role="user", content=text)]),
+        **overrides)
 
 
 # ---------- 凭据保密 ----------
@@ -131,7 +141,7 @@ def test_tools_are_encoded_in_the_documented_shape():
     tool = ToolSpec(name="search_supplier_stock", description="Find stock",
                     parameters={"type": "object", "properties": {"mpn": {"type": "string"}},
                                 "required": ["mpn"]})
-    provider(handler).complete(user(), tools=[tool])
+    provider(handler).complete(user(tools=(tool,)))
     assert seen["tools"] == [{"type": "function", "function": {
         "name": "search_supplier_stock", "description": "Find stock",
         "parameters": tool.parameters}}]
@@ -165,10 +175,10 @@ def test_tool_result_message_carries_its_call_id():
         seen.update(json.loads(request.content))
         return httpx.Response(200, json=ok_payload())
 
-    provider(handler).complete([
+    provider(handler).complete(user(messages=[
         ChatMessage(role="assistant", tool_calls=(ToolCall("c1", "x", "{}"),)),
         ChatMessage(role="tool", content='{"ok":true}', tool_call_id="c1"),
-    ])
+    ]))
     assert seen["messages"][1] == {"role": "tool", "content": '{"ok":true}', "tool_call_id": "c1"}
 
 

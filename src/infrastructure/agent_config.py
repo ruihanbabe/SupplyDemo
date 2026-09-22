@@ -23,9 +23,10 @@ ROOT = Path(__file__).resolve().parents[2]
 AGENT_CONFIG_DIR = ROOT / "config" / "agents"
 DEFAULTS_FILE = "_defaults.yaml"
 
-#: Workers that reach a model. Monitor is absent by design: it is pure computation and
-#: must never call an LLM (ARCHITECTURE.md Monitor row, DECISIONS.md D03).
-LLM_WORKERS = ("supervisor", "query", "detail", "research", "summary", "action")
+#: Workers that reach a model, per DECISIONS.md D02. The three deterministic services
+#: (internal, sourcing, action) are absent by design: they are pure computation and
+#: orchestration, and must never call an LLM.
+LLM_WORKERS = ("supervisor", "intake", "manufacturer", "adjudicator", "report")
 
 
 @dataclass(frozen=True)

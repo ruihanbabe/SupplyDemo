@@ -1,4 +1,0 @@
-worker: summary
-model: glm-4.7-flash
-max_tokens: 4096
-# 输出结构固定为 productinfo §7 的七段式，不产生新决策或新数据。

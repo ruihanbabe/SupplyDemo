@@ -1,6 +1,0 @@
-worker: research
-model: glm-4.7-flash
-max_tokens: 8192
-# 语义推理与证据整合，延迟容忍度高。D06 允许本档换成旗舰模型，当前统一为
-# flash 档是刻意选择；要恢复分档只需改本行 model。
-# 数值比较仍由采购业务核计算，本 worker 只判断哪些差异重要。

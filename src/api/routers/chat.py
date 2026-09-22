@@ -6,14 +6,15 @@ never sees one it was not given. That is the deliberate difference from a free-r
 agent loop: DECISIONS.md D02 keeps step selection with explicit rules, not with the
 model, so a model cannot talk its way into another round or another capability.
 
-This module is a spike. It does not compile a ContextBundle (F14), does not write
-Evidence (F12) and does not resume (F15); it exists to prove the streaming and tool
-path end to end.
+Scope: this is the conversational entry point, not the full runtime. It does not yet
+compile a ContextBundle (F14), write Evidence (F12) or resume after a restart (F15).
+Each of those replaces a piece of what is here, and the seams are marked below.
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Iterator
 from uuid import uuid4
 
@@ -23,9 +24,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from api.dependencies import get_engine
-from contracts.llm import ChatMessage, ModelError
-from infrastructure.llm import load_settings, provider_for
-from infrastructure.llm_stub import StubProvider
+from contracts.llm import ChatMessage, ModelError, ModelRequest
+from infrastructure.agent_config import load_agent_config
+from infrastructure.llm import backend_for, load_settings
+from infrastructure.replay import RecordingBackend, ReplayBackend
 from persistence.procurement import ProcurementRepository
 from tools.catalog_tools import ToolContext, build_registry
 
@@ -61,6 +63,8 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     #: Prior turns travel from the client for now. This is exactly what F14 replaces:
     #: a compiled ContextBundle built from authoritative state, not from the browser.
+    #: Until then the browser is trusted for conversation text only — never for a
+    #: business fact, which is why every number on screen comes back through a tool.
     history: list[ChatTurn] = Field(default_factory=list, max_length=20)
 
 
@@ -68,17 +72,28 @@ def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _select_provider():
-    """Real backend when explicitly enabled, offline stub otherwise.
+def _select_backend():
+    """Real backend when explicitly enabled, replay otherwise.
 
-    The stub is not a fallback for a failing provider — a failure must surface. It is
-    the choice made when nobody has authorised spending money (SUPPLYAGENT_LLM_ENABLED).
+    Replay is not a fallback for a failing backend — a failure must surface. It is the
+    choice made when nobody has authorised spending money (SUPPLYAGENT_LLM_ENABLED), and
+    it answers only from recordings: an unrecorded question fails loudly rather than
+    being improvised.
+
+    The model name comes from the worker config either way, because it is part of the
+    replay key: a recording made against one model must not answer for another.
     """
+    config = load_agent_config(WORKER)
     settings = load_settings()
     if not settings.enabled:
-        return StubProvider(), "stub", "stub"
-    provider = provider_for(WORKER)
-    return provider, provider.name, provider.config.model
+        return ReplayBackend(), "replay", config
+    backend = backend_for(WORKER)
+    if os.getenv("SUPPLYAGENT_LLM_RECORD", "").strip().lower() == "true":
+        # Recording reuses this exact loop rather than a parallel script, so a recording
+        # can never be made from a request shape the real path does not produce. It is
+        # off by default and never wraps replay: replay has nothing to record.
+        return RecordingBackend(backend), backend.name, config
+    return backend, backend.name, config
 
 
 def _open_run(trace_id: str) -> str:
@@ -115,10 +130,11 @@ def _conversation(request: ChatRequest) -> list[ChatMessage]:
 
 def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
     try:
-        provider, provider_name, model = _select_provider()
+        backend, backend_name, config = _select_backend()
     except ModelError as exc:
         yield _sse("error", {"code": exc.code, "message": str(exc)})
         return
+    model = config.model
 
     registry = build_registry()
     tools = registry.specs(effects=("read",))
@@ -131,24 +147,36 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
         yield _sse("error", {"code": "audit_unavailable", "message": str(exc)[:200]})
         return
 
-    yield _sse("meta", {"run_id": run_id, "trace_id": trace_id, "provider": provider_name,
-                        "model": model, "provenance": "real" if provider_name != "stub"
-                        else "stub", "tools": [tool.name for tool in tools]})
+    yield _sse("meta", {"run_id": run_id, "trace_id": trace_id, "provider": backend_name,
+                        "model": model,
+                        "provenance": "replay" if backend_name == "replay" else "real",
+                        "tools": [tool.name for tool in tools]})
 
     # One connection for the whole turn's reads; tools never open their own.
     with get_engine().connect() as connection:
         context = ToolContext(repository=ProcurementRepository(connection))
         for round_index in range(MAX_TOOL_ROUNDS + 1):
             last_round = round_index == MAX_TOOL_ROUNDS
+            # The last round is offered no tools at all: the cap has to be enforced by
+            # what the model can reach, not by asking it politely to stop.
+            request = ModelRequest(
+                call_id=str(uuid4()),
+                model=config.model,
+                messages=tuple(messages),
+                tools=() if last_round else tuple(tools),
+                temperature=config.temperature,
+                max_tokens=config.max_tokens,
+                stream=True,
+                timeout_seconds=config.timeout_seconds,
+                trace_id=trace_id,
+            )
             completion = None
             try:
-                for event in provider.stream(
-                        messages, tools=None if last_round else tools,
-                        temperature=0.0, trace_id=trace_id):
+                for event in backend.stream(request):
                     if event.kind == "text" and event.text:
                         yield _sse("text", {"text": event.text})
                     elif event.kind == "done":
-                        completion = event.completion
+                        completion = event.result
             except ModelError as exc:
                 yield _sse("error", {"code": exc.code, "message": str(exc),
                                      "retryable": exc.retryable})

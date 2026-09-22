@@ -13,7 +13,7 @@ from infrastructure.agent_config import (
     load_all_agent_configs,
     resolve_credentials,
 )
-from infrastructure.llm import provider_for
+from infrastructure.llm import backend_for
 
 
 def write_configs(directory: Path, **workers: str) -> Path:
@@ -43,7 +43,7 @@ def test_monitor_has_no_model_by_design():
 def test_per_worker_model_override_actually_takes_effect(tmp_path):
     """D06's mechanism: one worker's model can change without touching the others.
 
-    This used to assert that Detail and Research sat on *different* models. All six
+    This used to assert that Intake and Manufacturer sat on *different* models. All five
     workers are currently pinned to one model as a deliberate configuration choice, so
     that assertion no longer holds and would only be satisfied by undoing the choice.
     What still must hold — and what D06 actually depends on — is that the tiers remain
@@ -55,16 +55,16 @@ def test_per_worker_model_override_actually_takes_effect(tmp_path):
     """
     write_configs(
         tmp_path,
-        detail="worker: detail\nmodel: cheap-tier\n",
-        research="worker: research\nmodel: flagship-tier\nmax_tokens: 8192\n",
-        summary="worker: summary\nmodel: mid-tier\n",
+        intake="worker: intake\nmodel: cheap-tier\n",
+        manufacturer="worker: manufacturer\nmodel: flagship-tier\nmax_tokens: 8192\n",
+        report="worker: report\nmodel: mid-tier\n",
     )
-    assert load_agent_config("detail", tmp_path).model == "cheap-tier"
-    assert load_agent_config("research", tmp_path).model == "flagship-tier"
-    assert load_agent_config("summary", tmp_path).model == "mid-tier"
+    assert load_agent_config("intake", tmp_path).model == "cheap-tier"
+    assert load_agent_config("manufacturer", tmp_path).model == "flagship-tier"
+    assert load_agent_config("report", tmp_path).model == "mid-tier"
     # Sampling limits stay per-worker even when the model is shared.
-    assert load_agent_config("research", tmp_path).max_tokens == 8192
-    assert load_agent_config("detail", tmp_path).max_tokens == 2048
+    assert load_agent_config("manufacturer", tmp_path).max_tokens == 8192
+    assert load_agent_config("intake", tmp_path).max_tokens == 2048
 
 
 def test_repository_config_is_internally_consistent():
@@ -78,8 +78,8 @@ def test_repository_config_is_internally_consistent():
 # ---------- 合并与校验 ----------
 
 def test_worker_file_overrides_defaults(tmp_path):
-    write_configs(tmp_path, detail="worker: detail\nmodel: cheap-model\nmax_tokens: 4096\n")
-    config = load_agent_config("detail", tmp_path)
+    write_configs(tmp_path, intake="worker: intake\nmodel: cheap-model\nmax_tokens: 4096\n")
+    config = load_agent_config("intake", tmp_path)
     assert config.model == "cheap-model"
     assert config.max_tokens == 4096
     assert config.temperature == 0.0
@@ -88,22 +88,22 @@ def test_worker_file_overrides_defaults(tmp_path):
 
 def test_worker_name_mismatch_is_rejected(tmp_path):
     """A copy-paste slip would route one worker's traffic to another's model."""
-    write_configs(tmp_path, detail="worker: research\nmodel: x\n")
-    with pytest.raises(ValueError, match="declares worker='research'"):
-        load_agent_config("detail", tmp_path)
+    write_configs(tmp_path, intake="worker: manufacturer\nmodel: x\n")
+    with pytest.raises(ValueError, match="declares worker='manufacturer'"):
+        load_agent_config("intake", tmp_path)
 
 
 def test_missing_model_is_rejected(tmp_path):
-    write_configs(tmp_path, summary="worker: summary\n")
+    write_configs(tmp_path, report="worker: report\n")
     (tmp_path / "_defaults.yaml").write_text("provider: zhipu\n")
     with pytest.raises(ValueError, match="missing required keys: model"):
-        load_agent_config("summary", tmp_path)
+        load_agent_config("report", tmp_path)
 
 
 def test_non_mapping_config_is_rejected(tmp_path):
-    write_configs(tmp_path, action="- not\n- a mapping\n")
+    write_configs(tmp_path, adjudicator="- not\n- a mapping\n")
     with pytest.raises(ValueError, match="must be a mapping"):
-        load_agent_config("action", tmp_path)
+        load_agent_config("adjudicator", tmp_path)
 
 
 # ---------- 凭据解析（D07：凭据只在 env） ----------
@@ -128,40 +128,40 @@ def test_credential_key_names_are_provider_scoped():
 
 def test_agent_config_never_carries_credentials(tmp_path):
     """Behaviour config is committed to Git; a key must not be reachable through it."""
-    write_configs(tmp_path, detail="worker: detail\nmodel: m\napi_key: leaked-into-yaml\n")
-    config = load_agent_config("detail", tmp_path)
+    write_configs(tmp_path, intake="worker: intake\nmodel: m\napi_key: leaked-into-yaml\n")
+    config = load_agent_config("intake", tmp_path)
     assert not hasattr(config, "api_key")
     assert "leaked-into-yaml" not in repr(config)
 
 
-# ---------- provider 工厂 ----------
+# ---------- backend 工厂 ----------
 
-def test_provider_for_binds_the_workers_model():
+def test_backend_for_binds_the_workers_model():
     environ = {"SUPPLYAGENT_LLM_ZHIPU_API_KEY": "k", "SUPPLYAGENT_LLM_ZHIPU_BASE_URL": "https://e",
                "SUPPLYAGENT_LLM_ENABLED": "true"}
-    detail = provider_for("detail", environ=environ)
-    research = provider_for("research", environ=environ)
+    intake = backend_for("intake", environ=environ)
+    manufacturer = backend_for("manufacturer", environ=environ)
     # Each provider carries the model its own YAML declares. Whether those values
     # differ is a configuration choice, not something this test should pin down.
-    assert detail.settings.model == load_agent_config("detail").model
-    assert research.settings.model == load_agent_config("research").model
-    assert detail.config.worker == "detail"
-    assert research.config.worker == "research"
-    assert detail.config.max_tokens != research.config.max_tokens
+    assert intake.settings.model == load_agent_config("intake").model
+    assert manufacturer.settings.model == load_agent_config("manufacturer").model
+    assert intake.config.worker == "intake"
+    assert manufacturer.config.worker == "manufacturer"
+    assert intake.config.max_tokens != manufacturer.config.max_tokens
 
 
-def test_provider_for_redaction_hides_the_key():
+def test_backend_for_redaction_hides_the_key():
     environ = {"SUPPLYAGENT_LLM_ZHIPU_API_KEY": "super-secret-value",
                "SUPPLYAGENT_LLM_ZHIPU_BASE_URL": "https://e"}
-    provider = provider_for("summary", environ=environ)
+    provider = backend_for("report", environ=environ)
     assert "super-secret-value" not in str(provider.settings.redacted)
     assert provider.settings.redacted["api_key"] == "set(18 chars)"
 
 
-def test_provider_for_rejects_unknown_vendor(tmp_path, monkeypatch):
+def test_backend_for_rejects_unknown_vendor(tmp_path, monkeypatch):
     from infrastructure import llm
 
-    monkeypatch.setitem(llm.PROVIDERS, "zhipu", llm.ZhipuProvider)
-    monkeypatch.delitem(llm.PROVIDERS, "zhipu")
-    with pytest.raises(Exception, match="known providers"):
-        provider_for("detail", environ={"SUPPLYAGENT_LLM_API_KEY": "k"})
+    monkeypatch.setitem(llm.BACKENDS, "zhipu", llm.OpenAICompatibleBackend)
+    monkeypatch.delitem(llm.BACKENDS, "zhipu")
+    with pytest.raises(Exception, match="known backends"):
+        backend_for("intake", environ={"SUPPLYAGENT_LLM_API_KEY": "k"})

@@ -22,7 +22,7 @@
   header h1{font-size:14px;margin:0;font-weight:600}
   .badge{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);
          color:var(--muted)}
-  .badge.stub{border-color:var(--warn);color:var(--warn)}
+  .badge.replay{border-color:var(--warn);color:var(--warn)}
   .badge.real{border-color:var(--ok);color:var(--ok)}
   main{flex:1;display:grid;grid-template-columns:1fr 420px;min-height:0}
   @media (max-width:900px){ main{grid-template-columns:1fr} #side{display:none} }
@@ -62,7 +62,7 @@
 <body>
 <header>
   <h1>SupplyAgent</h1>
-  <span class="badge" id="provider">未连接</span>
+  <span class="badge" id="provider">待发送</span>
   <span class="badge" id="run">—</span>
   <span class="hint">左栏是模型写的文字，右栏是确定性查询的结果。数值以右栏为准。</span>
 </header>
@@ -150,7 +150,9 @@ async function ask(message){
       switch(nameLine[1]){
         case 'meta':
           providerBadge.textContent = `${evt.provider} · ${evt.model}`;
-          providerBadge.className = 'badge ' + (evt.provenance === 'stub' ? 'stub' : 'real');
+          providerBadge.className = 'badge ' + (evt.provenance === 'real' ? 'real' : 'replay');
+          providerBadge.title = evt.provenance === 'real'
+            ? '真实模型调用，按量计费' : '回放录音，未联网、无花费';
           runBadge.textContent = 'run ' + evt.run_id.slice(0,8);
           break;
         case 'text':
