@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,15 @@ from typing import Any
 import httpx
 from dotenv import dotenv_values
 
-from contracts.llm import ChatMessage, Completion, ModelError, ToolCall, ToolSpec, Usage
+from contracts.llm import (
+    ChatMessage,
+    Completion,
+    ModelError,
+    StreamEvent,
+    ToolCall,
+    ToolSpec,
+    Usage,
+)
 from infrastructure.agent_config import AgentConfig, load_agent_config, resolve_credentials
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -93,6 +102,28 @@ def _decode_tool_calls(raw: list[dict[str, Any]] | None) -> tuple[ToolCall, ...]
                               name=str(function.get("name") or ""),
                               arguments=function.get("arguments") or ""))
     return tuple(calls)
+
+
+def _merge_tool_call_deltas(
+    accumulator: dict[int, dict[str, str]],
+    deltas: list[dict[str, Any]] | None,
+) -> None:
+    """Fold streamed tool-call fragments into whole calls.
+
+    The id and name arrive once, the arguments arrive a few characters at a time. Both
+    are appended rather than overwritten: a provider that repeats the name would
+    otherwise truncate arguments that were already collected.
+    """
+    for delta in deltas or []:
+        index = int(delta.get("index") or 0)
+        call = accumulator.setdefault(index, {"id": "", "name": "", "arguments": ""})
+        if delta.get("id"):
+            call["id"] = str(delta["id"])
+        function = delta.get("function") or {}
+        if function.get("name"):
+            call["name"] = str(function["name"])
+        if function.get("arguments"):
+            call["arguments"] += str(function["arguments"])
 
 
 def _retry_after(response: httpx.Response) -> float | None:
@@ -196,6 +227,94 @@ class ZhipuProvider:
 
         assert last_error is not None
         raise last_error
+
+    def stream(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[ToolSpec] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+        trace_id: str | None = None,
+    ) -> Iterator[StreamEvent]:
+        """Server-sent chunks from the OpenAI-compatible /chat/completions shape.
+
+        Deliberately without the retry loop complete() has: once the first byte of an
+        answer has reached the user, a silent retry would replay a different answer over
+        the top of it. A stream that breaks mid-flight surfaces as an error, and the
+        caller decides.
+        """
+        self._require_ready()
+        body: dict[str, Any] = {
+            "model": self.settings.model,
+            "messages": [_encode_message(message) for message in messages],
+            "temperature": temperature,
+            "stream": True,
+        }
+        if tools:
+            body["tools"] = [_encode_tool(tool) for tool in tools]
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+
+        url = f"{self.settings.base_url}/chat/completions"
+        headers = {"Authorization": f"Bearer {self.settings.api_key}",
+                   "Content-Type": "application/json"}
+        started = time.monotonic()
+        text_parts: list[str] = []
+        # Keyed by the index the provider assigns, because a model may open several
+        # calls at once and their argument fragments arrive interleaved.
+        partial_calls: dict[int, dict[str, str]] = {}
+        finish_reason = "unknown"
+        model = self.settings.model
+        usage = Usage()
+
+        try:
+            with self._http().stream("POST", url, json=body, headers=headers) as response:
+                if response.status_code >= 400:
+                    response.read()
+                    raise self._classify(response)
+                for line in response.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[len("data:"):].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        payload = json.loads(data)
+                    except json.JSONDecodeError:
+                        raise ModelError("malformed_response",
+                                         "Provider sent a non-JSON stream chunk") from None
+                    model = str(payload.get("model") or model)
+                    if payload.get("usage"):
+                        raw_usage = payload["usage"]
+                        usage = Usage(prompt_tokens=raw_usage.get("prompt_tokens"),
+                                      output_tokens=raw_usage.get("completion_tokens"))
+                    for choice in payload.get("choices") or []:
+                        if choice.get("finish_reason"):
+                            finish_reason = str(choice["finish_reason"])
+                        delta = choice.get("delta") or {}
+                        chunk = delta.get("content")
+                        if chunk:
+                            text_parts.append(chunk)
+                            yield StreamEvent("text", text=chunk)
+                        _merge_tool_call_deltas(partial_calls, delta.get("tool_calls"))
+        except httpx.TimeoutException as exc:
+            raise ModelError("timeout", f"Provider timed out mid-stream: {exc!s}",
+                             retryable=False) from None
+        except httpx.HTTPError as exc:
+            raise ModelError("transport_error", f"Stream broke: {exc!s}",
+                             retryable=False) from None
+
+        yield StreamEvent("done", completion=Completion(
+            content="".join(text_parts) or None,
+            tool_calls=tuple(
+                ToolCall(id=call["id"], name=call["name"], arguments=call["arguments"])
+                for _, call in sorted(partial_calls.items())),
+            model=model,
+            finish_reason=finish_reason,
+            usage=usage,
+            latency_ms=int((time.monotonic() - started) * 1000),
+        ))
 
     def _classify(self, response: httpx.Response) -> ModelError:
         status = response.status_code

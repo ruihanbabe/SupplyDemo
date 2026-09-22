@@ -7,17 +7,20 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import NoResultFound
 
 from api.envelope import envelope, error_envelope
-from api.routers import catalog, demands, plans, runs
+from api.routers import catalog, chat, demands, plans, runs
 
 logger = logging.getLogger("supplyagent.api")
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 app = FastAPI(
     title="SupplyAgent API",
@@ -101,3 +104,13 @@ app.include_router(catalog.router)
 app.include_router(demands.router)
 app.include_router(runs.router)
 app.include_router(plans.router)
+app.include_router(chat.router)
+
+# The UI is served by the same process it talks to: one origin, no CORS, and nothing to
+# deploy separately. Mounted last so it can never shadow an /api route.
+app.mount("/ui", StaticFiles(directory=FRONTEND, html=True), name="ui")
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    return FileResponse(FRONTEND / "index.html")

@@ -8,6 +8,7 @@ an LLM call that leaves no auditable trace is not acceptable in this project.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -66,6 +67,21 @@ class Completion:
         return bool(self.tool_calls)
 
 
+@dataclass(frozen=True)
+class StreamEvent:
+    """One step of a streamed completion.
+
+    Only two kinds exist on purpose. `text` carries a visible delta; `done` carries the
+    assembled Completion, tool calls included. Providers fragment tool-call arguments
+    across chunks in vendor-specific ways, so they are reassembled behind this port and
+    surfaced once, whole — a half-parsed call is never handed to the caller.
+    """
+
+    kind: Literal["text", "done"]
+    text: str = ""
+    completion: Completion | None = None
+
+
 class ModelError(RuntimeError):
     """A provider call that did not succeed.
 
@@ -97,4 +113,22 @@ class ModelProvider(Protocol):
         response_format: dict[str, Any] | None = None,
         trace_id: str | None = None,
     ) -> Completion:
+        ...
+
+    def stream(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[ToolSpec] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+        trace_id: str | None = None,
+    ) -> Iterator[StreamEvent]:
+        """Same call as complete(), delivered incrementally.
+
+        A provider that cannot stream must not fake it by chunking a finished answer:
+        that would report a latency the user never experienced. It raises
+        ModelError("capability_unsupported") instead, and the caller falls back to
+        complete() knowingly.
+        """
         ...

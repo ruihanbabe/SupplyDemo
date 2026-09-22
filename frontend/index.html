@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SupplyAgent</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161922; --line:#262b38; --text:#e6e8ee; --muted:#8b93a7;
+    --accent:#4c8dff; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --user:#1d2331;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f6f7f9; --panel:#fff; --line:#e3e6ec; --text:#1b1f27; --muted:#6b7385;
+           --user:#eef2fb; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;height:100vh;display:flex;flex-direction:column;
+       font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;
+       background:var(--bg);color:var(--text)}
+  header{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;
+         align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:14px;margin:0;font-weight:600}
+  .badge{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);
+         color:var(--muted)}
+  .badge.stub{border-color:var(--warn);color:var(--warn)}
+  .badge.real{border-color:var(--ok);color:var(--ok)}
+  main{flex:1;display:grid;grid-template-columns:1fr 420px;min-height:0}
+  @media (max-width:900px){ main{grid-template-columns:1fr} #side{display:none} }
+  #chat{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+  #log{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .msg{max-width:min(680px,92%);padding:10px 13px;border-radius:10px;white-space:pre-wrap;
+       word-break:break-word}
+  .msg.user{align-self:flex-end;background:var(--user)}
+  .msg.bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+  .msg.err{align-self:flex-start;background:var(--panel);border:1px solid var(--bad);
+           color:var(--bad)}
+  .caret::after{content:"▍";color:var(--accent);animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}
+  textarea{flex:1;resize:none;height:44px;padding:10px;border-radius:8px;
+           border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit}
+  button{padding:0 18px;border-radius:8px;border:0;background:var(--accent);color:#fff;
+         font:inherit;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  #side{overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+  #side h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+           margin:0}
+  .card{border:1px solid var(--line);border-radius:10px;background:var(--panel);
+        padding:10px 12px}
+  .card h3{margin:0 0 6px;font-size:13px;display:flex;justify-content:space-between;
+           align-items:center;gap:8px}
+  .st{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line)}
+  .st.ok{color:var(--ok);border-color:var(--ok)}
+  .st.partial{color:var(--warn);border-color:var(--warn)}
+  .st.not_found{color:var(--muted)}
+  .st.error{color:var(--bad);border-color:var(--bad)}
+  pre{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;
+      word-break:break-word;color:var(--text)}
+  .hint{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>SupplyAgent</h1>
+  <span class="badge" id="provider">未连接</span>
+  <span class="badge" id="run">—</span>
+  <span class="hint">左栏是模型写的文字，右栏是确定性查询的结果。数值以右栏为准。</span>
+</header>
+
+<main>
+  <section id="chat">
+    <div id="log">
+      <div class="msg bot">问点什么。比如「有哪些项目」「T1 的 BOM 有什么问题」。</div>
+    </div>
+    <form id="form">
+      <textarea id="input" placeholder="Enter 发送，Shift+Enter 换行"></textarea>
+      <button id="send">发送</button>
+    </form>
+  </section>
+
+  <aside id="side">
+    <h2>工具调用与结果</h2>
+    <div class="hint" id="empty">还没有工具被调用。</div>
+  </aside>
+</main>
+
+<script>
+const log = document.getElementById('log');
+const side = document.getElementById('side');
+const empty = document.getElementById('empty');
+const form = document.getElementById('form');
+const input = document.getElementById('input');
+const send = document.getElementById('send');
+const providerBadge = document.getElementById('provider');
+const runBadge = document.getElementById('run');
+const history = [];
+
+function bubble(cls, text=''){
+  const el = document.createElement('div');
+  el.className = 'msg ' + cls;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+function card(evt){
+  empty.style.display = 'none';
+  const el = document.createElement('div');
+  el.className = 'card';
+  const body = evt.content === null || evt.content === undefined
+    ? (evt.message || '（无内容）')
+    : JSON.stringify(evt.content, null, 2);
+  el.innerHTML = `<h3><span></span><span class="st ${evt.status}">${evt.status}</span></h3>
+                  <pre></pre>`;
+  el.querySelector('h3 span').textContent = evt.name;
+  el.querySelector('pre').textContent =
+    (evt.message && evt.content ? evt.message + '\n' : '') + body;
+  side.appendChild(el);
+  side.scrollTop = side.scrollHeight;
+}
+
+async function ask(message){
+  const mine = bubble('user', message);
+  history.push({role:'user', content:message});
+  let reply = null, buffered = '';
+
+  const response = await fetch('/api/chat/stream', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({message, history: history.slice(0,-1).slice(-10)})
+  });
+  if(!response.ok){ bubble('err', `HTTP ${response.status}`); return; }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let carry = '';
+
+  while(true){
+    const {value, done} = await reader.read();
+    if(done) break;
+    carry += decoder.decode(value, {stream:true});
+    const frames = carry.split('\n\n');
+    carry = frames.pop();
+    for(const frame of frames){
+      const nameLine = frame.match(/^event: (.+)$/m);
+      const dataLine = frame.match(/^data: (.*)$/m);
+      if(!nameLine || !dataLine) continue;
+      const evt = JSON.parse(dataLine[1]);
+      switch(nameLine[1]){
+        case 'meta':
+          providerBadge.textContent = `${evt.provider} · ${evt.model}`;
+          providerBadge.className = 'badge ' + (evt.provenance === 'stub' ? 'stub' : 'real');
+          runBadge.textContent = 'run ' + evt.run_id.slice(0,8);
+          break;
+        case 'text':
+          if(!reply){ reply = bubble('bot'); reply.classList.add('caret'); }
+          buffered += evt.text;
+          reply.textContent = buffered;
+          log.scrollTop = log.scrollHeight;
+          break;
+        case 'tool':
+          card(evt);
+          if(reply){ reply.classList.remove('caret'); reply = null; buffered = ''; }
+          break;
+        case 'error':
+          if(reply) reply.classList.remove('caret');
+          bubble('err', `${evt.code}：${evt.message}`);
+          break;
+        case 'done':
+          if(reply) reply.classList.remove('caret');
+          if(buffered) history.push({role:'assistant', content:buffered});
+          break;
+      }
+    }
+  }
+  if(reply) reply.classList.remove('caret');
+}
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const message = input.value.trim();
+  if(!message) return;
+  input.value = ''; send.disabled = true;
+  try { await ask(message); }
+  catch(err){ bubble('err', String(err)); }
+  finally { send.disabled = false; input.focus(); }
+});
+
+input.addEventListener('keydown', e => {
+  if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); form.requestSubmit(); }
+});
+</script>
+</body>
+</html>
