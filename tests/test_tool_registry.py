@@ -56,21 +56,34 @@ def test_unknown_tool_is_not_found_not_error():
     assert outcome.error_code == "unknown_tool"
 
 
-def test_specs_are_filtered_by_worker():
-    stock = tool(name="read_stock", workers=frozenset({"internal"}))
-    datasheet = tool(name="read_datasheet", workers=frozenset({"spec_check"}))
-    registry = registry_with(stock, datasheet)
-    offered = {spec.name for spec in registry.specs(worker="spec_check")}
-    assert offered == {"read_datasheet"}
+def only(*allowed: str):
+    """A permission check standing in for the layered chain."""
+    return lambda tool, _invocation: (None if tool.permission in allowed
+                                      else f"[worker] 未声明 {tool.permission}")
 
 
-def test_a_tool_the_caller_was_never_offered_is_refused_at_dispatch():
-    """Injection decides what is offered; dispatch decides what runs. Checked twice so a
-    model that learns a name from anywhere else still cannot reach it."""
-    registry = registry_with(tool(name="read_stock", workers=frozenset({"internal"})))
-    outcome = registry.dispatch(call(name="read_stock"),
-                                Invocation(worker="spec_check"))
-    assert outcome.status == "error"
+def test_specs_are_filtered_by_permission():
+    stock = tool(name="read_stock", permission="procurement.compute")
+    datasheet = tool(name="read_datasheet", permission="documents.read")
+    registry = registry_with(stock, datasheet, permission_check=only("documents.read"))
+    assert {spec.name for spec in registry.specs()} == {"read_datasheet"}
+
+
+def test_a_tool_without_permission_is_refused_at_dispatch_with_its_layer():
+    """Injection decides what is offered; dispatch decides what runs. Both consult the
+    same check, and the refusal names the layer so a reader knows which file to open."""
+    registry = registry_with(tool(name="read_stock", permission="procurement.compute"),
+                             permission_check=only("documents.read"))
+    outcome = registry.dispatch(call(name="read_stock"), Invocation(worker="spec_check"))
+    assert outcome.error_code == "permission_required"
+    assert "[worker]" in outcome.message
+
+
+def test_a_tool_outside_the_scenario_is_a_different_refusal():
+    """Not the same as a permission denial: one means the tool does not exist here, the
+    other means you may not use one that does."""
+    registry = registry_with(tool(scenarios=frozenset({"procurement"})))
+    outcome = registry.dispatch(call(), Invocation(scenario="chitchat"))
     assert outcome.error_code == "tool_not_available_here"
 
 

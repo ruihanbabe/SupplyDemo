@@ -108,6 +108,10 @@ model-smoke: ## 调用真实模型，执行前必须获得用户明确授权并�
 import-data: ## F02：事务性导入 normalized 静态数据，重跑幂等
 	@PYTHONPATH=src $(VPY) -m persistence.import_normalized
 
+.PHONY: explain
+explain: ## 解释某个 worker 实际能调用哪些工具，以及每条允许/拒绝来自哪一层
+	@PYTHONPATH=src $(VPY) -m permissions.explain --worker $(WORKER) $(ARGS)
+
 .PHONY: seed-rules
 seed-rules: ## 写入口径类 business_rule（单板用量、身份接受策略），版本化且重跑幂等
 	@PYTHONPATH=src $(VPY) -m persistence.seed_business_rules

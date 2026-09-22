@@ -2,3 +2,8 @@ worker: supervisor
 model: glm-4-flash
 max_tokens: 1024
 # 调用频率最高且要求低延迟；只做路由决策，不做语义判断。
+
+# 对话入口：查目录、算缺口。写权限一律没有。
+permissions:
+  - catalog.read
+  - procurement.compute

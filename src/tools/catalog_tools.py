@@ -16,6 +16,7 @@ from typing import Any
 from uuid import uuid4
 
 from contracts.llm import ToolSpec
+from permissions.policy import load_policy
 from procurement_core.demand import prepare_demand
 from procurement_core.shortage import calculate_shortages
 from tools.registry import RegisteredTool, RetryPolicy, ToolOutcome, ToolRegistry
@@ -177,16 +178,26 @@ def _refuse_draft(_: dict[str, Any], __: ToolContext) -> ToolOutcome:  # pragma:
     raise AssertionError("unreachable: the registry refuses this tool before dispatch")
 
 
+def layered_permission_check(tool, invocation) -> str | None:
+    """Wire the three-layer chain into the registry.
+
+    The layer travels in the message: "denied" alone does not tell anyone which file to
+    open, and that is the whole reason the chain records where a decision came from.
+    """
+    policy = load_policy(invocation.worker, session=invocation.session)
+    decision = policy.evaluate(tool.permission, effect=tool.effect)
+    return None if decision.allowed else f"[{decision.layer}] {decision.reason}"
+
+
 def build_registry(*, audit=None) -> ToolRegistry:
-    registry = ToolRegistry(audit=audit)
+    registry = ToolRegistry(audit=audit, permission_check=layered_permission_check)
     registry.register(RegisteredTool(
         spec=ToolSpec(
             name="list_projects",
             description="列出已导入的项目及其 BOM 行数与总用量。数据来自数据库，不是估算。",
             parameters={"type": "object", "properties": {}, "required": []}),
         effect="read", handler=_list_projects,
-        permission="catalog.read", scenarios=frozenset({"procurement"}),
-        workers=frozenset({"supervisor", "internal"})))
+        permission="catalog.read", scenarios=frozenset({"procurement"})))
     registry.register(RegisteredTool(
         spec=ToolSpec(
             name="get_bom_summary",
@@ -198,8 +209,7 @@ def build_registry(*, audit=None) -> ToolRegistry:
                             "description": "项目标识，可先用 list_projects 取得"}},
                         "required": ["project_id"]}),
         effect="read", handler=_bom_summary,
-        permission="catalog.read", scenarios=frozenset({"procurement"}),
-        workers=frozenset({"supervisor", "internal"})))
+        permission="catalog.read", scenarios=frozenset({"procurement"})))
     registry.register(RegisteredTool(
         spec=ToolSpec(
             name="compute_shortage",
@@ -214,10 +224,7 @@ def build_registry(*, audit=None) -> ToolRegistry:
         effect="read", handler=_compute_shortage,
         permission="procurement.compute", idempotency="idempotent",
         timeout_seconds=60.0, retry_policy=RetryPolicy(attempts=1),
-        scenarios=frozenset({"procurement"}),
-        # internal owns internal arithmetic. spec_check and sourcing must not be able to
-        # reach internal stock at all, which is what makes T04's explain worth printing.
-        workers=frozenset({"supervisor", "internal"})))
+        scenarios=frozenset({"procurement"})))
     registry.register(RegisteredTool(
         spec=ToolSpec(
             name="create_procurement_draft",
@@ -227,7 +234,7 @@ def build_registry(*, audit=None) -> ToolRegistry:
                         "required": ["plan_id"]}),
         effect="write", handler=_refuse_draft,
         permission="procurement.write", idempotency="unsafe",
-        scenarios=frozenset({"procurement"}), workers=frozenset({"action"}),
+        scenarios=frozenset({"procurement"}),
         available=False,
         unavailable_reason="外部采购系统与其幂等能力尚未确定（Q-03）；在此之前不做任何外部写入"))
     return registry

@@ -102,10 +102,9 @@ class RegisteredTool:
     timeout_seconds: float = 30.0
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     #: Which scenarios may see this tool at all. Empty means every scenario.
+    #: Deliberately not a worker list as well: "who may use this" is declared once, in
+    #: the worker's permission grants. Saying it in two places guarantees they drift.
     scenarios: frozenset[str] = frozenset()
-    #: Which workers may see it. Empty means every worker. This is what makes
-    #: "spec_check cannot read internal stock" enforceable rather than requested.
-    workers: frozenset[str] = frozenset()
     #: Declared but not runnable — Q-03 keeps the procurement draft writers deferred
     #: until a target system and its idempotency guarantees are known.
     available: bool = True
@@ -122,6 +121,8 @@ class Invocation:
     worker: str | None = None
     scenario: str | None = None
     approved_write_ids: frozenset[str] = frozenset()
+    #: The session layer of the permission chain. None means the default posture.
+    session: Any = None
     #: Where this call's audit row goes. Per-invocation rather than per-registry because
     #: the sink owns a database transaction whose lifetime is one call, while the
     #: registry is built once and reused.
@@ -149,9 +150,14 @@ class AuditSink(Protocol):
 
 
 def default_permission_check(tool: RegisteredTool, invocation: Invocation) -> str | None:
-    """Deny by default for writes; F26 replaces this with the layered chain.
+    """The registry's posture when no policy is wired in: reads yes, writes no.
 
-    Returns None when allowed, or a reason when denied.
+    Composition decides the real policy (see tools.catalog_tools.build_registry, which
+    installs the layered chain). Keeping that out of the registry is what lets the
+    registry be tested without a config tree, and keeps "which permissions exist" a
+    deployment question rather than a code one.
+
+    Returns None when allowed, or the reason when denied.
     """
     if tool.effect == "write":
         return "Write tools need an approved PermissionDecision"
@@ -172,29 +178,36 @@ class ToolRegistry:
         self._tools[tool.spec.name] = tool
 
     def specs(self, *, effects: tuple[Effect, ...] = ("read",),
-              scenario: str | None = None, worker: str | None = None) -> list[ToolSpec]:
+              scenario: str | None = None, worker: str | None = None,
+              session: Any = None) -> list[ToolSpec]:
         """Only what this caller is allowed to use gets injected.
 
         Filtering here rather than in the prompt is the whole point: a tool the model was
         never shown is a tool it cannot be talked into calling.
         """
-        probe = Invocation(scenario=scenario, worker=worker)
+        probe = Invocation(scenario=scenario, worker=worker, session=session)
+        # Injection and dispatch consult the same permission check, so there can be no
+        # tool that was offered but cannot run — nor one that runs without being offered.
         return [tool.spec for tool in self._tools.values()
-                if tool.effect in effects and self._visible(tool, probe)]
+                if tool.effect in effects and self._in_scenario(tool, probe)
+                and self._permission_check(tool, probe) is None]
 
     def describe(self, name: str) -> RegisteredTool | None:
         return self._tools.get(name)
 
-    @staticmethod
-    def _visible(tool: RegisteredTool, invocation: Invocation) -> bool:
-        """Same rule specs() filters by, applied again at dispatch.
+    def names(self) -> list[str]:
+        """Every registered tool, regardless of who may use it — explain needs to report
+        on the ones a caller cannot reach, not just the ones it can."""
+        return list(self._tools)
 
-        Checked twice on purpose: injection decides what the model is offered, dispatch
-        decides what actually runs. A model that learns a tool name from anywhere else
-        still cannot reach it.
+    def _in_scenario(self, tool: RegisteredTool, invocation: Invocation) -> bool:
+        """Whether this tool exists for this caller's situation at all.
+
+        Kept separate from the permission check so the two refusals stay distinguishable:
+        "no such tool here" and "you may not use it" send a reader to different places,
+        and only the second belongs in a permission audit.
         """
-        return ((not tool.scenarios or invocation.scenario in tool.scenarios)
-                and (not tool.workers or invocation.worker in tool.workers))
+        return not tool.scenarios or invocation.scenario in tool.scenarios
 
     def dispatch(self, call: ToolCall, invocation: Invocation | None = None) -> ToolOutcome:
         invocation = invocation or Invocation()
@@ -217,7 +230,7 @@ class ToolRegistry:
             # not_found, not error: the tool does not exist, nothing failed.
             return ToolOutcome("not_found", error_code="unknown_tool",
                                message=f"No tool named {call.name!r}"), {}
-        if not self._visible(tool, invocation):
+        if not self._in_scenario(tool, invocation):
             # Calling a tool that was never injected: refused even if it exists, because
             # the injected set is the permission boundary, not a suggestion.
             return ToolOutcome("error", error_code="tool_not_available_here",

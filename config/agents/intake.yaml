@@ -2,3 +2,7 @@ worker: intake
 model: glm-4-flash
 max_tokens: 1024
 # 指标解析是枚举分类：从冻结注册表里选一个，不生成 SQL（FR-14）。输出短，档位就低。
+
+# 口径解析只需要看目录，不需要算数。
+permissions:
+  - catalog.read

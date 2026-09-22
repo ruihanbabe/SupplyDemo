@@ -2,7 +2,7 @@
 
 DECISIONS.md D07 splits this in two on purpose:
 
-  behaviour  (model, sampling, tool list)  -> config/agents/*.yaml, versioned in Git
+  behaviour  (model, sampling, permissions)  -> config/agents/*.yaml, versioned in Git
   credentials(api key, endpoint)           -> .env, never committed
 
 D06 then requires that the two cost tiers differ per worker — Detail orchestrates tools
@@ -39,7 +39,9 @@ class AgentConfig:
     temperature: float
     max_tokens: int
     timeout_seconds: float
-    tools: tuple[str, ...] = ()
+    #: Permission names this worker may hold. Empty means none: a worker that
+    #: forgets to declare gets nothing rather than everything.
+    permissions: tuple[str, ...] = ()
 
 
 def _describe(path: Path) -> str:
@@ -91,7 +93,7 @@ def load_agent_config(worker: str, config_dir: Path | None = None) -> AgentConfi
         temperature=float(merged.get("temperature", 0.0)),
         max_tokens=int(merged.get("max_tokens", 2048)),
         timeout_seconds=float(merged.get("timeout_seconds", 60)),
-        tools=tuple(merged.get("tools") or ()),
+        permissions=tuple(merged.get("permissions") or ()),
     )
 
 

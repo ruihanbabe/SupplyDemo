@@ -2,3 +2,6 @@ worker: report
 model: glm-4-flash
 max_tokens: 2048
 # 只组织文字；事实值由确定性代码回填，模型不得自行撰写数值（D04、BR-17）。
+
+# 只组织文字，事实值由确定性代码回填（D04、BR-07）。
+permissions: []
