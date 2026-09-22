@@ -7,11 +7,11 @@
 
 ## 职责
 
-拥有 PostgreSQL 与 Redis 的存储 contract：对话 state、Run / ToolCall / PermissionDecision 审计记录、metrics_snapshot 落 PostgreSQL；缓存 / 幂等去重 / 分布式锁走 Redis。
+拥有 PostgreSQL 与 Redis 的存储 contract：业务事实、Run 与节点 checkpoint、Evidence / Artifact、ToolCall / ModelCall / PermissionDecision 审计记录落 PostgreSQL；锁、短期缓存、限流协调走 Redis，丢失后可从 PostgreSQL 重建。
 
 ## 修改前
 
-阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的 Persistence 行、`DECISIONS.md` D05 / D11、`docs/spec/data-model.md` 对应表章节；不读取归档设计正文。
+阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的 Persistence 行、`DECISIONS.md` D07 / D13、`docs/spec/data-model.md` 对应表章节；不读取归档设计正文。
 
 ## 不变量与 contract
 

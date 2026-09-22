@@ -12,7 +12,7 @@
 - **时间**：一律 `TIMESTAMPTZ`，存 UTC。禁止 `TIMESTAMP`（无时区）。
 - **数量与金额**：一律 `NUMERIC`，禁止 `FLOAT` / `DOUBLE PRECISION`。BR-03 要求精确数值类型，浮点会在阶梯价与倍数计算中引入误差。数量 `NUMERIC(18,6)`，金额 `NUMERIC(18,6)`。
 - **标识符**：业务主键用文本自然键（`line_id`、`component_id` 等，与 `normalized/` 一致）；运行时对象用 `UUID`。
-- **多租户**：业务表一律带 `tenant_id TEXT NOT NULL DEFAULT 'default'`，**仅作架构预留**，MVP 不实现隔离逻辑（见 `DECISIONS.md` D10）。审计表同样带，便于将来按租户裁剪。
+- **多租户**：业务表一律带 `tenant_id TEXT NOT NULL DEFAULT 'default'`，**仅作架构预留**，MVP 不实现隔离逻辑（见 `productinfo.md` §5.3；这是已决事项，不在 `docs/OPEN-QUESTIONS.md` 之列）。审计表同样带，便于将来按租户裁剪。
 - **模拟数据标注**：任何合成数据的表带 `is_simulated BOOLEAN NOT NULL DEFAULT FALSE`。最终回答必须能区分模拟与真实来源（见 `productinfo.md` §7 第 7 条）。
 - **证据引用**：`evidence_ref` 统一为 `JSONB`，形如 `{"kind": "tool_call", "id": "...", "retrieved_at": "..."}`。每个实质性判断都要能回指。
 - **命名**：表名单数、蛇形；外键列名为 `<引用表>_id`；索引 `ix_<表>_<列>`，唯一索引 `uq_<表>_<列>`。
@@ -20,10 +20,15 @@
 ## 2. 分层与依赖方向
 
 ```text
-① 权威静态层（元件身份与 BOM）   ← 由 normalized/ 单向灌入，不接受应用写入
-② 业务层（需求/库存/在途/方案）  ← 应用读写
-③ 审计层（run/tool_call/...）     ← 只插入，永不更新或删除
-④ 规则层（business_rule）         ← 版本化，变更留痕
+① 权威静态层（元件身份与 BOM）      ← 由 normalized/ 单向灌入，不接受应用写入
+② 业务层（需求/库存/在途）           ← 应用读写
+③ 方案与审批（plan/permission）      ← 版本化，审批绑定 content_hash
+④ 审计层（run/tool_call/...）        ← 只插入，永不更新或删除
+⑤ 规则层（business_rule）            ← 版本化，变更留痕
+⑥ 证据层（evidence/official_document）← 只插入，取代用 superseded_by 回填
+⑦ 预警层（monitor_target/alert）      ← alert 持当前状态，历史在 alert_event
+⑧ 运行时层（artifact/context_bundle/node_checkpoint）← 产物与上下文只插入，checkpoint 持当前尝试状态
+⑨ 语义层（metric_definition）         ← 业务术语的冻结口径，版本化
 ```
 
 灌数方向只能是 `domdata/（只读原始层）→ normalize_domdata.py → normalized/ → PostgreSQL`，不得反向回写，也不得跳过规范化层直读原始 CSV（见 `ARCHITECTURE.md`）。
@@ -246,7 +251,7 @@ CREATE TABLE llm_call (
     llm_call_id   UUID PRIMARY KEY,
     run_id        UUID        NOT NULL REFERENCES run(run_id),
     trace_id      TEXT        NOT NULL,
-    worker        TEXT        NOT NULL,           -- supervisor / query / detail / research / summary / action
+    worker        TEXT        NOT NULL,           -- supervisor / intake / manufacturer / adjudicator / report
     model         TEXT        NOT NULL,
     prompt_tokens INTEGER,
     output_tokens INTEGER,
@@ -353,14 +358,366 @@ CREATE INDEX ix_business_rule_current
 
 版本只增不改：改阈值是插入新版本，不是 `UPDATE`。读取时取 `effective_from <= now()` 的最大版本。每次变更必须同时写一条 `operator_log`（谁改的、改前改后值、生效时间）。
 
-**本表存的是可变业务参数**（库存告警线、审批期限、提醒频率、D13 的扇出升级阈值）；Agent 的 system prompt／模型／工具列表走 YAML + Git，两者不混放（见 `DECISIONS.md` D07）。
+**本表存的是可变业务参数**（证据有效期、审批期限、候选选择策略等）；模型、工具和工作流配置走版本化运行配置，两者不混放（见 `DECISIONS.md` D18）。
 
-## 8. 未决与已知缺口
+## 8. ⑥ 证据层（F12）
+
+Evidence 是全系统的事实单位，契约见 `docs/spec/interfaces.md`「Evidence」。本节只定义表结构。
+
+只插入语义，唯一例外是 `superseded_by` 的窄列回填。取代一条观察是**插入新行并回填旧行**，不是覆盖：审批当时知道什么，事后必须仍能回答。
+
+```sql
+CREATE TABLE evidence (
+    evidence_id     UUID PRIMARY KEY,
+    run_id          UUID        NOT NULL REFERENCES run(run_id),
+    tenant_id       TEXT        NOT NULL DEFAULT 'default',
+    kind            TEXT        NOT NULL,          -- stock / price / lead_time / lifecycle / replacement / parameter
+    subject_ref     TEXT        NOT NULL,          -- component_id 或 mpn
+    attribute       TEXT        NOT NULL,
+    value_raw       TEXT        NOT NULL,          -- 来源原始形态，不归一化
+    value_normalized TEXT,                         -- 归一化失败必须留 NULL，不得猜测
+    locator_kind    TEXT        NOT NULL,          -- field | document
+    match_mode      TEXT,                          -- 仅 document：enumerated | decoded
+    retrieved_at    TIMESTAMPTZ NOT NULL,          -- 新鲜度唯一依据；缓存命中保留原值不刷新
+    observed_at     TIMESTAMPTZ,                   -- 仅来源显式声明快照时间时填写
+    provenance      TEXT        NOT NULL,          -- real / cache / sample / replay
+    tool_call_id    UUID        REFERENCES tool_call(tool_call_id),
+    content_hash    TEXT        NOT NULL,
+    superseded_by   UUID        REFERENCES evidence(evidence_id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_evidence_locator CHECK (locator_kind IN ('field','document')),
+    CONSTRAINT ck_evidence_match_mode CHECK (
+        (locator_kind = 'document' AND match_mode IN ('enumerated','decoded'))
+        OR (locator_kind = 'field' AND match_mode IS NULL)),
+    CONSTRAINT ck_evidence_provenance CHECK (provenance IN ('real','cache','sample','replay')),
+    CONSTRAINT ck_evidence_not_self_superseded CHECK (
+        superseded_by IS NULL OR superseded_by <> evidence_id)
+);
+
+-- 定位块与 evidence 一对一，按 locator_kind 二选一，不合表以免半数列恒为 NULL。
+CREATE TABLE evidence_field_locator (
+    evidence_id     UUID PRIMARY KEY REFERENCES evidence(evidence_id),
+    source_name     TEXT        NOT NULL,          -- digikey / mouser / ...
+    request_digest  TEXT        NOT NULL,          -- 可复现该次查询的参数摘要
+    field_path      TEXT        NOT NULL,          -- 响应中的字段路径
+    response_status TEXT        NOT NULL           -- ok / partial / not_found
+);
+
+CREATE TABLE evidence_document_locator (
+    evidence_id       UUID PRIMARY KEY REFERENCES evidence(evidence_id),
+    document_id       UUID     NOT NULL REFERENCES official_document(document_id),
+    page              INTEGER  NOT NULL,
+    span_start        INTEGER  NOT NULL,
+    span_end          INTEGER  NOT NULL,
+    quoted_text       TEXT     NOT NULL,
+    extractor_name    TEXT     NOT NULL,
+    extractor_version TEXT     NOT NULL,           -- 必填：抽取器升级会整体位移字符偏移
+    CONSTRAINT ck_span_order CHECK (span_end > span_start)
+);
+
+-- 原始文件按内容寻址存本地文件系统，DB 只存路径与哈希。
+-- 130MB 级的 PDF 不进 PostgreSQL；重启后必须仍在，否则违反「已采集不重复采集」。
+CREATE TABLE official_document (
+    document_id       UUID PRIMARY KEY,
+    manufacturer      TEXT        NOT NULL,
+    document_kind     TEXT        NOT NULL,        -- datasheet / product_page / pcn
+    source_url        TEXT        NOT NULL,
+    doc_revision      TEXT,                        -- 如 DocID2572 Rev 38；无法识别时 NULL
+    coverage_kind     TEXT,                        -- single / enumerated / parametric；首次探测后缓存
+    decoder_page      INTEGER,                     -- parametric 时编码器表所在页
+    content_sha256    TEXT        NOT NULL,        -- 文件内容寻址键
+    blob_path         TEXT        NOT NULL,        -- 原始字节落点
+    text_path         TEXT,                        -- 抽取文本落点；无文字层时 NULL
+    extractor_name    TEXT,
+    extractor_version TEXT,
+    page_count        INTEGER,
+    retrieved_at      TIMESTAMPTZ NOT NULL,
+    provenance        TEXT        NOT NULL,
+    superseded_by     UUID        REFERENCES official_document(document_id),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_document_content UNIQUE (content_sha256),
+    CONSTRAINT ck_document_provenance CHECK (provenance IN ('real','cache','sample','replay')),
+    CONSTRAINT ck_document_coverage CHECK (
+        coverage_kind IS NULL OR coverage_kind IN ('single','enumerated','parametric'))
+);
+
+-- 型号到文档的映射是多对一：12 个 RC0402FR-* 指向同一份 Yageo 系列文档。
+-- 并发采集按 content_sha256 单次取回（single-flight），不重复抓取。
+CREATE TABLE document_resolution (
+    resolution_id   UUID PRIMARY KEY,
+    mpn             TEXT        NOT NULL,
+    manufacturer    TEXT        NOT NULL,
+    document_kind   TEXT        NOT NULL,
+    status          TEXT        NOT NULL,          -- resolved / ambiguous / unresolvable
+    document_id     UUID        REFERENCES official_document(document_id),
+    candidates      JSONB,                         -- ambiguous 时列出全部命中，不择一
+    reason          TEXT,                          -- ambiguous / unresolvable 必填
+    strategy_used   TEXT,                          -- 命中的策略；未命中时记已尝试的全部
+    resolved_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_resolution_status CHECK (status IN ('resolved','ambiguous','unresolvable')),
+    CONSTRAINT ck_resolution_resolved CHECK (
+        (status = 'resolved' AND document_id IS NOT NULL)
+        OR (status <> 'resolved' AND reason IS NOT NULL))
+);
+
+CREATE INDEX ix_evidence_subject ON evidence(subject_ref, retrieved_at DESC);
+CREATE INDEX ix_resolution_mpn ON document_resolution(mpn, manufacturer);
+```
+
+### 三层存储分工
+
+| 层 | 落点 | 理由 |
+|---|---|---|
+| 原始文件字节 | 本地文件系统，`sha256` 作键 | 单份 1.6MB 量级；进 DB 会拖垮备份与恢复 |
+| 抽取文本 | 本地文件系统 | span 偏移必须相对一个确定的文本版本 |
+| Evidence 与定位 | PostgreSQL | 需要事务、外键与审计权限 |
+
+**不得改为进程内缓存。**重启即清空会使「已成功采集的观察不重复采集」失效（`productinfo.md` §4），并让 F20 的冻结证据缓存无从建立。
+
+### 修订检查而非重复下载
+
+复核时先查文档修订（产品页或 HEAD），与 `doc_revision` 一致则复用缓存；不一致才重新取回，并回填旧行的 `superseded_by`。一次修订变更会使指向该文档的全部 Evidence 同时失效——12:1 扇入下这是 12 条。
+
+## 9. ⑦ 预警层（F18）
+
+产品心脏。`alert` 的部分唯一索引是 BR-15「同一对象同一类型同时最多一条活动告警」的机械化落点——**靠数据库强制，不靠应用代码自觉**。
+
+```sql
+CREATE TABLE monitor_target (
+    target_id      UUID PRIMARY KEY,
+    tenant_id      TEXT        NOT NULL DEFAULT 'default',
+    component_id   TEXT        REFERENCES component(component_id),
+    line_id        TEXT        REFERENCES bom_line(line_id),
+    policy_ref     TEXT        NOT NULL,          -- business_rule.rule_id，阈值与复核策略
+    enabled        BOOLEAN     NOT NULL DEFAULT TRUE,
+    last_checked_at TIMESTAMPTZ,                  -- 上次成功复核时刻；采集失败不更新
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_target_subject CHECK (
+        (component_id IS NOT NULL) OR (line_id IS NOT NULL))
+);
+
+CREATE TABLE alert (
+    alert_id          UUID PRIMARY KEY,
+    tenant_id         TEXT        NOT NULL DEFAULT 'default',
+    target_id         UUID        NOT NULL REFERENCES monitor_target(target_id),
+    alert_type        TEXT        NOT NULL,       -- stock_low / eol / lifecycle_change
+    severity          TEXT        NOT NULL,
+    status            TEXT        NOT NULL,       -- active / closed
+    policy_version    TEXT        NOT NULL,       -- 判定时采用的阈值版本；缺它则告警不可复现
+    trigger_evidence  JSONB       NOT NULL,       -- 触发本告警的 evidence_id 列表，非空
+    first_seen_at     TIMESTAMPTZ NOT NULL,       -- 首次发现；重复触发不改写
+    last_confirmed_at TIMESTAMPTZ NOT NULL,       -- 最近一次证据仍成立；采集失败不更新
+    closed_at         TIMESTAMPTZ,
+    closed_reason     TEXT,                       -- 状态回退的依据；不得因采集失败而关闭
+    CONSTRAINT ck_alert_status CHECK (status IN ('active','closed')),
+    CONSTRAINT ck_alert_closed CHECK (
+        (status = 'closed' AND closed_at IS NOT NULL AND closed_reason IS NOT NULL)
+        OR (status = 'active' AND closed_at IS NULL))
+);
+
+-- BR-15 的强制点：同一 (target, type) 至多一条 active。
+-- 部分唯一索引让重复告警在数据库层就写不进去，而不是靠应用先查再插。
+CREATE UNIQUE INDEX uq_alert_active
+    ON alert(target_id, alert_type) WHERE status = 'active';
+
+-- 告警的每次变化追加一行，只插入。alert 行持有当前状态，历史在此。
+CREATE TABLE alert_event (
+    event_id      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    alert_id      UUID        NOT NULL REFERENCES alert(alert_id),
+    run_id        UUID        NOT NULL REFERENCES run(run_id),
+    kind          TEXT        NOT NULL,           -- opened / reconfirmed / escalated / closed
+    evidence_ref  JSONB       NOT NULL,
+    policy_version TEXT       NOT NULL,
+    occurred_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_alert_event_kind CHECK (
+        kind IN ('opened','reconfirmed','escalated','closed'))
+);
+
+-- 评测运行的身份。run.eval_run_id 指向这里，使评测轨迹与生产轨迹可分离。
+CREATE TABLE eval_run (
+    eval_run_id    UUID PRIMARY KEY,
+    fixture_set    TEXT        NOT NULL,          -- 冻结证据缓存的标识
+    backend        TEXT        NOT NULL,
+    policy_version TEXT        NOT NULL,
+    started_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at    TIMESTAMPTZ
+);
+
+CREATE INDEX ix_alert_active ON alert(status, severity, last_confirmed_at DESC);
+CREATE INDEX ix_alert_event_alert ON alert_event(alert_id, event_id);
+```
+
+### 对既有审计表的追加
+
+`run` 与 `llm_call` 属于 `0001` 已冻结的审计层，加列走 ALTER，**不改写 §6 的冻结 DDL**（同 F03 在 `0002` 的先例）：
+
+```sql
+ALTER TABLE llm_call ADD COLUMN bundle_id UUID REFERENCES context_bundle(bundle_id);
+ALTER TABLE llm_call ADD COLUMN backend   TEXT;
+ALTER TABLE run      ADD COLUMN eval_run_id UUID REFERENCES eval_run(eval_run_id);
+```
+
+- `llm_call.bundle_id`：回答「这次调用模型看到了什么」。`productinfo.md` §11 已承诺回答此问题，缺它则无法回答。
+- `llm_call.backend`：与 `model` 分开——同一模型可经不同后端，跨后端比较要按后端而非模型分组。
+- `run.eval_run_id`：非空即该 Run 属于某次评测，使评测轨迹与生产轨迹可分离。
+
+三者都属于**写入时不记就补不回来**的字段，与 trace 导出格式无关；格式可随时从关系型数据导出，因此不在本期冻结。
+
+### 为什么 `policy_version` 不能省
+
+不记录判定时采用的阈值版本，就永远无法回答「按新阈值这条告警还会不会触发」——而这正是给告警系统做回归测试的核心动作（F20）。它属于**写入时不记就补不回来**的一类，与格式无关。
+
+### 三个时刻的分工
+
+`first_seen_at` 重复触发时不改写，`last_confirmed_at` 每次证据仍成立时更新，`closed_at` 只由状态回退写入。**采集失败只影响 `last_confirmed_at` 的停滞，既不产生告警也不关闭告警**（FR-11、EV-48）——失败意味着不知道，不意味着恢复正常。
+
+## 10. ⑧ 运行时层（F14/F15）
+
+Harness 与 Runtime 的三张表：一次模型调用的上下文投影、节点的版本化产出、节点尝试的检查点。契约见 `docs/spec/interfaces.md`「ContextBundle」「Artifact」与 `docs/spec/state-machine.md` §4，本节只定义表结构。
+
+`context_bundle` 与 `artifact` 是只插入语义，`artifact` 的唯一例外是 `superseded_by` 的窄列回填（同 ⑥ 层）。`node_checkpoint` 持当前尝试的状态，需要窄列更新（同 `run` 与 `external_action`）；历史由 `attempt` 序列与 `run_state_event` 承担。角色授权随本层迁移一并定义。
+
+**迁移顺序**：⑦ 层「对既有审计表的追加」中的 `llm_call.bundle_id` 引用本层的 `context_bundle`，本层必须先于该 ALTER 建出。
+
+```sql
+-- 一次模型调用实际看到了什么。Context 是权威状态的可重建投影，不是聊天记录。
+CREATE TABLE context_bundle (
+    bundle_id        UUID PRIMARY KEY,
+    run_id           UUID        NOT NULL REFERENCES run(run_id),
+    tenant_id        TEXT        NOT NULL DEFAULT 'default',
+    schema_version   TEXT        NOT NULL,
+    purpose          TEXT        NOT NULL,        -- 本次调用的有界任务
+    business_state_refs JSONB    NOT NULL,
+    evidence_refs    JSONB       NOT NULL,
+    artifact_refs    JSONB       NOT NULL,
+    human_input_refs JSONB       NOT NULL,
+    instructions     TEXT        NOT NULL,        -- 已渲染的指令；凭据与模型隐藏思维不得进入
+    manifest         JSONB       NOT NULL,        -- 见下方两个 CHECK
+    content_hash     TEXT        NOT NULL,        -- 重复编译的等价性判据（F14）
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_bundle_manifest_keys CHECK (jsonb_path_exists(manifest,
+        '$ ? (exists(@.compiler_version) && exists(@.token_estimate) && exists(@.included)
+              && exists(@.excluded) && exists(@.summaries))')),
+    -- excluded 的五个取值不得合并：expired 要求重查或转人工，budget 只是本次上下文没放下。
+    CONSTRAINT ck_bundle_excluded_reason CHECK (NOT jsonb_path_exists(manifest,
+        '$.excluded[*].reason ? (@ != "expired" && @ != "budget" && @ != "permission"
+              && @ != "superseded" && @ != "irrelevant")'))
+);
+
+-- 节点产出的版本化结果。不覆盖旧版本：新版本插入新行并回填旧行的 superseded_by。
+CREATE TABLE artifact (
+    artifact_id    UUID PRIMARY KEY,
+    run_id         UUID        NOT NULL REFERENCES run(run_id),
+    tenant_id      TEXT        NOT NULL DEFAULT 'default',
+    kind           TEXT        NOT NULL,          -- risk_finding_set / investigation_summary / proposal_explanation
+    version        INTEGER     NOT NULL,          -- 同 (run_id, kind) 内递增
+    schema_version TEXT        NOT NULL,
+    content        JSONB       NOT NULL,
+    content_hash   TEXT        NOT NULL,
+    input_refs     JSONB       NOT NULL,          -- evidence_id / snapshot_id / artifact_id；回指的起点
+    producer       TEXT        NOT NULL,          -- 产出该产物的 worker 或确定性节点
+    bundle_id      UUID        REFERENCES context_bundle(bundle_id),  -- 模型产物指向其上下文；确定性产物为 NULL
+    llm_call_id    UUID        REFERENCES llm_call(llm_call_id),      -- 使重试关系按调用尝试可辨（EV-37）
+    -- 取代在同一事务内完成：先回填旧行，再插入新行；自引用外键因此必须可延迟。
+    superseded_by  UUID        REFERENCES artifact(artifact_id) DEFERRABLE INITIALLY DEFERRED,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_artifact_version UNIQUE (run_id, kind, version),
+    CONSTRAINT ck_artifact_version CHECK (version > 0),
+    CONSTRAINT ck_artifact_not_self_superseded CHECK (
+        superseded_by IS NULL OR superseded_by <> artifact_id)
+);
+
+-- EV-37 的强制点：同一 (run, kind) 同时只能有一个未被取代的版本。
+CREATE UNIQUE INDEX uq_artifact_current ON artifact(run_id, kind) WHERE superseded_by IS NULL;
+
+-- 节点尝试的检查点。恢复只读本表与 run_state_event，不读模型聊天记录。
+CREATE TABLE node_checkpoint (
+    checkpoint_id    UUID PRIMARY KEY,
+    run_id           UUID        NOT NULL REFERENCES run(run_id),
+    node_id          TEXT        NOT NULL,
+    node_kind        TEXT        NOT NULL,        -- deterministic / tool / model / human
+    attempt          INTEGER     NOT NULL,        -- 同 (run_id, node_id) 内递增
+    workflow_version TEXT        NOT NULL,        -- 节点选择所依据的 workflow 定义版本
+    input_refs       JSONB       NOT NULL,
+    status           TEXT        NOT NULL,        -- running / committed / failed
+    result_ref       JSONB,                       -- artifact_id / evidence_id / tool_call_id
+    error            JSONB,                       -- 错误分类与原因
+    next_node        TEXT,
+    side_effect      TEXT        NOT NULL DEFAULT 'none',  -- none / pending / confirmed / unknown
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at      TIMESTAMPTZ,
+    CONSTRAINT uq_node_attempt UNIQUE (run_id, node_id, attempt),
+    CONSTRAINT ck_checkpoint_attempt CHECK (attempt > 0),
+    CONSTRAINT ck_checkpoint_kind CHECK (node_kind IN ('deterministic','tool','model','human')),
+    CONSTRAINT ck_checkpoint_status CHECK (status IN ('running','committed','failed')),
+    CONSTRAINT ck_checkpoint_finished CHECK (
+        (status = 'running' AND finished_at IS NULL)
+        OR (status <> 'running' AND finished_at IS NOT NULL)),
+    CONSTRAINT ck_checkpoint_committed_result CHECK (status <> 'committed' OR result_ref IS NOT NULL),
+    CONSTRAINT ck_checkpoint_failed_error CHECK (status <> 'failed' OR error IS NOT NULL),
+    CONSTRAINT ck_checkpoint_side_effect CHECK (
+        side_effect IN ('none','pending','confirmed','unknown')),
+    -- 只有工具节点会产生外部副作用；其他节点恒为 none，恢复时可安全重算。
+    CONSTRAINT ck_checkpoint_side_effect_kind CHECK (node_kind = 'tool' OR side_effect = 'none')
+);
+
+CREATE INDEX ix_context_bundle_run ON context_bundle(run_id, created_at DESC);
+CREATE INDEX ix_artifact_run ON artifact(run_id, kind, version DESC);
+CREATE INDEX ix_checkpoint_run ON node_checkpoint(run_id, started_at DESC);
+```
+
+### 上下文的两条 CHECK 不是装饰
+
+`manifest` 少一个键，`/api/runs/{run_id}/context/{bundle_id}` 就答不出"这次调用看到了什么"，而这是 `productinfo.md` §11 已承诺回答的问题。`excluded` 的五个取值同理：`expired`（证据超出新鲜度窗口）要求重查或转人工，`budget`（预算不足被裁剪）只是本次上下文没放下——合并成一个"被裁掉了"，恢复时就无法判断该重查还是该继续。取值表在 `interfaces.md`「ContextBundle」，此处只做机械化强制。
+
+### 取代必须在同一事务内先回填后插入
+
+`uq_artifact_current` 是 EV-37 的强制点：模型已返回、产物未落库时崩溃，重试会产生第二份内容，部分唯一索引让它必须先回填旧行的 `superseded_by` 才写得进去，重试关系留在 `llm_call_id` 上。手法与 `uq_alert_active` 相同。
+
+由此产生一个顺序约束：回填在前，新行尚不存在，所以自引用外键声明为 `DEFERRABLE INITIALLY DEFERRED`，在 COMMIT 时才校验。延迟不等于放弃——指向不存在行的取代仍会在 COMMIT 失败。
+
+### `side_effect` 不能由 `status` 推断
+
+`failed` 不区分"请求没发出去"和"发出去了但结果未知"。恢复时前者可以按相同输入重算，后者只能核对（`state-machine.md` §4、`ARCHITECTURE.md` 不变量 6）。这属于**写入时不记就补不回来**的字段，与 `alert.policy_version` 同类。
+
+### `content_hash` 承担"可重建"的判据
+
+F14 要求同一 Run 状态重复编译得到等价 bundle。没有内容哈希就只能逐字段比对 JSONB，摘要或裁剪策略一变就误报差异，等价性无从断言。
+
+`workflow_version` 同理：节点选择依据的 workflow 定义版本必须与 checkpoint 同行保存，否则定义演进后无法判断旧 Run 还能不能按原路恢复（`state-machine.md` §3「created → analyzing」要求工作流定义版本）。定义采用何种格式仍见 `ARCHITECTURE.md` A-TBD-01，本列只存版本标识，不预设格式。
+
+## 11. ⑨ 语义层（F21）
+
+业务术语不靠模型理解，靠冻结的注册表选择。Intake agent 做的是**枚举分类**（选哪个指标 + 填参数），不是生成 SQL。
+
+```sql
+CREATE TABLE metric_definition (
+    metric_id     TEXT        NOT NULL,           -- 如 allocatable_qty
+    version       INTEGER     NOT NULL,
+    display_name  TEXT        NOT NULL,           -- 可分配量
+    aliases       JSONB       NOT NULL,           -- ["可用量","可分配库存"]；别名不跨指标复用
+    expression    TEXT        NOT NULL,           -- on_hand - quarantine - allocated_to_other_demand
+    unit          TEXT        NOT NULL,
+    applies_to    TEXT        NOT NULL,           -- component / line / demand
+    caveat        TEXT,                           -- 口径陷阱说明，进 prompt
+    effective_from TIMESTAMPTZ NOT NULL,
+    created_by    TEXT        NOT NULL,
+    PRIMARY KEY (metric_id, version)
+);
+```
+
+`MOQ` / `MPQ` / `SPQ` 必须是三条独立记录，别名互不通用——这是 LLM 最常混淆的一组，也是 `caveat` 字段存在的理由。
+
+指标未命中注册表时返回 `unknown_metric` 并转人工，**不得由模型即兴定义口径**。
+
+## 12. 未决与已知缺口
 
 | 项 | 状态 |
 |---|---|
-| 合成时间序列数据的表结构（库存/出入库/在途事件的时间维） | 未定。`inventory` 当前是快照而非事件流，Monitor 计算库存周转率需要事件级历史，schema 待 T04 设计 |
-| `component` 的技术规格字段（参数、分类、规格书链接） | 不建模。D12 移除 RAG 后，技术信息在运行时由供应查询工具返回，不预先建库 |
+| 契约 35 表 vs 迁移 22 表 | 有意分期：`0001` 冻结 ①～⑤ 层 22 表；⑥ 证据层（F12）、⑦ 预警层（F18）、⑧ 运行时层（F14/F15）、⑨ 语义层（F21）已写契约、迁移待建。`tests/test_schema.py` 对两个数字分别断言，任何一侧漂移都会失败 |
+| `llm_call.worker` 与新 Worker 名册 | 注释已随 D02 更新为 `supervisor / intake / manufacturer / adjudicator / report`；`internal`、`sourcing`、`action` 是确定性服务，不产生 llm_call |
+| `llm_call.worker` 与 `metrics_snapshot` | 遗留兼容结构。前者暂写 node_id，后者当前不读写；删除或改名必须通过迁移并同步测试 |
+| `component` 的技术规格字段（参数、分类、规格书链接） | 不预建通用知识库；当前任务需要时由工具产生 Evidence |
 | 目标业务系统（ERP）侧的表 | 不在本项目库内。Agent 自有 PostgreSQL 与 ERP 是两个独立系统 |
 | `identity_status` 的 `verified` 取值 | CHECK 已允许，但核验流程未建（T12），当前数据全部为 `source_asserted` |
 | 税费与运费 | 有意不建模，见 §5 |

@@ -23,17 +23,37 @@ def revision():
     return module
 
 
-def spec_ddl():
-    blocks = re.findall(r"```sql\n(.*?)```", SPEC.read_text(), re.DOTALL)
+#: Where the frozen initial contract ends and later, separately-migrated layers begin.
+#: One document stays the single DDL source while test_frozen_migration_matches_contract
+#: keeps asserting that 0001 never drifts.
+EVIDENCE_SECTION = "## 8. \u2465 \u8bc1\u636e\u5c42"
+
+
+def _create_blocks(markdown):
+    blocks = re.findall(r"```sql\n(.*?)```", markdown, re.DOTALL)
     return "\n".join(block for block in blocks if "CREATE TABLE" in block)
+
+
+def frozen_ddl():
+    """Only the layers 0001 froze; the evidence layer migrates separately."""
+    return _create_blocks(SPEC.read_text().split(EVIDENCE_SECTION)[0])
+
+
+def spec_ddl():
+    return _create_blocks(SPEC.read_text())
 
 
 def test_frozen_migration_matches_contract():
     # F03 has an explicitly approved ALTER migration; all other initial DDL stays frozen.
     def without_demand_line(ddl):
         return re.sub(r"CREATE TABLE demand_line .*?\n\);", "", ddl, flags=re.DOTALL)
-    assert without_demand_line(REVISION.with_suffix(".sql").read_text()) == without_demand_line(spec_ddl())
-    assert len(re.findall(r"CREATE TABLE", spec_ddl())) == 22
+    assert without_demand_line(REVISION.with_suffix(".sql").read_text()) == without_demand_line(frozen_ddl())
+    assert len(re.findall(r"CREATE TABLE", frozen_ddl())) == 22
+    # The evidence (F12), alerting (F18), runtime (F14/F15) and semantic (F21) layers
+    # grow the contract; they migrate separately from 0001, but must not drift silently.
+    assert len(re.findall(r"CREATE TABLE", spec_ddl())) == 35
+    # 35 contracted, 22 migrated. The gap is registered in data-model.md §12;
+    # when ⑥⑦⑧⑨ get migrations these two numbers converge and this test changes.
 
 
 def test_environment_url_overrides_dotenv(monkeypatch):
@@ -53,7 +73,10 @@ def test_invalid_url_does_not_disclose_credentials(monkeypatch):
 @pytest.mark.integration
 def test_upgrade_repeat_and_downgrade(migrated):
     conn, config, schema = migrated
-    expected = set(re.findall(r"CREATE TABLE (\w+)", spec_ddl()))
+    # Only the frozen layers have migrations; ⑥⑦⑧⑨ are contracted but not yet
+    # migrated by design (data-model.md §12). Comparing against the full spec
+    # here would report that intentional split as schema drift.
+    expected = set(re.findall(r"CREATE TABLE (\w+)", frozen_ddl()))
     assert set(inspect(conn).get_table_names(schema=schema)) == expected | {"alembic_version"}
     command.upgrade(config, "head")
     assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
@@ -111,16 +134,19 @@ def test_ddl_failure_is_atomic(migrated):
 
 @pytest.mark.integration
 def test_migrated_columns_and_constraints_match_current_contract(migrated):
-    """Compare migrated schema with an independently created target from the spec."""
+    """Compare migrated schema with an independently created target from the spec.
+
+    Scoped to the frozen layers: the later layers have no migration to compare.
+    """
     conn, _, actual_schema = migrated
     expected_schema = "test_target_" + uuid4().hex
     conn.execute(text(f'CREATE SCHEMA "{expected_schema}"'))
     conn.execute(text(f'SET LOCAL search_path TO "{expected_schema}"'))
-    for statement in re.sub(r"--[^\n]*", "", spec_ddl()).split(";"):
+    for statement in re.sub(r"--[^\n]*", "", frozen_ddl()).split(";"):
         if statement.strip():
             conn.execute(text(statement))
     inspector = inspect(conn)
-    for table in re.findall(r"CREATE TABLE (\w+)", spec_ddl()):
+    for table in re.findall(r"CREATE TABLE (\w+)", frozen_ddl()):
         def columns(schema, table=table):
             return [(c["name"], str(c["type"]), c["nullable"], c["default"])
                     for c in inspector.get_columns(table, schema=schema)]

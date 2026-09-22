@@ -8,7 +8,7 @@
     "_rule": "层级定义见 DECISIONS.md D14。不是每个 Feature 都需要四层；不需要的层在 evidence 中写 'not_applicable: <理由>'，不得留空蒙混。③④ 被阻塞时记 blocked，不得跳过后宣称完成。"
   },
   "_context_refs_note": "context_refs 是该 Feature 的最小上下文投影，Codex 按 DEVELOPMENT.md「每 Feature 的上下文投影」定点读取，禁止通读整份文件。decisions=DECISIONS.md 的 Dxx 锚点；architecture_sections=ARCHITECTURE.md 的 ## 标题；requirements_sections=productinfo.md 的编号章节；rules=docs/product/requirements.md 的 FR/BR 编号；specs=docs/spec/ 下的文件与章节；cases=docs/product/acceptance-cases.md 的 EV 编号。",
-  "_slice": "首个切片：采购业务核 + Persistence。选它是因为零外部依赖——不需要 LLM、供应商 API 或 ERP，①②③ 三层全部能在本地跑完，且它是其余一切的底座。DigiKey 凭据丢失与合成时间序列缺失（PROGRESS.md T04）都不阻塞本切片。",
+  "_slice": "已完成：采购业务核 + Persistence（F01—F07）。当前切片：Harness、Agent 架构与判定内核。依赖顺序即开发顺序：F10→F11→F12→F13→F14→F15→F16→F17→F21→F22→F23→F18→F24，F19/F20 并行收尾。Q-01/Q-02/Q-04 未冻结不阻塞——ReplayBackend 与 sample provenance 足以把 ①②③ 三层在本地跑完。在用户批准前不修改任何既有 state/evidence。",
   "features": [
     {
       "id": "F01",
@@ -30,7 +30,7 @@
       "context_refs": {
         "decisions": [
           "D14",
-          "D18"
+          "D16"
         ],
         "architecture_sections": [
           "一级逻辑模块",
@@ -66,7 +66,7 @@
       },
       "context_refs": {
         "decisions": [
-          "D11"
+          "D04"
         ],
         "architecture_sections": [
           "当前物理结构边界"
@@ -224,11 +224,12 @@
         "contract": "2026-09-14 make compile + make lint passed.",
         "offline": "2026-09-14 make test: 43 passed, 10 integration deselected. EV-13/14 quantities/tiers, missing price/stock/lead-time, invalid quotes, identity uncertainty; currencies and packaging preserved; no supplier calls.",
         "integration": "not_applicable: 纯算术，输入为固定报价结构",
-        "e2e": "not_applicable: 真实供应商查询属后续切片，且 DigiKey 凭据待重新申请"
+        "e2e": "not_applicable: 真实供应查询属于后续 Feature，首个数据源尚未确定"
       },
       "context_refs": {
         "decisions": [
-          "D13"
+          "D04",
+          "D09"
         ],
         "rules": [
           "FR-03",
@@ -290,7 +291,7 @@
     },
     {
       "id": "F08",
-      "behavior": "FastAPI 把 F01–F07 的确定性能力暴露为 HTTP 接口：项目与 BOM 只读查询、需求提交与展开、缺口计算、方案生成与读回。路由层只做 DTO 校验与序列化，不含任何业务规则；所有数量与金额以字符串序列化，不经过 float；响应包络与 docs/spec/interfaces.md 的 ToolResult 同构。",
+      "behavior": "FastAPI 把 F01–F07 的确定性能力暴露为 HTTP 接口：项目与 BOM 只读查询、需求提交与展开、缺口计算、方案生成与读回。路由层只做 DTO 校验与序列化，不含业务规则；所有数量与金额以字符串序列化，不经过 float。",
       "depends_on": [
         "F07"
       ],
@@ -310,7 +311,7 @@
       "context_refs": {
         "decisions": [
           "D04",
-          "D19"
+          "D17"
         ],
         "architecture_sections": [
           "一级逻辑模块",
@@ -327,7 +328,7 @@
           "BR-03"
         ],
         "specs": [
-          "docs/spec/interfaces.md",
+          "docs/spec/http-api.md",
           "docs/spec/data-model.md"
         ],
         "cases": [
@@ -339,14 +340,14 @@
     },
     {
       "id": "F09",
-      "behavior": "Vue 3 对话式界面可完成：提交生产需求、查看展开结果与未解决项、对多候选行做人工选型、触发缺口计算、查看版本化方案与其证据、查看工具调用轨迹。未核验身份与模拟数据在界面上有明确标记。",
+      "behavior": "界面围绕告警组织：告警列表与详情、触发依据与证据跳转、监测对象与阈值配置、决策支持报告（比价建议 / 官方推荐替代 / 多候选对比）、人工处理与运行轨迹。技术栈待用户确定；未核验、过期、多源分歧、sample/cache/replay 数据必须明确标记。",
       "depends_on": [
         "F08"
       ],
       "verification": {
-        "contract": "npm --prefix frontend run build",
-        "offline": "npm --prefix frontend run test",
-        "integration": "make services-up && make run 后对真实 API 的界面冒烟",
+        "contract": "TBD: UI 技术栈确定后写入权威构建命令",
+        "offline": "TBD: UI 技术栈确定后写入权威测试命令",
+        "integration": "TBD: UI 技术栈确定后定义真实 API 冒烟",
         "e2e": null
       },
       "state": "planned",
@@ -358,6 +359,7 @@
       },
       "context_refs": {
         "decisions": [
+          "D17",
           "D19"
         ],
         "requirements_sections": [
@@ -367,18 +369,687 @@
         "rules": [
           "FR-01",
           "FR-04",
-          "FR-05"
+          "FR-11",
+          "FR-12",
+          "BR-15",
+          "BR-16"
+        ],
+        "specs": [
+          "docs/spec/state-machine.md",
+          "docs/spec/http-api.md",
+          "docs/spec/ui-contract.md"
+        ],
+        "cases": [
+          "EV-40",
+          "EV-41",
+          "EV-43"
+        ]
+      },
+      "notes": "界面只遵守 docs/spec/ui-contract.md，不预设框架。多源分歧必须显式呈现，不得合并为单值；unresolved_reason 决定人工补充交互；Evidence provenance、身份状态和未知字段必须始终可见。"
+    },
+    {
+      "id": "F10",
+      "behavior": "ModelBackend 统一契约与 ReplayBackend：ModelRequest/ModelResult/ModelCapabilities 定义完成，ReplayBackend 按请求内容寻址重放且跨进程逐字节稳定；能力缺失返回 CAPABILITY_UNSUPPORTED，不静默丢弃 output schema 或工具约束。",
+      "depends_on": [
+        "F07"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "not_applicable: 契约测试与回放不触达外部服务或数据库",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 真实后端调用属 F18，需用户授权并产生费用"
+      },
+      "context_refs": {
+        "decisions": [
+          "D05",
+          "D14"
+        ],
+        "architecture_sections": [
+          "核心运行时类型",
+          "一级逻辑模块"
+        ],
+        "rules": [
+          "BR-14"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-30"
+        ]
+      },
+      "notes": "计数口径见 Q-02：ReplayBackend 不计入真实后端。fixture 按请求内容哈希寻址，不按调用序号——否则恢复后重入节点会取到下一条录音。"
+    },
+    {
+      "id": "F11",
+      "behavior": "EvidenceGuard 生效：模型输出 schema 不含权威事实字段；数值须回指工具响应字段，文档型原文片段须在记录定位处逐字命中；任一不成立则整次 ModelTurn 作废并记 MODEL_EVIDENCE_VIOLATION，不采纳纠正后版本。",
+      "depends_on": [
+        "F10"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "not_applicable: 纯校验逻辑，输入为固定 Evidence 与模型输出",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 不依赖真实后端；任何后端都在同一处校验"
+      },
+      "context_refs": {
+        "decisions": [
+          "D04",
+          "D05"
+        ],
+        "architecture_sections": [
+          "全局不变量"
+        ],
+        "rules": [
+          "BR-17"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-45",
+          "EV-46"
+        ]
+      },
+      "notes": "落实 productinfo §10「模型撰写事实值」必须为零。硬门禁，不得以 prompt 约束替代。"
+    },
+    {
+      "id": "F12",
+      "behavior": "证据层五张表建出并可迁移：evidence 按 locator_kind 分字段型/文档型两套定位块；retrieved_at 为新鲜度唯一依据且缓存命中不刷新；official_document 按 content_sha256 内容寻址、原始字节与抽取文本落本地文件系统；document_resolution 记录三态与 strategy_used。只插入语义，取代用 superseded_by 回填。",
+      "depends_on": [
+        "F01",
+        "F07"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 仅本地数据库结构"
+      },
+      "context_refs": {
+        "decisions": [
+          "D07",
+          "D13"
+        ],
+        "architecture_sections": [
+          "存储分工",
+          "核心运行时类型"
+        ],
+        "rules": [
+          "BR-12"
+        ],
+        "specs": [
+          "docs/spec/data-model.md",
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-29"
+        ]
+      },
+      "notes": "契约见 data-model.md §8 与 interfaces.md「Evidence」。extractor_version 必填——抽取器升级会整体位移字符偏移，不记录则存量 span 静默失效。文档不得改为进程内缓存：重启清空会使「已采集不重复采集」失效并让 F20 无缓存可冻结。"
+    },
+    {
+      "id": "F13",
+      "behavior": "ToolRegistry 按场景与权限注入工具：每个工具声明 effect、permission、idempotency、timeout/retry_policy 与 provenance；模型只能调用被注入的工具；write 工具缺 PermissionDecision 时被服务端拒绝；重试只在 Runtime 一层发生。",
+      "depends_on": [
+        "F10",
+        "F12"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: MVP 工具以 sample/replay provenance 实现，真实来源见 Q-01"
+      },
+      "context_refs": {
+        "decisions": [
+          "D08",
+          "D09"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块",
+          "依赖方向"
+        ],
+        "rules": [
+          "BR-11"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-09",
+          "EV-10",
+          "EV-11",
+          "EV-17",
+          "EV-18",
+          "EV-31"
+        ]
+      },
+      "notes": "ToolResult 的 ok/partial/not_found/error 四态不得合并；外部文本标记为不可信数据，不进入 workflow 控制条件。"
+    },
+    {
+      "id": "F14",
+      "behavior": "ContextCompiler 从权威状态编译 ContextBundle：manifest 记录 compiler_version、token_estimate、included、excluded 与 summaries；excluded 取值 expired/budget/permission/superseded/irrelevant 且不合并；同一 Run 状态重复编译得到可重建的等价 bundle。",
+      "depends_on": [
+        "F12"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 编译过程不触达外部服务"
+      },
+      "context_refs": {
+        "decisions": [
+          "D06",
+          "D07"
+        ],
+        "architecture_sections": [
+          "Context 与证据数据流",
+          "全局不变量"
+        ],
+        "rules": [
+          "BR-13"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-29",
+          "EV-33",
+          "EV-34"
+        ]
+      },
+      "notes": "expired 与 budget 后果不同：前者要求重查或转人工，后者只是本次没放下。A-TBD-03 未定前不得以「删除旧消息数量」冒充语义摘要。"
+    },
+    {
+      "id": "F15",
+      "behavior": "DurableWorkflow 按 docs/spec/state-machine.md 执行并可恢复：四类节点由状态与显式规则选择，不由模型自由跳转；每个节点尝试落 checkpoint；进程重启后从最后一个已提交检查点继续，确定性节点可安全重算，已完成的写副作用不重复执行。",
+      "depends_on": [
+        "F13",
+        "F14"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 外部写节点属 Q-03，MVP 保持 deferred"
+      },
+      "context_refs": {
+        "decisions": [
+          "D02",
+          "D03",
+          "D12"
+        ],
+        "architecture_sections": [
+          "预警与决策支持执行图",
+          "一级逻辑模块",
+          "全局不变量"
+        ],
+        "rules": [
+          "FR-09"
         ],
         "specs": [
           "docs/spec/state-machine.md"
         ],
         "cases": [
-          "EV-03",
-          "EV-04",
-          "EV-07"
+          "EV-19",
+          "EV-21",
+          "EV-22",
+          "EV-24",
+          "EV-25",
+          "EV-26",
+          "EV-36",
+          "EV-37",
+          "EV-51"
         ]
       },
-      "notes": "按 D19：只借鉴 procureflow-agent 的交互设计思想，不复制其任何源代码，不逐行改写。productinfo §7 的七段式回答结构是报告渲染的依据；§8 要求查不到不等于停产或缺货，界面不得把未知渲染成零。unresolved_reason 的五个取值（None / quantity_basis_unverified / missing_candidate / candidate_selection_required / candidate_identity_unverified）决定每行渲染哪种交互。"
+      "notes": "Runtime 不依赖模型聊天记录决定从哪里继续。中断的 write 只核对不重发。"
+    },
+    {
+      "id": "F16",
+      "behavior": "Human Gate 闭环：needs_input 与 awaiting_approval 是一等状态而非错误；人工补充/选型/要求重查/批准/驳回通过同一 Run 恢复；PermissionDecision 绑定版本与 content_hash；批准后依据改变时 revalidating 必须打回重新审批。",
+      "depends_on": [
+        "F15"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 内部审批闭环不触达外部系统；外部草稿见 Q-03"
+      },
+      "context_refs": {
+        "decisions": [
+          "D12"
+        ],
+        "architecture_sections": [
+          "预警与决策支持执行图",
+          "全局不变量"
+        ],
+        "rules": [
+          "BR-08",
+          "BR-09",
+          "FR-06"
+        ],
+        "specs": [
+          "docs/spec/state-machine.md",
+          "docs/spec/http-api.md"
+        ],
+        "cases": [
+          "EV-18",
+          "EV-19",
+          "EV-20",
+          "EV-24",
+          "EV-38"
+        ]
+      },
+      "notes": "等待不是错误。审批过期策略见 S-TBD-01，未定前保持等待。"
+    },
+    {
+      "id": "F17",
+      "behavior": "DocumentResolver 四级策略链（本地缓存 → 厂商 URL 模板 → 分销商 datasheet 链接 → 厂商站内搜索 skill），任一命中即停，全部未命中输出 unresolvable；命中 ≥2 条输出 ambiguous 转人工，不取第一条；寻址、取回、抽取三步分开，三种失败互不合并；并发按 content_sha256 single-flight 去重。",
+      "depends_on": [
+        "F13",
+        "F11"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 真实厂商站点抓取需用户授权，属 F18"
+      },
+      "context_refs": {
+        "decisions": [
+          "D08"
+        ],
+        "architecture_sections": [
+          "预警与决策支持执行图",
+          "一级逻辑模块"
+        ],
+        "rules": [
+          "FR-04",
+          "FR-12"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-39",
+          "EV-44",
+          "EV-49",
+          "EV-50",
+          "EV-52",
+          "EV-53",
+          "EV-54"
+        ]
+      },
+      "notes": "契约见 interfaces.md §4.1。寻址而非相似度检索（productinfo §6 硬约束）。站内搜索以按厂商收口的 skill 实现，绑定 allowed_domains 且不跟随跨域重定向——这是使「任意网页浏览」非范围成立的唯一方式。调研 skill 按需触发且不得阻塞告警。T3 的 18 个元件必须全部 unresolvable（EV-44）。 覆盖模式（single/enumerated/parametric）是探测结果不是前置条件，首次探测后缓存到 official_document 供扇入复用；仅 decoded 命中时不得断言生命周期、不得发停产告警（EV-53）。"
+    },
+    {
+      "id": "F18",
+      "behavior": "告警引擎：业务事件触发监测对象复核，去重窗口内不创建第二个 Run；确定性规则从观察与上一状态差分判定告警；同一对象同一类型同时最多一条活动告警；状态回退时关闭并留痕；采集失败不产生也不关闭告警，只更新最近确认时间。",
+      "depends_on": [
+        "F15",
+        "F17"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 真实分销商与厂商接口见 Q-01/Q-04，需用户授权"
+      },
+      "context_refs": {
+        "decisions": [
+          "D01",
+          "D12"
+        ],
+        "architecture_sections": [
+          "预警与决策支持执行图",
+          "全局不变量"
+        ],
+        "rules": [
+          "FR-08",
+          "FR-11",
+          "BR-15"
+        ],
+        "specs": [
+          "docs/spec/state-machine.md",
+          "docs/spec/data-model.md"
+        ],
+        "cases": [
+          "EV-23",
+          "EV-28",
+          "EV-40",
+          "EV-41",
+          "EV-42",
+          "EV-47",
+          "EV-48",
+          "EV-55"
+        ]
+      },
+      "notes": "产品心脏。契约见 data-model.md §9。BR-15 由部分唯一索引 uq_alert_active 在数据库层强制，不靠应用先查后插（EV-55）。policy_version 必记——否则无法回答「按新阈值这条告警还会不会触发」，属写入时不记就补不回来的字段。阈值来自 business_rule 版本化配置，不写进 prompt 或节点。"
+    },
+    {
+      "id": "F19",
+      "behavior": "多源采集与分歧呈现：并发查询多个分销商，各源结果独立保存；某源失败不阻断其余；失败、超时与「该来源无此料」三态不合并；多源对同一事实分歧时各自保留，不取平均、不取最新、不任选其一。",
+      "depends_on": [
+        "F13"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 首个真实分销商数据源见 Q-01"
+      },
+      "context_refs": {
+        "decisions": [
+          "D08"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块"
+        ],
+        "rules": [
+          "FR-03",
+          "BR-16"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-06",
+          "EV-27",
+          "EV-43"
+        ]
+      },
+      "notes": "数据已有 5 家分销商结构（productinfo §9.1）。MVP 以 sample/replay provenance 实现，全链路显式标注，不声称真实库存。"
+    },
+    {
+      "id": "F20",
+      "behavior": "Replay/Eval Harness：固定数据集含 T1/T2/T3 三档与冻结证据缓存；同一组 fixture 上比较模型后端；失败用例显式登记；回归门禁至少断言同一状态变化只产生一条告警、零条无证据结论、T3 全部 unresolvable。",
+      "depends_on": [
+        "F18",
+        "F10"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 跨真实后端比较需用户授权"
+      },
+      "context_refs": {
+        "decisions": [
+          "D14"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块"
+        ],
+        "rules": [
+          "FR-09",
+          "BR-14",
+          "BR-15",
+          "BR-17"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-30",
+          "EV-35",
+          "EV-39",
+          "EV-40",
+          "EV-44",
+          "EV-45"
+        ]
+      },
+      "notes": "门禁阻止合并，不是报告。模型不得看到隐藏预期答案。"
+    },
+    {
+      "id": "F21",
+      "behavior": "Semantic Layer 就位：metric_definition 注册表版本化落库；Intake 的指标解析是从注册表枚举选择并填参数，不生成 SQL；未命中返回 unknown_metric 转人工；MOQ/MPQ/SPQ 为三条独立记录且别名互不通用。",
+      "depends_on": [
+        "F12"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 注册表为本地配置，不触达外部"
+      },
+      "context_refs": {
+        "decisions": [
+          "D02"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块"
+        ],
+        "rules": [
+          "FR-14",
+          "BR-19"
+        ],
+        "specs": [
+          "docs/spec/data-model.md"
+        ],
+        "cases": [
+          "EV-56",
+          "EV-57"
+        ]
+      },
+      "notes": "业务术语不靠模型理解，靠冻结注册表选择。口径变更走版本化，历史结论仍指向其当时的口径版本。"
+    },
+    {
+      "id": "F22",
+      "behavior": "Supervisor 条件路由：按请求复杂度选择链路而非每次跑全部 Worker；Worker 包装为可调用工具；路由决策可审计（判定依据、选中链路、被跳过的 Worker）；**路由失败退到最简链路而非报错终止**。",
+      "depends_on": [
+        "F15"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 路由不触达外部服务"
+      },
+      "context_refs": {
+        "decisions": [
+          "D02"
+        ],
+        "architecture_sections": [
+          "总体架构图"
+        ],
+        "rules": [
+          "FR-13",
+          "BR-20"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-58",
+          "EV-59"
+        ]
+      },
+      "notes": "Supervisor 是上下文枢纽，不推理业务、不改写 Worker 结果。子 agent 降维为工具调用，编排与实现解耦。"
+    },
+    {
+      "id": "F23",
+      "behavior": "确定性快路径与 Agent 兜底：无法判定时抛 typed ExceptionCase（枚举，非自由文本）；Exception Router 按类型分派到对应 agent；agent 解决不了升级人工；每次兜底留痕（例外类型、经手 agent、判定依据、引用的 Evidence）。",
+      "depends_on": [
+        "F22"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 例外分派为内部机制"
+      },
+      "context_refs": {
+        "decisions": [
+          "D02"
+        ],
+        "architecture_sections": [
+          "确定性快路径与 Agent 兜底",
+          "全局不变量"
+        ],
+        "rules": [
+          "FR-15",
+          "BR-18"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-60",
+          "EV-61"
+        ]
+      },
+      "notes": "Agent 不在主路径上——80% 请求零 LLM 成本。任何让 agent 直接承担常规判定的实现都违反 BR-18。"
+    },
+    {
+      "id": "F24",
+      "behavior": "Adjudicator 判定内核：生命周期阶段判定、多源分歧裁决、文档修订冲突裁决、证据充分性判定。判定必须引用 Evidence 并记录所用 policy_version；仅解码命中时不得断言生命周期；判不出来升级人工，不得放宽条件凑结论。",
+      "depends_on": [
+        "F17",
+        "F19",
+        "F23"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": null
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": "not_applicable: 真实来源见 Q-01/Q-04"
+      },
+      "context_refs": {
+        "decisions": [
+          "D01",
+          "D02"
+        ],
+        "architecture_sections": [
+          "确定性快路径与 Agent 兜底",
+          "全局不变量"
+        ],
+        "rules": [
+          "FR-11",
+          "BR-15",
+          "BR-16",
+          "BR-17"
+        ],
+        "specs": [
+          "docs/spec/interfaces.md"
+        ],
+        "cases": [
+          "EV-32",
+          "EV-33",
+          "EV-43",
+          "EV-50",
+          "EV-53",
+          "EV-62"
+        ]
+      },
+      "notes": "被四项业务能力复用，是系统内核。零售分析场景的判定是阈值比较，此处判错会导致用错料，必须独立评测。"
     }
   ]
 }

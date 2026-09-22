@@ -1,7 +1,7 @@
 # Codex 开发文档记录规则
 
 > **文档契约** · 类型：规则层 · 读取：首次会话 + 需要写任何文档/注释前，按节读
-> 更新：文档治理规则变更时由 Claude 写入；Codex 只读不写
+> 更新：文档治理规则变更且用户明确授权时
 > 独占：文档职责矩阵、SSOT 归属、题头契约块规范、文字记录边界
 > 不收录：架构事实、设计决策、需求条款、当前状态、命令
 
@@ -13,7 +13,7 @@
 
 ```markdown
 > **文档契约** · 类型：<入口|状态|队列|契约|规则|模块|参考|归档> · 读取：<何时、用什么姿势读>
-> 更新：<明确的触发条件> 由 <Claude|Codex|Harness> 写入
+> 更新：<明确的触发条件> 由 <用户授权的维护者|Harness> 写入
 > 独占：<本文是唯一正文来源的信息要素>
 > 不收录：<明确不该出现在本文的信息要素>
 ```
@@ -24,15 +24,17 @@
 
 | 层 | 文档 | 读取时机 | 更新时机 | 写入方 |
 |---|---|---|---|---|
-| 入口 | `AGENTS.md` | 每次会话启动，全文 | 全局硬约束变更 | Claude |
+| 入口 | `AGENTS.md` | 每次会话启动，全文 | 全局硬约束变更 | 用户授权的维护者 |
 | 状态 | `PROGRESS.md` | 每次会话启动，全文 | **Feature 完成、遇阻塞、验证失败后即时** | Codex |
 | 队列 | `docs/features.json` | 取任务时只读自己那条 + 被依赖条目 | Feature 状态流转 | Harness |
-| 契约 | `ARCHITECTURE.md`、`DECISIONS.md`、`productinfo.md` | **Feature 开始时定点读，禁止通读** | 架构/决策/需求变更 | Claude |
-| 契约 | `docs/product/requirements.md`、`docs/product/acceptance-cases.md`、`docs/product/GLOSSARY.md` | 按 FR/BR/EV 编号或术语定点读 | 需求条款、验收用例或术语变更 | Claude |
-| 契约 | `docs/spec/interfaces.md`、`docs/spec/state-machine.md`、`docs/spec/data-model.md`、`docs/spec/http-api.md`、`docs/spec/ui-contract.md` | 实现对应接口/状态/表/端点/视图时定点读 | 接口签名、状态迁移、表结构、端点或呈现规则变更 | Claude |
+| 契约 | `ARCHITECTURE.md`、`DECISIONS.md`、`productinfo.md` | **Feature 开始时定点读，禁止通读** | 架构/决策/需求变更 | 用户授权的维护者 |
+| 交接 | `docs/HANDOFF.md` | **新会话第一条，全文读** | 技术点矩阵、参考边界、被否决方案或阻塞项变化时 | 用户授权的维护者 |
+| 契约 | `docs/OPEN-QUESTIONS.md`（跨文档未决项） | 遇到 `Q-xx` 引用时定点读 | 未决项新增、冻结或被产品决定取代 | 用户授权的维护者 |
+| 契约 | `docs/product/requirements.md`、`docs/product/acceptance-cases.md`、`docs/product/GLOSSARY.md` | 按 FR/BR/EV 编号或术语定点读 | 需求条款、验收用例或术语变更 | 用户授权的维护者 |
+| 契约 | `docs/spec/interfaces.md`、`docs/spec/state-machine.md`、`docs/spec/data-model.md`、`docs/spec/http-api.md`、`docs/spec/ui-contract.md` | 实现对应接口/状态/表/端点/视图时定点读 | 接口签名、状态迁移、表结构、端点或呈现规则变更 | 用户授权的维护者 |
 | 规则 | `requirement.txt`（依赖与环境台账） | 准备环境或增删依赖时按节读 | **安装/升级/删除依赖后即时** | Codex |
-| 参考 | `docs/research/procurement-platforms.md` | 选型或评估配额时定点读 | 重新核对平台能力或条款 | Claude |
-| 规则 | `DEVELOPMENT.md`、本文件 | 首次 + 按节 | 工具链或治理规则变更 | Claude |
+| 参考 | `docs/research/procurement-platforms.md` | 选型或评估配额时定点读 | 重新核对平台能力或条款 | 用户授权的维护者 |
+| 规则 | `DEVELOPMENT.md`、本文件 | 首次 + 按节 | 工具链或治理规则变更 | 用户授权的维护者 |
 | 模块 | `src/*/AGENTS.md`、`src/*/ARCHITECTURE.md` | 进入该模块前 | 该模块接口或不变量变更 | Codex |
 | 归档 | `data/supplychain/` 下三份设计初稿 | **不读入**（正文已迁出，仅剩去向对照表） | 冻结 | — |
 
@@ -63,7 +65,8 @@
 | 环境变量与服务拓扑 | `.env.example`、`compose.yaml` | `DEVELOPMENT.md` 只说明用途 |
 | 数据现状与已知局限 | `data/supplychain/normalized/projects.yaml` | 各处一句指针 |
 | 原始数据文件完整性 | `data/supplychain/domdata/MANIFEST.json`（机器生成） | 不手工抄录哈希 |
-| 领域术语定义 | `docs/product/GLOSSARY.md`（待建） | — |
+| 领域术语定义 | `docs/product/GLOSSARY.md` | 引术语名 |
+| 跨文档未决项、当前对策、冻结条件 | `docs/OPEN-QUESTIONS.md` | 只写「见 Q-0x」，不复制正文；单文档内部的局部待定项留在该文档「待定项」节 |
 
 ### 不变量的双写分工
 
@@ -85,6 +88,19 @@
 不得新建 `NOTES.md`、`WORKLOG.md`、`TROUBLESHOOTING.md` 一类的过程日志文件。
 
 当前阶段仅持续追加用户逐条提出的规则。Codex 不主动重构、归类、删除、压缩或规范化本文件中的内容；最终由用户手动删除多余部分并完成梳理。
+
+## 编号治理
+
+`FR-xx`、`BR-xx`、`EV-xx`、`Dxx`、`Fxx` 与 `Q-xx` 一经分配即**永久占位**：
+
+- 条目删除后编号**不回收、不重排、不复用**，空缺就是空缺；
+- 已知空缺：`EV-15`、`EV-16`（随旧 D12 删除），`FR-10`（同上）；
+- 新增条目一律取当前最大编号 +1，不填补空缺；
+- 需要说明某个编号为何消失时，写在该编号所属文档的「已删除编号」处，不改动其他编号。
+
+理由：编号是跨文档引用的唯一锚点。一次重排会让 `docs/features.json` 的 `context_refs`、模块 `AGENTS.md` 的前置阅读清单和测试注释同时失效，且失效是静默的。
+
+`DECISIONS.md` 的 `Dxx` 在 2026-09-21 架构重构中做过一次性重排，对照表见该文附录。这是**唯一一次**例外，之后不再重排。
 
 ## 跨会话与多 Agent 初始化契约
 

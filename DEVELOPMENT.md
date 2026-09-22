@@ -17,25 +17,25 @@ make help
 
 边界说明：
 
-- `make setup` 建 `.venv`（缺失时）、按锁文件或 `requirements.txt` 装依赖、在缺少 `.env` 时由 `.env.example` 复制一份。不碰服务，不装系统级软件。
+- `make setup` 建 `.venv`（缺失时）、按锁文件或 `requirement.txt` 装依赖、在缺少 `.env` 时由 `.env.example` 复制一份。不碰服务，不装系统级软件。
 - `make status` 只报告解释器、虚拟环境、`.env` 与源码文件数；不启动任何东西。服务状态用 `make services-status`。
 - `make check` 是 `compile` + `lint` + `test` 的离线门禁，对应 `DECISIONS.md` D14 的 ①② 层。
-- `make run` / `make health` 目前会明确报错退出——`src/` 下尚无应用入口，这是如实报告而非失败。
+- `make run` 启动本地 FastAPI；`make health` 只有在服务已启动且就绪时通过。
 - `make freeze` 把当前虚拟环境固化为 `requirements.lock.txt`。
 
 源码或测试目录为空时，`compile` / `lint` / `test` 会打印「跳过」并以 0 退出。**跳过不等于通过**，记录证据时必须写明跳过原因，不得当作已验证。
 
 ## 环境
 
-**开发在本地进行**，借用的 GPU 服务器不再是默认环境，仅在后续确有需要时启用（见 `DECISIONS.md` D18）。
+**开发在本地进行**，借用的 GPU 服务器不再是默认环境，仅在后续确有需要时启用（见 `DECISIONS.md` D16）。
 
 - 语言/运行时：Python 3.11（已锁定，见 `DECISIONS.md`）。虚拟环境是项目根的 `.venv`，由 `make setup` 创建；解释器路径通过 `PYTHON` 变量覆盖。手工进入环境用 `source .venv/bin/activate`，但**日常操作走 `make`，不依赖是否已激活**——Makefile 内部一律用 `.venv/bin/python`。
 - 将 `.env.example` 复制为 `.env`（`make setup` 会自动做），密钥不得进入 Git。进程环境变量优先于 `.env`。
-- LLM Provider 通过抽象 `ModelProvider` 接口接入，不在代码或文档中写死具体厂商；启用开关与凭据走 `SUPPLYAGENT_LLM_*` 系列环境变量，变量名以 `.env.example` 为准。旗舰/便宜快速两档模型按 worker 在 YAML 配置中独立指定（见 `DECISIONS.md` D06）。**本地不跑任何模型推理**，全部外部调用。
+- LLM Provider 通过抽象 `ModelProvider` 接口接入，不在代码或文档中写死具体厂商；启用开关与凭据走 `SUPPLYAGENT_LLM_*` 系列环境变量，变量名以 `.env.example` 为准。模型通过统一 ModelBackend 接入，能力与路由使用版本化运行配置（见 `DECISIONS.md` D05）。**本地不跑任何模型推理**，全部外部调用。
 - 服务镜像和拓扑以 `compose.yaml` 为准：PostgreSQL 16.6 与 Redis 7.4.2，端口只绑 `127.0.0.1`。容器运行时是 colima（macOS Virtualization.framework）+ Docker CE 29.7.1。
 - 依赖来源：`requirements.lock.txt`（由 `make freeze` 生成）；当前已装版本与变更记录见根目录 `requirement.txt` 台账。机器上的既有环境不等于项目契约。
-- 组件版本必须与将来启用的任何远端环境保持一致，否则「本地通过」不能作为远端行为的证据（见 D18 约束）。
-- MVP 不引入向量库 / RAG（见 `DECISIONS.md` D12，Infrastructure 仅 LLM / PostgreSQL / Redis / 供应商 API）。
+- 组件版本必须与将来启用的任何远端环境保持一致，否则「本地通过」不能作为远端行为的证据（见 D16 约束）。
+- MVP 不引入通用向量库 / RAG（见 `DECISIONS.md` D11，Infrastructure 仅 LLM / PostgreSQL / Redis / 供应商 API）。
 
 ## 服务
 
@@ -145,7 +145,7 @@ Feature 是 Harness 和项目进度层的最小可独立验收单元，不是 Ag
 实现某个 Feature 时，避免 context 过载导致判断被无关决策干扰。**禁止在实现单个 Feature 时完整读取 `DECISIONS.md`、`ARCHITECTURE.md`、`productinfo.md` 三份文件的全文**，按以下定点读取流程执行：
 
 1. 打开 `docs/features.json`，只读该 Feature 自己的条目，取出它的 `context_refs` 字段（`decisions` / `architecture_sections` / 可选 `requirements_sections`）。
-2. 对 `context_refs.decisions` 里的每个 ID（如 `D07`），在 `DECISIONS.md` 里 `grep '<!-- id: D07 -->'` 定位到该决策的标题行，只读取从这一行到下一个 `## ` 标题之前的内容。锚点 ID 稳定，不依赖标题文字（标题文字后续可能改，ID 不变）。
+2. 对 `context_refs.decisions` 里的每个 ID（如 `D07`），在 `DECISIONS.md` 里 `grep '^## D07'` 定位到该决策的标题行，只读取从这一行到下一个 `## ` 标题之前的内容。编号稳定，不依赖标题其余文字。
 3. 对 `context_refs.architecture_sections` 里的每个章节标题（如「一级逻辑模块」），在 `ARCHITECTURE.md` 里定位对应的 `## ` 标题，只读取该章节到下一个同级或更高级标题之前的内容。`requirements_sections`（如 `8`）对 `productinfo.md`（编号章节 `## N.`）按同样方式定点读取。
 4. 如果该 Feature 有 `depends_on`，额外读取被依赖 Feature 在 `docs/features.json` 里的条目（了解上游产出的接口），但不需要读被依赖 Feature 关联的 `context_refs` 内容。
 
@@ -163,6 +163,6 @@ Feature 是 Harness 和项目进度层的最小可独立验收单元，不是 Ag
 - 该结构化升级报告统一覆盖两类触发场景：(i) 本节所述任一验证级别自动修复超过重试上限；(ii) 运行时角色/模块判断自身能力或权限不匹配（见 `src/contracts/AGENTS.md`）。两者都不得自行决定下一步转派给谁，一律停下等待升级处理。
 - 失败与修复记录写入 `PROGRESS.md` 验证记录表格的“失败原因”与“修复动作”列，保留审计痕迹；记录时须注明具体是哪个修复级（A/B/C/D）以及所属验证层。
 
-功能项以一次会话可完成为粒度校准：“运营人员可以按 SKU 查询当前库存”是合适的 Feature；“实现 Query Agent”过粗，“给 `ToolResult` 加一个字段”过细。创建文件、实现函数、增加字段等 implementation steps 不应机械提升为 Feature；只有当该步骤本身具有独立业务价值和独立验收标准时，才可作为 Feature。
+功能项以一次会话可完成为粒度校准：“运营人员可以按 SKU 查询当前库存”是合适的 Feature；“实现 Harness”过粗，“给 `ToolResult` 加一个字段”过细。创建文件、实现函数、增加字段等 implementation steps 不应机械提升为 Feature；只有当该步骤本身具有独立业务价值和独立验收标准时，才可作为 Feature。
 
 以上是开发 orchestration 契约；当前编排 Harness 与 `docs/features.json` 均未建立，因此不得将此规则表述为已自动执行。待实现该能力时，具体数据格式、scheduler 和 validator 行为应进一步下沉到对应代码模块附近的 `README.md`。

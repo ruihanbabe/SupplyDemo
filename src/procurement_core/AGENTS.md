@@ -7,11 +7,11 @@
 
 ## 职责
 
-拥有缺口计算、候选选型、报价计算、审批状态机等确定性业务规则。是分析类查询深度路径（Detail→Research→Summary→Action）的执行内核，被 Detail / Research / Action 复用。
+拥有缺口计算、候选选型、报价计算、方案版本与 content_hash 等确定性业务规则。被 Workflow Controller 的确定性节点调用，不依赖模型、Prompt 或具体 Provider。
 
 ## 修改前
 
-阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的采购业务核行、`DECISIONS.md` D01 / D07、`productinfo.md` §5 与 §8，以及 `docs/product/requirements.md` 中本模块需满足的条款（FR-02/04/05/07、BR-01～07、BR-10，反向索引见该文 §3）。**不要读 `data/supplychain/` 归档区**。
+阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的采购业务核行、`DECISIONS.md` D04 / D18、`productinfo.md` §5 与 §8，以及 `docs/product/requirements.md` 中本模块需满足的条款（FR-02/04/05/07、BR-01～07、BR-10，反向索引见该文 §3）。**不要读 `data/supplychain/` 归档区**。
 
 ## 不变量与 contract
 

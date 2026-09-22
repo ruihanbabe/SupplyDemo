@@ -7,16 +7,16 @@
 
 ## 职责
 
-拥有各层共享的类型化状态：Session / Run / ToolCall / ToolResult / PermissionDecision / RuntimeEvent，以及结构化升级报告类型。这些类型是各 Agent / 模块之间唯一的通信媒介。
+拥有各层共享的类型化状态：Run / RunEvent / ContextBundle / ToolDefinition / ToolCall / ToolResult / EvidenceRef / PermissionDecision / ExternalAction。这些类型是跨层通信的唯一媒介，权威清单见根 `ARCHITECTURE.md`「核心运行时类型」。
 
 ## 修改前
 
-阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的 Runtime 契约层行与「依赖方向」、`DECISIONS.md` D02 / D03、`DEVELOPMENT.md`「自动修复与升级上限」；代码与测试待建。
+阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的 Runtime 契约层行与「依赖方向」、`DECISIONS.md` D03 / D07、`DEVELOPMENT.md`「自动修复与升级上限」；代码与测试待建。
 
 ## 不变量与 contract
 
-- 各 Agent 间不做自然语言对话，只通过本层类型化状态传递。
-- 审计相关记录（Run / ToolCall / PermissionDecision）语义为“只插入不更新”。
+- 模块间不以自然语言段落协商，只通过本层类型化状态传递。
+- 审计相关记录（RunEvent / ToolCall / ModelCall / PermissionDecision）语义为“只插入不更新”。
 - 结构化升级报告统一一处定义、跨模块 import 复用，不得各模块另发明格式；具体字段待设计（见 `AGENTS.md`「全局硬约束」）。
 - 本层不依赖任何具体 Provider 或业务规则。
 

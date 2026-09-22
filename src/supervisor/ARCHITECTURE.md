@@ -1,8 +1,10 @@
 # Supervisor 模块
 
-> **文档契约** · 类型：模块层 · 读取：进入本模块前读，全文（篇幅短）
-> 更新：本模块职责或代码落点变更时由 Codex 写入
-> 独占：本模块在根 `ARCHITECTURE.md` 模块表中那一行的展开说明
-> 不收录：不变量正文（见同目录 `AGENTS.md`）、跨模块依赖方向（见根 `ARCHITECTURE.md`）
+> **文档契约** · 类型：局部架构 · 读取：实现本模块时
+> 更新：模块边界变化时
+> 独占：局部职责
+> 不收录：需求和全局数据流
 
-尚未成立（占位）。拥有意图路由、复杂度判断（简单 / 分析）、结构化对话 state 和 worker 调度。把用户输入或 TriggerEvent 转为路由决策与 Worker 调用序列。实现与测试待建，边界以仓库根 `ARCHITECTURE.md` 的 Supervisor 行为准。
+目标职责是持有会话状态、编排一次请求的 Worker 调用序列，并按复杂度在简单链路与完整分析链路之间条件路由（`DECISIONS.md` D02）。
+
+输出为结构化的路由决策与 Worker 调用结果引用，Run 生命周期与节点推进交给 Run Manager / Workflow Controller。模型路由属于 Model Gateway，不属于本模块。
