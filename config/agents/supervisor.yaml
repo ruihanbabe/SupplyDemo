@@ -7,3 +7,4 @@ max_tokens: 1024
 permissions:
   - catalog.read
   - procurement.compute
+  - sourcing.read

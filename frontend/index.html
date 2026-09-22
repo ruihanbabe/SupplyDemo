@@ -59,6 +59,7 @@
   .hint{color:var(--muted);font-size:12px}
   .cut{margin-top:6px;padding-top:6px;border-top:1px dashed var(--bad);
        color:var(--bad);font-size:12px}
+  .warnmark{color:var(--warn);font-size:11px}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th{text-align:left;font-weight:600;color:var(--muted);padding:4px 6px 4px 0;
      border-bottom:1px solid var(--line);white-space:nowrap}
@@ -158,6 +159,26 @@ const RENDER = {
     </table>
     ${c.policy_versions ? `<div class="why" style="margin-top:6px">口径版本：
       ${Object.entries(c.policy_versions).map(([k, v]) => `${esc(k)} v${esc(v)}`).join('，')}</div>` : ''}`,
+
+  // 多源报价。分歧不合并——三家说 900/150/0，平均值是没人能照着下单的数字。
+  offers: c => !c?.rows?.length ? '' : `
+    <table><tr><th>来源</th><th>SKU / 匹配</th><th>库存</th><th>交期</th><th>单价</th></tr>
+      ${c.rows.map(r => r.status === 'ok' || r.status === 'partial' ? `<tr>
+          <td>${esc(r.provider)}<div class="why">${esc(r.status)}</div></td>
+          <td>${esc(r.distributor_sku)}
+            <div class="why ${r.match_status !== 'exact' ? 'warnmark' : ''}">${esc(r.match_status)}</div></td>
+          <td class="num">${r.stock_qty === null || r.stock_qty === undefined
+              ? '<span class="why">未知</span>' : esc(r.stock_qty)}</td>
+          <td class="num">${r.lead_time_days === null || r.lead_time_days === undefined
+              ? '<span class="why">未知</span>' : esc(r.lead_time_days) + ' 天'}</td>
+          <td class="num">${r.unit_price_at_moq === null || r.unit_price_at_moq === undefined
+              ? '<span class="why">未知</span>' : esc(r.unit_price_at_moq)}</td>
+        </tr>` : `<tr><td>${esc(r.provider)}</td>
+          <td colspan="4" class="why">${esc(r.status)}${r.error_code ? ' · ' + esc(r.error_code) : ''}
+            ——${esc(r.message || '')}</td></tr>`).join('')}
+    </table>
+    ${c.stock_disagreement ? '<div class="warnmark" style="margin-top:6px">⚠ 各源库存不一致，已各自保留，未取平均</div>' : ''}
+    ${c.inexact_matches?.length ? `<div class="warnmark">⚠ ${esc(c.inexact_matches.join('、'))} 的型号匹配非精确，需人工确认后才可采纳</div>` : ''}`,
 };
 
 function panel(kind, content, message){

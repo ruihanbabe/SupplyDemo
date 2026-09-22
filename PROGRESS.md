@@ -26,6 +26,7 @@
 | 证据账本（字段型）：只插入、内容去重、取代链、读取时判新鲜度 | `src/contracts/evidence.py`、`src/persistence/evidence.py`、`src/procurement_core/freshness.py` | 已验证，含真库列级权限断言 |
 | ToolRegistry：元数据、按场景注入、重试收口、幂等分级、审计落库、外部内容标记 | `src/tools/registry.py`、`src/tools/catalog_tools.py`、`src/persistence/tool_audit.py` | 已验证，含真实模型端到端 |
 | 分层权限（全局→worker→会话，交集语义）与 `make explain` | `src/permissions/`、`config/permissions.yaml`、`config/agents/*.yaml` | 已验证：同一工具 supervisor 可调、manufacturer 被拒，且指出来自哪一层 |
+| MCP 子进程（自实现 stdio JSON-RPC）+ 环境变量白名单 + 多源分销商比价，结果落 Evidence | `mcp_servers/supplier/`、`src/tools/mcp_client.py`、`src/tools/sourcing_tools.py` | 已验证：三家并查，分歧保留、超时与 not_found 不合并、型号非精确匹配不自动采纳 |
 | 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据
@@ -44,7 +45,7 @@
 - **T01 / T02 / T03** Graph 编排器、Worker 名册、fan-out/fan-in、部分失败语义、RiskEvent 异步流——全部未建，是第一期主体
 - **T04** 分层权限与 `explain` 已就位（F26）；三档会话模式只做了 explore / ask，auto 的低金额放行待 Human Gate（F16）
 - **T05** 能力探测套件、本地部署后端——未建（端口与回放已就绪）
-- **T06** MCP 客户端与进程内 skill 的并存——未建
+- **T06** MCP 侧已建（分销商 server + 客户端 + 环境变量过滤）；进程内 skill 侧（厂商资料检索）待 Q-04 冻结寻址策略后做（F17）
 - **T07** 树状调用轨迹、三类日志分离——未建
 - **T08** Human Gate、审批绑定哈希、重启后仍等待——未建
 - **T09** 父子预算与沿边扣除——未建

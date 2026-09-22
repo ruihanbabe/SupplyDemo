@@ -20,6 +20,7 @@ from permissions.policy import load_policy
 from procurement_core.demand import prepare_demand
 from procurement_core.shortage import calculate_shortages
 from tools.registry import RegisteredTool, RetryPolicy, ToolOutcome, ToolRegistry
+from tools.sourcing_tools import SOURCING_TOOLS
 
 #: How many lines a summary may name before it stops being a summary.
 SAMPLE_LINES = 8
@@ -237,4 +238,6 @@ def build_registry(*, audit=None) -> ToolRegistry:
         scenarios=frozenset({"procurement"}),
         available=False,
         unavailable_reason="外部采购系统与其幂等能力尚未确定（Q-03）；在此之前不做任何外部写入"))
+    for tool in SOURCING_TOOLS:
+        registry.register(tool)
     return registry

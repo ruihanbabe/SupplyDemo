@@ -153,15 +153,20 @@
 
 | 项 | 取值 |
 |---|---|
-| 项目 | `Glasgow_revC3`（53 行 BOM，五个项目中最大） |
-| 元件 | `TMK105BJ104KV-F`（Taiyo Yuden，73 pcs，高用量通用件）<br>`SN74LVC1T45DCKR`（TI，17 pcs，IC，技术核验主场）<br>`SP3012-06UTG`（Littelfuse，4 pcs，小众件，长交期风险） |
+| 缺口计算 | `Glasgow_revC3`（53 行 BOM，全部单候选，可直接算到底） |
+| 元件 | `TMK105BJ104KV-F`（73 pcs）、`SN74LVC1T45DCKR`（17 pcs）、`SP3012-06UTG`（4 pcs） |
+| **多源取数与多候选对比** | `hbridge_driver`（17 行中 13 行多候选，最多 5 家分销商） |
+| 元件 | `IRFZ44NPBF` / `IRFZ44NPbF`（大小写之差）、`TC4420EPA` / `TC4420CPA`（温度等级之差）、`RLB0914-330KL` / `RLB9012-330KL`（系列之差） |
+| 分销商 | 并行查 digikey / mouser / farnell 三家 |
 | 规则 | 交期 > 8 周 |
 | 入口 | Web 对话页（FastAPI 直接托管的原生 HTML/JS） |
 | 后端 | 一个云端 OpenAI 兼容 + ReplayBackend |
 
-**数据事实**：`Glasgow_revC3` 的全部 BOM 行都只有一个候选元件。多候选对比在本切片内无数据支撑，属横向加宽阶段。
+两个项目各承担一件事，不是二选一：`Glasgow_revC3` 的 BOM 全是单候选，能把缺口一路算到底；`hbridge_driver` 的候选两两只差一个后缀，是「多个候选**不表示**技术等价」的真实样本，且最多有 5 家分销商可比价——多源分歧（BR-06）与人在环选型（EV-07）都只有在这里才有数据支撑。
 
-横向加宽顺序：更多规则 → Web 入口 → 本地部署后端 → LLM 语义风险 → Monitor 反向触发。
+**数据事实**：`Glasgow_revC3` 没有任何分销商 SKU 记录，所以多源取数不在它上面演示；`hbridge_driver` 有 55 条 SKU 记录但 13 行需要人工选型，所以缺口不在它上面一路算到底。这是数据决定的分工，不是设计偏好。
+
+横向加宽顺序：更多规则 → 更多分销商 → 本地部署后端 → LLM 语义风险 → Monitor 反向触发。
 
 ## 8. 非范围
 
