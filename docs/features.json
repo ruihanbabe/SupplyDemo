@@ -1050,6 +1050,50 @@
         ]
       },
       "notes": "被四项业务能力复用，是系统内核。零售分析场景的判定是阈值比较，此处判错会导致用错料，必须独立评测。"
+    },
+    {
+      "id": "F25",
+      "behavior": "对话入口与流式呈现：浏览器提交问题，SSE 逐字返回模型文字；模型只能调用被服务端注入的只读工具，轮数上限由服务端强制而非提示词约束；界面左右分栏——自由文本与权威数值分开呈现，数值只来自工具返回；provenance（real / replay）在界面上始终可见。",
+      "depends_on": [
+        "F08",
+        "F10"
+      ],
+      "verification": {
+        "contract": "make compile && make lint",
+        "offline": "make test",
+        "integration": "make services-up && make migrate && make test-integration",
+        "e2e": "SUPPLYAGENT_LLM_ENABLED=true 下对真实后端跑通一次多轮工具对话（需用户授权）"
+      },
+      "state": "planned",
+      "evidence": {
+        "contract": null,
+        "offline": null,
+        "integration": null,
+        "e2e": null
+      },
+      "context_refs": {
+        "decisions": [
+          "D02",
+          "D04",
+          "D05"
+        ],
+        "architecture_sections": [
+          "一级逻辑模块",
+          "依赖方向",
+          "全局不变量"
+        ],
+        "rules": [
+          "FR-13",
+          "BR-17",
+          "BR-20"
+        ],
+        "specs": [
+          "docs/spec/http-api.md",
+          "docs/spec/interfaces.md"
+        ],
+        "cases": []
+      },
+      "notes": "与 F09 的区别：F09 是以告警为中心的工作台，本条是对话入口，两者不互相取代。本条的技术栈（FastAPI 直接托管原生 HTML/JS，同源、无构建链）只对本入口成立，不构成 Q-07 的冻结——告警工作台的栈仍待定。循环由服务端持有：模型选调用哪个工具，不决定跑几轮（D02）。左栏文字与右栏数值的分离是硬边界，否则事实值散在自由文本里无处挂证据（不变量 2）。尚未接入 ContextBundle（F14）、Evidence（F12）与恢复（F15）；对话历史当前由浏览器回传，F14 落地后必须改为从权威状态编译。"
     }
   ]
 }
