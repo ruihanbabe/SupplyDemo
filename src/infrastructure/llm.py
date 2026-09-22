@@ -58,7 +58,18 @@ class LLMSettings:
 
 
 def load_settings(environ: dict[str, str] | None = None) -> LLMSettings:
-    values = {**dotenv_values(ROOT / ".env"), **(environ if environ is not None else os.environ)}
+    """Read the process configuration, or exactly the mapping given.
+
+    An explicit mapping replaces the environment rather than layering on top of it, the
+    same way resolve_credentials() treats its own. Merging .env into a caller-supplied
+    dict would make a test's result depend on whoever ran it: fill in a key locally and
+    an offline test that asserts "disabled by default" starts failing on your machine
+    and nowhere else.
+    """
+    if environ is not None:
+        values: dict[str, str | None] = dict(environ)
+    else:
+        values = {**dotenv_values(ROOT / ".env"), **os.environ}
     return LLMSettings(
         provider=values.get("SUPPLYAGENT_LLM_PROVIDER", "") or "",
         api_key=values.get("SUPPLYAGENT_LLM_API_KEY", "") or "",
@@ -239,10 +250,10 @@ class ZhipuProvider:
     ) -> Iterator[StreamEvent]:
         """Server-sent chunks from the OpenAI-compatible /chat/completions shape.
 
-        Deliberately without the retry loop complete() has: once the first byte of an
-        answer has reached the user, a silent retry would replay a different answer over
-        the top of it. A stream that breaks mid-flight surfaces as an error, and the
-        caller decides.
+        Retries are allowed only while nothing has been emitted yet. That line matters:
+        a 429 or a refused connection happens before the user has seen a character, so
+        retrying is invisible and correct; a break *mid-answer* is not retryable at all,
+        because the second attempt would write a different answer over the first.
         """
         self._require_ready()
         body: dict[str, Any] = {
@@ -260,61 +271,76 @@ class ZhipuProvider:
         headers = {"Authorization": f"Bearer {self.settings.api_key}",
                    "Content-Type": "application/json"}
         started = time.monotonic()
-        text_parts: list[str] = []
-        # Keyed by the index the provider assigns, because a model may open several
-        # calls at once and their argument fragments arrive interleaved.
-        partial_calls: dict[int, dict[str, str]] = {}
-        finish_reason = "unknown"
-        model = self.settings.model
-        usage = Usage()
 
-        try:
-            with self._http().stream("POST", url, json=body, headers=headers) as response:
-                if response.status_code >= 400:
-                    response.read()
-                    raise self._classify(response)
-                for line in response.iter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[len("data:"):].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        payload = json.loads(data)
-                    except json.JSONDecodeError:
-                        raise ModelError("malformed_response",
-                                         "Provider sent a non-JSON stream chunk") from None
-                    model = str(payload.get("model") or model)
-                    if payload.get("usage"):
-                        raw_usage = payload["usage"]
-                        usage = Usage(prompt_tokens=raw_usage.get("prompt_tokens"),
-                                      output_tokens=raw_usage.get("completion_tokens"))
-                    for choice in payload.get("choices") or []:
-                        if choice.get("finish_reason"):
-                            finish_reason = str(choice["finish_reason"])
-                        delta = choice.get("delta") or {}
-                        chunk = delta.get("content")
-                        if chunk:
-                            text_parts.append(chunk)
-                            yield StreamEvent("text", text=chunk)
-                        _merge_tool_call_deltas(partial_calls, delta.get("tool_calls"))
-        except httpx.TimeoutException as exc:
-            raise ModelError("timeout", f"Provider timed out mid-stream: {exc!s}",
-                             retryable=False) from None
-        except httpx.HTTPError as exc:
-            raise ModelError("transport_error", f"Stream broke: {exc!s}",
-                             retryable=False) from None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            text_parts: list[str] = []
+            # Keyed by the index the provider assigns, because a model may open several
+            # calls at once and their argument fragments arrive interleaved.
+            partial_calls: dict[int, dict[str, str]] = {}
+            finish_reason = "unknown"
+            model = self.settings.model
+            usage = Usage()
+            emitted = False
+            error: ModelError | None = None
 
-        yield StreamEvent("done", completion=Completion(
-            content="".join(text_parts) or None,
-            tool_calls=tuple(
-                ToolCall(id=call["id"], name=call["name"], arguments=call["arguments"])
-                for _, call in sorted(partial_calls.items())),
-            model=model,
-            finish_reason=finish_reason,
-            usage=usage,
-            latency_ms=int((time.monotonic() - started) * 1000),
-        ))
+            try:
+                with self._http().stream("POST", url, json=body, headers=headers) as response:
+                    if response.status_code >= 400:
+                        response.read()
+                        error = self._classify(response)
+                    else:
+                        for line in response.iter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[len("data:"):].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                payload = json.loads(data)
+                            except json.JSONDecodeError:
+                                raise ModelError(
+                                    "malformed_response",
+                                    "Provider sent a non-JSON stream chunk") from None
+                            model = str(payload.get("model") or model)
+                            if payload.get("usage"):
+                                raw_usage = payload["usage"]
+                                usage = Usage(
+                                    prompt_tokens=raw_usage.get("prompt_tokens"),
+                                    output_tokens=raw_usage.get("completion_tokens"))
+                            for choice in payload.get("choices") or []:
+                                if choice.get("finish_reason"):
+                                    finish_reason = str(choice["finish_reason"])
+                                delta = choice.get("delta") or {}
+                                chunk = delta.get("content")
+                                if chunk:
+                                    text_parts.append(chunk)
+                                    emitted = True
+                                    yield StreamEvent("text", text=chunk)
+                                _merge_tool_call_deltas(partial_calls, delta.get("tool_calls"))
+            except httpx.TimeoutException as exc:
+                error = ModelError("timeout", f"Provider timed out: {exc!s}", retryable=True)
+            except httpx.HTTPError as exc:
+                error = ModelError("transport_error", f"Stream broke: {exc!s}", retryable=True)
+
+            if error is None:
+                yield StreamEvent("done", completion=Completion(
+                    content="".join(text_parts) or None,
+                    tool_calls=tuple(
+                        ToolCall(id=call["id"], name=call["name"], arguments=call["arguments"])
+                        for _, call in sorted(partial_calls.items())),
+                    model=model,
+                    finish_reason=finish_reason,
+                    usage=usage,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                ))
+                return
+
+            logger.warning("Stream attempt %s/%s failed (code=%s, emitted=%s, trace_id=%s)",
+                           attempt, MAX_ATTEMPTS, error.code, emitted, trace_id)
+            if emitted or not error.retryable or attempt == MAX_ATTEMPTS:
+                raise error
+            time.sleep(error.retry_after if error.retry_after is not None
+                       else min(2.0 ** (attempt - 1), MAX_RETRY_WAIT_SECONDS))
 
     def _classify(self, response: httpx.Response) -> ModelError:
         status = response.status_code
@@ -326,11 +352,14 @@ class ZhipuProvider:
             # EV-11: never blind-retry a forbidden response.
             return ModelError("forbidden", "Provider denied access to this resource")
         if status == 429:
-            return ModelError("rate_limited", "Provider rate limit reached", retryable=True,
-                              retry_after=_retry_after(response))
+            # The provider's own wording travels with the error: 429 covers throttling,
+            # quota and an overloaded model, and those need different responses from a
+            # human. A generic "rate limited" sends people to check the wrong thing.
+            return ModelError("rate_limited", f"Provider rate limit reached: {detail}",
+                              retryable=True, retry_after=_retry_after(response))
         if status >= 500:
-            return ModelError("provider_error", f"Provider server error {status}", retryable=True,
-                              retry_after=_retry_after(response))
+            return ModelError("provider_error", f"Provider server error {status}: {detail}",
+                              retryable=True, retry_after=_retry_after(response))
         return ModelError("bad_request", f"Provider rejected the request ({status}): {detail}")
 
     def _decode(self, response: httpx.Response, started: float) -> Completion:
