@@ -8,7 +8,6 @@ from sqlalchemy.exc import ArgumentError
 
 ROOT = Path(__file__).resolve().parents[2]
 
-
 def database_url() -> URL:
     values = {**dotenv_values(ROOT / ".env"), **os.environ}
     raw = values.get("SUPPLYAGENT_DATABASE_URL")
@@ -20,4 +19,6 @@ def database_url() -> URL:
         raise ValueError("SUPPLYAGENT_DATABASE_URL is invalid") from None
     if url.get_backend_name() != "postgresql":
         raise ValueError("SupplyAgent requires PostgreSQL")
+    # .env 里可能写着 asyncpg，但同步引擎跑的是 psycopg：驱动名在这里统一收口，
+    # 免得每个调用方各自记得改一次，漏一处就是运行时才炸。
     return url.set(drivername="postgresql+psycopg")

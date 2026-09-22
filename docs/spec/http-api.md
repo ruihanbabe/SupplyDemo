@@ -79,4 +79,4 @@
 
 本文还依赖以下跨文档未决项，正文见 `docs/OPEN-QUESTIONS.md`：**Q-03**（外部草稿端点启用时间与目标系统）、**Q-08**（身份认证、角色与 Evidence 原文脱敏策略）。
 
-多租户不在未决之列：已决为带 `tenant_id` 字段作架构预留、MVP 不实现隔离，见 `productinfo.md` §5.3。
+多租户不在未决之列：已决为带 `tenant_id` 字段作架构预留、MVP 不实现隔离，见 `docs/product/requirements.md` §8。

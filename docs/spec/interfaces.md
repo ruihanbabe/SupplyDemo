@@ -13,7 +13,9 @@ ModelBackend 提供 `complete(ModelRequest) -> ModelResult` 和 `cancel(call_id)
 
 ModelCapabilities 显式声明结构化输出、工具调用、流式、取消和用量报告能力。能力不存在时返回 `CAPABILITY_UNSUPPORTED`，不得静默删掉约束。
 
-首批端口实现包括 `ReplayBackend` 和一个真实后端候选 `OpenAICompatibleBackend`；第二原生后端为 `TBD`。
+后端按**形态**而非协议划分：云端 API、本地部署（Ollama / vLLM，同为 OpenAI 兼容）、回放（`ReplayBackend`）。
+
+`ModelCapabilities` 必须是**探测结果**而非手写声明：对每个 endpoint 跑固定探针（带 tool 的请求、并行 tool call、`response_format`、流式 usage），把实测值落成该后端的能力矩阵。十个后端都返回同一串 `True`，能力协商就无物可协商（D05、F27）。
 
 ### ContextBundle
 
@@ -27,9 +29,42 @@ manifest 必须记录 compiler_version、created_at、token_estimate、included�
 
 Artifact 至少包含 artifact_id、run_id、kind、schema_version、version、content、input_refs、producer、created_at 和 content_hash。Artifact 不覆盖旧版本。
 
+### RiskEvent
+
+核验过程中发现的异常，结构化、异步投递，不阻塞主流程。至少包含：
+
+```text
+risk_event_id, run_id
+source,            -- rule | model_judgment | collection_failed
+severity,
+rule_ref,          -- source=rule 时必填：触发的 business_rule 及其版本
+evidence_refs,     -- 非空：触发它的证据或核验调用
+subject_ref,       -- 关联元件或用料行
+detected_at
+```
+
+**`source` 必须留在事件上**：阈值判定是确定的，模型判断是有概率的，采集失败意味着「不知道」而不是「没问题」。三者可信度不同，审批时要向人展示差异（D10、D20）。
+
+响应动作由声明式配置决定（matcher → actions），新增响应不改代码。带 `RiskEvent` 的建议抬高审批级别；`RiskEvent` 强制把会话从 `Auto` 档降到 `Ask`。
+
+### NodeResult
+
+Graph 中一个节点的产出，跨节点只传它，不传自然语言段落：
+
+```text
+node_id, worker, subject_ref,
+status,            -- ok | partial | not_found | error，四态不得合并
+content,           -- 类型化结果或其引用
+evidence_refs,
+usage, duration_ms,
+error_code
+```
+
+**`not_found` 与 `error` 分开**：「查了没有」与「没查成」对采购决策是两件事。fan-in 处任一非 `ok` 分支不得被当作成功（D24）。
+
 ### Evidence（证据）
 
-Evidence 是全系统的事实单位。任何告警、结论、报告文字与外部写入都必须能追溯到至少一条 Evidence（BR-17、`productinfo.md` §8）。
+Evidence 是全系统的事实单位。任何告警、结论、报告文字与外部写入都必须能追溯到至少一条 Evidence（BR-17、`docs/product/requirements.md` §5）。
 
 Evidence 按**定位方式**分两类，共用信封、定位块互斥：
 
@@ -60,7 +95,7 @@ content_hash, superseded_by
 
 **缓存命中必须保留原始 `retrieved_at` 并标 `provenance=cache`，不得刷新为当前时间。** 这样单个时间戳即可表达"这个值有多旧"，跨缓存层依然成立。
 
-`observed_at` 只在来源显式声明快照时间时填写（如夜间库存快照、`inventory.snapshot_at`）。多数分销商接口不提供，此时**必须为 NULL——不得用 `retrieved_at` 顶替**，那构成"把未知当作已知"，违反 `productinfo.md` §8。文档型证据的快照时间由 `doc_revision` 承载，不重复填 `observed_at`。
+`observed_at` 只在来源显式声明快照时间时填写（如夜间库存快照、`inventory.snapshot_at`）。多数分销商接口不提供，此时**必须为 NULL——不得用 `retrieved_at` 顶替**，那构成"把未知当作已知"，违反 `docs/product/requirements.md` §5。文档型证据的快照时间由 `doc_revision` 承载，不重复填 `observed_at`。
 
 **新鲜度在读取时判定，不在写入时烤死。** Evidence 不存 `expires_at`；是否新鲜由「`retrieved_at` + 策略版本 + 判定时刻」在读取时计算。理由：阈值策略未冻结（Q-05），写入时固化会使策略变更需要回填历史；且 Replay/Eval 必须能以新策略重新评估旧证据（F20）。告警决策必须记录判定时采用的策略版本，否则不可复现。
 
@@ -159,7 +194,7 @@ ToolResult 包含 schema_version、status、data、evidence_refs、retrieved_at�
 
 ## 4.1 DocumentResolver 策略链
 
-从型号定位到制造商官方文档。**寻址而非相似度检索**——`productinfo.md` §6 硬约束。
+从型号定位到制造商官方文档。**寻址而非相似度检索**——`docs/product/requirements.md` §8。
 
 ### 三态输出
 
@@ -192,13 +227,13 @@ DocumentResolution {
 
 **放弃条件**：策略 4 未命中即 `unresolvable`，不再外扩到通用搜索引擎或第三方镜像站。
 
-分层与实测依据见 `productinfo.md` §9.2、§9.3，此处不复制。
+分层与实测依据见 `docs/product/requirements.md` §9，此处不复制。
 
 ### 按厂商收口的 skill
 
 站内搜索以 skill 形式实现，**每个厂商一个 skill，绑定该厂商域名白名单，流程固定**。
 
-这不是可选的组织方式，而是使 `productinfo.md` §6「任意网页浏览」这条非范围成立的唯一方式：不收口到白名单域名与固定流程，"能搜索厂商站点"与"能浏览网页"没有区别。
+这不是可选的组织方式，而是使 `docs/product/requirements.md` §8「任意网页浏览」这条非范围成立的唯一方式：不收口到白名单域名与固定流程，"能搜索厂商站点"与"能浏览网页"没有区别。
 
 skill 必须声明：`manufacturer`、`allowed_domains`、检索入口、结果解析规则、消歧规则、速率上限。skill 不得跳出 `allowed_domains`，不得跟随跨域重定向（实测 Yageo 出现 301 跨域后 404，正确结果是 `unresolvable` 而非跟随）。
 
@@ -248,7 +283,7 @@ resolve_official_document → document_ref
 - **`enumerated`**：证明厂商确实列出了这个可订购型号。可据此断言该型号的生命周期状态。
 - **`decoded`**：只证明该编码是合法组合、且该尺寸该精度的器件具有属性 P。**不证明厂商真的生产过这个组合。**
 
-**强制约束**：仅有 `decoded` 命中时，**不得断言该型号的生命周期状态，不得发停产告警**，只能输出 `cannot_confirm`。否则会对一个供应正常的料件谎报停产——这是本产品最坏的失败模式（`productinfo.md` §10「把未找到解释为停产」必须为零）。
+**强制约束**：仅有 `decoded` 命中时，**不得断言该型号的生命周期状态，不得发停产告警**，只能输出 `cannot_confirm`。否则会对一个供应正常的料件谎报停产——这是本产品最坏的失败模式（`docs/product/requirements.md` §30「把未找到解释为停产」必须为零）。
 
 family 级属性（封装、额定值、温度范围）在 `decoded` 下可以陈述，但必须标注适用范围是系列而非该具体型号。
 

@@ -58,8 +58,8 @@
 | `productinfo.md`、`docs/HANDOFF.md` | ✅ 已删除，内容并入上述文档 |
 | `AGENTS.md`、`README.md`、`CODING_RULES.md`、`GLOSSARY.md` | ⏳ 待对齐 |
 | `docs/features.json` | ✅ 已重排：F23 作废，F09/F15/F18/F24 改写，新增 F26–F30（29 条） |
-| `docs/product/acceptance-cases.md` | ⏳ 待重写（旧 EV 用例引用已废止的 FR/BR） |
-| `docs/spec/*` | ⏳ 待检查：`interfaces.md` 需加 `RiskEvent` / `NodeResult`；`data-model.md` 的预警层随新形态调整；`ui-contract.md` 暂缓 |
+| `docs/product/acceptance-cases.md` | ✅ 已重写：EV 编号保留，4 组失效用例删除，新增 EV-63～EV-70 覆盖 T03/T04/T05/T07/T09/T12 |
+| `docs/spec/*` | ✅ 已对齐：`interfaces.md` 加入 `RiskEvent` / `NodeResult` 与后端形态口径；`data-model.md` ⑦ 预警层标注为待重塑（随 F18）；`ui-contract.md` 标注为第二期 |
 
 ## 阻塞
 
@@ -67,8 +67,8 @@
 
 ## 下一步
 
-1. 重写 `docs/product/acceptance-cases.md`（旧 EV 用例引用已废止的 FR/BR）；
-2. 检查 `docs/spec/*`：`interfaces.md` 需加 `RiskEvent` / `NodeResult`，`data-model.md` 的预警层随新形态调整；
-3. 然后开工，依赖顺序见 `docs/features.json` 的 `_slice`：F12 → F13 → F14 → **F15 Graph 编排器（第一期主体）** → F24 → F18 → F16。
+文档工作已收尾。开工顺序见 `docs/features.json` 的 `_slice`：
+
+F12 证据层 → F13 ToolRegistry → F14 ContextCompiler → **F15 Graph 编排器（第一期主体）** → F24 `evidence_check` → F18 RiskEvent 流 → F16 Human Gate。横切项 F26～F29 随对应能力落地。
 
 Feature 状态只能由用户按 D14 授权流转，文档工作不修改 `state` 或 `evidence`。

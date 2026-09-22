@@ -7,7 +7,7 @@
     "e2e": "④ 授权端到端：真实供应只读接口 + 自控业务系统写入，需用户明确授权",
     "_rule": "层级定义见 DECISIONS.md D14。不是每个 Feature 都需要四层；不需要的层在 evidence 中写 'not_applicable: <理由>'，不得留空蒙混。③④ 被阻塞时记 blocked，不得跳过后宣称完成。"
   },
-  "_context_refs_note": "context_refs 是该 Feature 的最小上下文投影，Codex 按 DEVELOPMENT.md「每 Feature 的上下文投影」定点读取，禁止通读整份文件。decisions=DECISIONS.md 的 Dxx 锚点；architecture_sections=ARCHITECTURE.md 的 ## 标题；requirements_sections=productinfo.md 的编号章节；rules=docs/product/requirements.md 的 FR/BR 编号；specs=docs/spec/ 下的文件与章节；cases=docs/product/acceptance-cases.md 的 EV 编号。",
+  "_context_refs_note": "context_refs 是该 Feature 的最小上下文投影，Codex 按 DEVELOPMENT.md「每 Feature 的上下文投影」定点读取，禁止通读整份文件。decisions=DECISIONS.md 的 Dxx 锚点；architecture_sections=ARCHITECTURE.md 的 ## 标题；requirements_sections=docs/product/requirements.md 的编号章节；rules=docs/product/requirements.md 的 FR/BR 编号；specs=docs/spec/ 下的文件与章节；cases=docs/product/acceptance-cases.md 的 EV 编号。",
   "_slice": "第一期纵向切片见 docs/product/requirements.md §7：Glasgow_revC3 + 3 个缺料元件 + 「交期 > 8 周」一条规则 + CLI 入口。依赖顺序：F12 → F13 → F14 → F15（Graph 编排器，第一期主体）→ F24 → F18 → F16，F17 / F19 / F21 提供节点实现，F26 / F27 / F28 / F29 横切。F09 Web、F30 的真实 MCP 对端、F10 的本地部署后端属第二期。Q-01 / Q-03 / Q-04 / Q-05 未冻结不阻塞——sample / replay 数据足以把前三层验证在本地跑完。在用户批准前不修改任何既有 state/evidence。",
   "features": [
     {
@@ -465,7 +465,7 @@
           "EV-46"
         ]
       },
-      "notes": "落实 productinfo §10「模型撰写事实值」必须为零。硬门禁，不得以 prompt 约束替代。"
+      "notes": "落实 BR-07：模型撰写权威事实值的计数必须为零。硬门禁，不得以 prompt 约束替代。"
     },
     {
       "id": "F12",
@@ -643,7 +643,9 @@
           "EV-26",
           "EV-36",
           "EV-37",
-          "EV-51"
+          "EV-51",
+          "EV-63",
+          "EV-64"
         ]
       },
       "notes": "第一期主体。自研不引框架（D23）——引框架会把「并行与依赖怎么被编排出来」这最值钱的部分交给框架。部分失败的后果链见 D24：证据不完整 → 建议仍出但标注 → 发 RiskEvent(collection_failed) → 抬高审批级别 → 失败分支预算不退。not_found 与 error 分开记录。"
@@ -779,14 +781,11 @@
           "docs/spec/data-model.md"
         ],
         "cases": [
-          "EV-23",
           "EV-28",
           "EV-40",
           "EV-41",
-          "EV-42",
-          "EV-47",
           "EV-48",
-          "EV-55"
+          "EV-66"
         ]
       },
       "notes": "T02 的异步侧，与 F15 的同步 fan-out/fan-in 形成对照——「一个项目里两种通信模式且能说清为什么」是核心论点。source 必须留在事件上：阈值是确定的，模型判断是有概率的，采集失败意味着不知道。Monitor 主动巡检是第二期（D21、Q-06）。"
@@ -830,7 +829,7 @@
           "EV-43"
         ]
       },
-      "notes": "数据已有 5 家分销商结构（productinfo §9.1）。MVP 以 sample/replay provenance 实现，全链路显式标注，不声称真实库存。"
+      "notes": "数据已有 5 家分销商结构（requirements.md §9）。MVP 以 sample/replay provenance 实现，全链路显式标注，不声称真实库存。"
     },
     {
       "id": "F20",
@@ -874,7 +873,8 @@
           "EV-39",
           "EV-40",
           "EV-44",
-          "EV-45"
+          "EV-45",
+          "EV-65"
         ]
       },
       "notes": "门禁阻止合并，不是出报告。至少断言：T3 的 18 个元件全部 unresolvable（不为填满报告而编造）、零条无证据结论、同一状态变化只产生一条 RiskEvent、口径版本变更后受影响的结论跟着变。F27 的能力探针本身也是一组用例。模型不得看到隐藏预期答案。"
@@ -913,7 +913,8 @@
         ],
         "cases": [
           "EV-56",
-          "EV-57"
+          "EV-57",
+          "EV-65"
         ]
       },
       "notes": "T12 的落点。MOQ（最小起订量）/ MPQ（最小包装量）/ SPQ（标准包装量）必须是三条独立记录，别名互不通用——这是 LLM 最常混淆的一组，也是 caveat 字段存在的理由；proposal agent 写建议时分不清会让采购员按错的数量下单。解析是从注册表中选择，不生成 SQL；未命中返回 unknown_metric 转人工，不得由模型即兴定义口径。"
@@ -1002,7 +1003,8 @@
           "EV-43",
           "EV-50",
           "EV-53",
-          "EV-62"
+          "EV-62",
+          "EV-63"
         ]
       },
       "notes": "原 Adjudicator 改名。工具集与其他两个 agent 两两不同（不可出网），这是 F26 的 explain 有东西可解释的前提。"
@@ -1085,7 +1087,11 @@
         "specs": [
           "docs/spec/interfaces.md"
         ],
-        "cases": []
+        "cases": [
+          "EV-18",
+          "EV-31",
+          "EV-67"
+        ]
       },
       "notes": "T04 的落点。三个 agent 的工具集必须两两不同且拒绝理由来自不同层，否则 explain 没有东西可解释。三档会话模式 Explore / Ask / Auto，RiskEvent 强制把会话从 Auto 降到 Ask；第一期只做 Explore + Ask。"
     },
@@ -1124,7 +1130,9 @@
           "docs/spec/interfaces.md"
         ],
         "cases": [
-          "EV-30"
+          "EV-30",
+          "EV-35",
+          "EV-70"
         ]
       },
       "notes": "T05 的落点。十个后端都返回同一串 True 就等于没做能力协商。判据是形态（云端 / 本地 / 回放）而非协议——同一 OpenAI 兼容协议下各家 tool calling、并行、response_format、usage 上报差异极大（D05）。探针本身即一组 eval 用例，喂 F20。"
@@ -1163,7 +1171,10 @@
         "specs": [
           "docs/spec/interfaces.md"
         ],
-        "cases": []
+        "cases": [
+          "EV-51",
+          "EV-69"
+        ]
       },
       "notes": "T07 的落点。并行分支在轨迹里必须是树——流水账无法表达 fan-out/fan-in 的结构，也就证明不了并行真的发生了。凭据与外部原文不进轨迹。"
     },
@@ -1201,7 +1212,10 @@
         "specs": [
           "docs/spec/interfaces.md"
         ],
-        "cases": []
+        "cases": [
+          "EV-26",
+          "EV-68"
+        ]
       },
       "notes": "T09 的落点。只统计不控制不算数。演示方式是调低预算让 fan-out 跑一半停下，输出明确列出未核验项。"
     },

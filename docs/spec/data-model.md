@@ -12,8 +12,8 @@
 - **时间**：一律 `TIMESTAMPTZ`，存 UTC。禁止 `TIMESTAMP`（无时区）。
 - **数量与金额**：一律 `NUMERIC`，禁止 `FLOAT` / `DOUBLE PRECISION`。BR-03 要求精确数值类型，浮点会在阶梯价与倍数计算中引入误差。数量 `NUMERIC(18,6)`，金额 `NUMERIC(18,6)`。
 - **标识符**：业务主键用文本自然键（`line_id`、`component_id` 等，与 `normalized/` 一致）；运行时对象用 `UUID`。
-- **多租户**：业务表一律带 `tenant_id TEXT NOT NULL DEFAULT 'default'`，**仅作架构预留**，MVP 不实现隔离逻辑（见 `productinfo.md` §5.3；这是已决事项，不在 `docs/OPEN-QUESTIONS.md` 之列）。审计表同样带，便于将来按租户裁剪。
-- **模拟数据标注**：任何合成数据的表带 `is_simulated BOOLEAN NOT NULL DEFAULT FALSE`。最终回答必须能区分模拟与真实来源（见 `productinfo.md` §7 第 7 条）。
+- **多租户**：业务表一律带 `tenant_id TEXT NOT NULL DEFAULT 'default'`，**仅作架构预留**，MVP 不实现隔离逻辑（见 `docs/product/requirements.md` §8；这是已决事项，不在 `docs/OPEN-QUESTIONS.md` 之列）。审计表同样带，便于将来按租户裁剪。
+- **模拟数据标注**：任何合成数据的表带 `is_simulated BOOLEAN NOT NULL DEFAULT FALSE`。最终回答必须能区分模拟与真实来源（见 `docs/product/requirements.md` §5 BR-09）。
 - **证据引用**：`evidence_ref` 统一为 `JSONB`，形如 `{"kind": "tool_call", "id": "...", "retrieved_at": "..."}`。每个实质性判断都要能回指。
 - **命名**：表名单数、蛇形；外键列名为 `<引用表>_id`；索引 `ix_<表>_<列>`，唯一索引 `uq_<表>_<列>`。
 
@@ -472,7 +472,7 @@ CREATE INDEX ix_resolution_mpn ON document_resolution(mpn, manufacturer);
 | 抽取文本 | 本地文件系统 | span 偏移必须相对一个确定的文本版本 |
 | Evidence 与定位 | PostgreSQL | 需要事务、外键与审计权限 |
 
-**不得改为进程内缓存。**重启即清空会使「已成功采集的观察不重复采集」失效（`productinfo.md` §4），并让 F20 的冻结证据缓存无从建立。
+**不得改为进程内缓存。**重启即清空会使「已成功采集的观察不重复采集」失效（`docs/product/requirements.md` §9），并让 F20 的冻结证据缓存无从建立。
 
 ### 修订检查而非重复下载
 
@@ -480,7 +480,9 @@ CREATE INDEX ix_resolution_mpn ON document_resolution(mpn, manufacturer);
 
 ## 9. ⑦ 预警层（F18）
 
-产品心脏。`alert` 的部分唯一索引是 BR-15「同一对象同一类型同时最多一条活动告警」的机械化落点——**靠数据库强制，不靠应用代码自觉**。
+> **待重塑。**2026-09-22 产品形态重定后，预警从主线降为支流，告警改以 `RiskEvent` 表达（`DECISIONS.md` D10、`docs/spec/interfaces.md`「RiskEvent」）。本节仍是旧的 `monitor_target` / `alert` / `alert_event` 形态，**尚未迁移**，重塑随 F18 实现一并进行。在此之前不要按本节建表。下方内容保留的是仍然成立的那部分约束：去重靠数据库部分唯一索引而非应用自觉、判定时的规则版本必须落库、三个时刻互不替代。
+
+`alert` 的部分唯一索引是 BR-15「同一对象同一类型同时最多一条活动告警」的机械化落点——**靠数据库强制，不靠应用代码自觉**。
 
 ```sql
 CREATE TABLE monitor_target (
@@ -557,7 +559,7 @@ ALTER TABLE llm_call ADD COLUMN backend   TEXT;
 ALTER TABLE run      ADD COLUMN eval_run_id UUID REFERENCES eval_run(eval_run_id);
 ```
 
-- `llm_call.bundle_id`：回答「这次调用模型看到了什么」。`productinfo.md` §11 已承诺回答此问题，缺它则无法回答。
+- `llm_call.bundle_id`：回答「这次调用模型看到了什么」。`docs/product/requirements.md` §2（T07） 已承诺回答此问题，缺它则无法回答。
 - `llm_call.backend`：与 `model` 分开——同一模型可经不同后端，跨后端比较要按后端而非模型分组。
 - `run.eval_run_id`：非空即该 Run 属于某次评测，使评测轨迹与生产轨迹可分离。
 
@@ -668,7 +670,7 @@ CREATE INDEX ix_checkpoint_run ON node_checkpoint(run_id, started_at DESC);
 
 ### 上下文的两条 CHECK 不是装饰
 
-`manifest` 少一个键，`/api/runs/{run_id}/context/{bundle_id}` 就答不出"这次调用看到了什么"，而这是 `productinfo.md` §11 已承诺回答的问题。`excluded` 的五个取值同理：`expired`（证据超出新鲜度窗口）要求重查或转人工，`budget`（预算不足被裁剪）只是本次上下文没放下——合并成一个"被裁掉了"，恢复时就无法判断该重查还是该继续。取值表在 `interfaces.md`「ContextBundle」，此处只做机械化强制。
+`manifest` 少一个键，`/api/runs/{run_id}/context/{bundle_id}` 就答不出"这次调用看到了什么"，而这是 `docs/product/requirements.md` §2（T07） 已承诺回答的问题。`excluded` 的五个取值同理：`expired`（证据超出新鲜度窗口）要求重查或转人工，`budget`（预算不足被裁剪）只是本次上下文没放下——合并成一个"被裁掉了"，恢复时就无法判断该重查还是该继续。取值表在 `interfaces.md`「ContextBundle」，此处只做机械化强制。
 
 ### 取代必须在同一事务内先回填后插入
 
@@ -714,6 +716,7 @@ CREATE TABLE metric_definition (
 
 | 项 | 状态 |
 |---|---|
+| ⑦ 预警层待重塑 | 形态重定后告警改以 `RiskEvent` 表达，本文 §9 仍是旧形态且未迁移；重塑随 F18 进行，届时表数会变 |
 | 契约 35 表 vs 迁移 22 表 | 有意分期：`0001` 冻结 ①～⑤ 层 22 表；⑥ 证据层（F12）、⑦ 预警层（F18）、⑧ 运行时层（F14/F15）、⑨ 语义层（F21）已写契约、迁移待建。`tests/test_schema.py` 对两个数字分别断言，任何一侧漂移都会失败 |
 | `llm_call.worker` 与新 Worker 名册 | 注释已随 D02 更新为 `supervisor / intake / manufacturer / adjudicator / report`；`internal`、`sourcing`、`action` 是确定性服务，不产生 llm_call |
 | `llm_call.worker` 与 `metrics_snapshot` | 遗留兼容结构。前者暂写 node_id，后者当前不读写；删除或改名必须通过迁移并同步测试 |

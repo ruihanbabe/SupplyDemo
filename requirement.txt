@@ -55,11 +55,12 @@ PostgreSQL 与 Redis 版本刻意对齐此前服务器上的版本，以便将�
 
 | 包 | 排除理由 |
 |---|---|
-| `torch`、`transformers`、`sentence-transformers`、`FlagEmbedding` | 本地模型推理栈。MVP 无 RAG／向量检索（D12），LLM 全外部调用，装了纯占空间；Intel Mac 无 CUDA，CPU 推理也不可用 |
-| `qdrant-client` 及任何向量库 | D12 已移除向量检索；若将来重新引入，按 D11 用 PostgreSQL 扩展而非独立向量库 |
-| `ragas`、`datasets` | 评测栈，且会连带拖入 LangChain 与 torch。EV 用例的判定由独立断言实现（见 `docs/product/acceptance-cases.md` §1），不依赖该框架 |
-| `langchain`、`langchain-openai` | 不默认绑定特定编排框架 |
+| `torch`、`transformers`、`sentence-transformers`、`FlagEmbedding` | 本地模型推理栈。本项目不建通用 RAG／向量检索（`DECISIONS.md` D11），模型全部外部调用；且 Intel Mac 无 CUDA，CPU 推理不可用 |
+| `qdrant-client` 及任何向量库 | 同上。若将来重新引入，按 D11 用 PostgreSQL 扩展而非独立向量库 |
+| `ragas`、`datasets` | 评测栈，且会连带拖入 LangChain 与 torch。回归门禁由独立断言实现（见 `docs/product/acceptance-cases.md`），不依赖该框架 |
+| `langchain`、`langchain-openai`、`langgraph` | 不绑定编排框架。Graph 编排器自研（D23）——引框架会把「并行与依赖怎么被编排出来」这最值钱的部分交给框架 |
 | `cn2an` | 中文数字解析，属此前项目的法规场景需求，本项目无此需求 |
+|
 
 ## 依赖维护约定
 
