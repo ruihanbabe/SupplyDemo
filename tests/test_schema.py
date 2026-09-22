@@ -28,6 +28,9 @@ def revision():
 #: keeps asserting that 0001 never drifts.
 EVIDENCE_SECTION = "## 8. \u2465 \u8bc1\u636e\u5c42"
 
+#: Tables migrated after 0001. F12 took only the field-type half of the evidence layer.
+MIGRATED_BEYOND_0001 = {"evidence", "evidence_field_locator"}
+
 
 def _create_blocks(markdown):
     blocks = re.findall(r"```sql\n(.*?)```", markdown, re.DOTALL)
@@ -73,13 +76,14 @@ def test_invalid_url_does_not_disclose_credentials(monkeypatch):
 @pytest.mark.integration
 def test_upgrade_repeat_and_downgrade(migrated):
     conn, config, schema = migrated
-    # Only the frozen layers have migrations; ⑥⑦⑧⑨ are contracted but not yet
-    # migrated by design (data-model.md §12). Comparing against the full spec
-    # here would report that intentional split as schema drift.
-    expected = set(re.findall(r"CREATE TABLE (\w+)", frozen_ddl()))
+    # 0001's layers plus F12's two evidence tables. The rest of ⑥ (document locators,
+    # official_document, document_resolution) migrates with F17, which owns the
+    # addressing that produces those rows; ⑦⑧⑨ are contracted but not yet migrated by
+    # design (data-model.md §12).
+    expected = set(re.findall(r"CREATE TABLE (\w+)", frozen_ddl())) | MIGRATED_BEYOND_0001
     assert set(inspect(conn).get_table_names(schema=schema)) == expected | {"alembic_version"}
     command.upgrade(config, "head")
-    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
     for table in expected:
         for column in inspect(conn).get_columns(table, schema=schema):
             assert str(column["type"]) not in {"FLOAT", "DOUBLE PRECISION"}
@@ -129,7 +133,7 @@ def test_ddl_failure_is_atomic(migrated):
     assert conn.scalar(text("SELECT count(*) FROM alembic_version")) == 0
     conn.execute(text("DROP TABLE business_rule"))
     command.upgrade(config, "head")
-    assert len(inspect(conn).get_table_names(schema=schema)) == 23
+    assert len(inspect(conn).get_table_names(schema=schema)) == 25
 
 
 @pytest.mark.integration

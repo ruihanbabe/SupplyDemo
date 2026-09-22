@@ -22,6 +22,8 @@
 | 需求展开、候选处理、缺口计算、报价规则、MOQ/包装/阶梯价、版本化方案 | `src/procurement_core/`、`src/persistence/procurement.py` | 已验证 |
 | FastAPI 包络与项目/BOM/需求/Run/缺口/方案端点 | `src/api/` | 代码与测试在，未按四层验收 |
 | 统一 `ModelBackend` 端口、能力协商、云端后端、回放后端、录制 | `src/contracts/llm.py`、`src/infrastructure/llm.py`、`src/infrastructure/replay.py` | 已验证，含跨后端契约测试 |
+| 口径版本化（单板用量、身份接受策略）与模拟供应数据 | `src/persistence/seed_business_rules.py`、`seed_simulated_supply.py` | 已验证：50 套 Glasgow_revC3 算出 5 个缺口 |
+| 证据账本（字段型）：只插入、内容去重、取代链、读取时判新鲜度 | `src/contracts/evidence.py`、`src/persistence/evidence.py`、`src/procurement_core/freshness.py` | 已验证，含真库列级权限断言 |
 | 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据
@@ -29,8 +31,8 @@
 | 范围 | 证据 |
 |---|---|
 | 静态契约 | 2026-09-22：`make compile` 通过；`make lint` All checks passed |
-| 离线测试 | 2026-09-22：`make test` 125 passed / 22 deselected |
-| 集成 | 2026-09-21：`make test-integration` 22 passed（真 PostgreSQL / Redis） |
+| 离线测试 | 2026-09-22：`make test` 132 passed / 27 deselected |
+| 集成 | 2026-09-22：`make test-integration` 27 passed（真 PostgreSQL / Redis） |
 | 模型后端 | 2026-09-22：真实 GLM 端到端两轮工具对话；录制后断网重放逐字重现，零花费 |
 
 ## 尚未实现

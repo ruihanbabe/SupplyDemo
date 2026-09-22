@@ -360,7 +360,9 @@ CREATE INDEX ix_business_rule_current
 
 **本表存的是可变业务参数**（证据有效期、审批期限、候选选择策略等）；模型、工具和工作流配置走版本化运行配置，两者不混放（见 `DECISIONS.md` D18）。
 
-## 8. ⑥ 证据层（F12）
+## 8. ⑥ 证据层（F12 / F17）
+
+> **本层分两期落地。**F12 迁移 `evidence` 与 `evidence_field_locator`（字段型观察，`sourcing` 产出）。`evidence_document_locator`、`official_document`、`document_resolution` 三张表随 **F17** 一并迁移——它们服务于厂商资料的寻址、取回与缓存，而那正是 F17 的职责；先建会让外键指向不存在的表。
 
 Evidence 是全系统的事实单位，契约见 `docs/spec/interfaces.md`「Evidence」。本节只定义表结构。
 
@@ -716,6 +718,7 @@ CREATE TABLE metric_definition (
 
 | 项 | 状态 |
 |---|---|
+| ⑥ 证据层分两期 | F12 已迁移字段型两张表；文档型三张表随 F17 迁移。迁移表数 22 → 24 |
 | ⑦ 预警层待重塑 | 形态重定后告警改以 `RiskEvent` 表达，本文 §9 仍是旧形态且未迁移；重塑随 F18 进行，届时表数会变 |
 | 契约 35 表 vs 迁移 22 表 | 有意分期：`0001` 冻结 ①～⑤ 层 22 表；⑥ 证据层（F12）、⑦ 预警层（F18）、⑧ 运行时层（F14/F15）、⑨ 语义层（F21）已写契约、迁移待建。`tests/test_schema.py` 对两个数字分别断言，任何一侧漂移都会失败 |
 | `llm_call.worker` 与新 Worker 名册 | 注释已随 D02 更新为 `supervisor / intake / manufacturer / adjudicator / report`；`internal`、`sourcing`、`action` 是确定性服务，不产生 llm_call |
