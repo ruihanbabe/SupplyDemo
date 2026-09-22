@@ -96,6 +96,9 @@ class RegisteredTool:
     #: dispatch.
     permission: str = "tool.read"
     idempotency: Idempotency = "idempotent"
+    #: Wall-clock budget for one attempt. Declared here, enforced by the caller: only it
+    #: knows what medium the handler runs in and therefore what can interrupt it. A value
+    #: nobody enforces is worse than none, because it reads as protection.
     timeout_seconds: float = 30.0
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     #: Which scenarios may see this tool at all. Empty means every scenario.

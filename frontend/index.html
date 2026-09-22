@@ -57,6 +57,8 @@
   pre{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;
       word-break:break-word;color:var(--text)}
   .hint{color:var(--muted);font-size:12px}
+  .cut{margin-top:6px;padding-top:6px;border-top:1px dashed var(--bad);
+       color:var(--bad);font-size:12px}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th{text-align:left;font-weight:600;color:var(--muted);padding:4px 6px 4px 0;
      border-bottom:1px solid var(--line);white-space:nowrap}
@@ -254,7 +256,17 @@ async function ask(message){
           if(reply){ reply.classList.remove('caret'); reply = null; buffered = ''; }
           break;
         case 'error':
-          if(reply) reply.classList.remove('caret');
+          if(reply){
+            reply.classList.remove('caret');
+            // 失败发生在已经输出文字之后：屏幕上那段是残片，不是一个简短的回答。
+            // 不标出来的话，半句话看起来和完整回答没有区别。
+            if(evt.after_text){
+              const cut = document.createElement('div');
+              cut.className = 'cut';
+              cut.textContent = '⋯ 回答在此中断，以上内容不完整';
+              reply.appendChild(cut);
+            }
+          }
           bubble('err', `${evt.code}：${evt.message}`);
           break;
         case 'done':

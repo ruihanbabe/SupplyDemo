@@ -142,7 +142,20 @@ def _dispatch(registry, call, run_id: UUID, trace_id: str):
     is written in the same transaction as the work it describes, so the two cannot
     disagree about whether the call happened.
     """
+    declared = registry.describe(call.name)
     with get_engine().begin() as connection:
+        if declared is not None:
+            # Enforced here rather than in the registry because only the caller knows the
+            # medium the handler runs in. These tools are database-bound, so the database
+            # is what can actually interrupt one: a statement that overruns raises, the
+            # handler fails, and the turn continues with a typed error instead of hanging.
+            # A tool that spins on the CPU is not covered — nothing short of a separate
+            # process would be, and claiming otherwise would be worse than saying so.
+            # set_config, not SET: SET takes no bind parameters, and interpolating the
+            # value into SQL would be the wrong habit to establish here. `true` scopes it
+            # to this transaction, so it lapses with the tool call.
+            connection.execute(text("SELECT set_config('statement_timeout', :ms, true)"),
+                               {"ms": str(int(declared.timeout_seconds * 1000))})
         return registry.dispatch(call, Invocation(
             data=ToolContext(repository=ProcurementRepository(connection), run_id=run_id),
             run_id=run_id, trace_id=trace_id, worker=WORKER, scenario=SCENARIO,
@@ -156,7 +169,7 @@ def _conversation(request: ChatRequest) -> list[ChatMessage]:
     return messages
 
 
-def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
+def _turn(payload: ChatRequest, trace_id: str, progress: dict) -> Iterator[str]:
     try:
         backend, backend_name, config = _select_backend()
     except ModelError as exc:
@@ -174,6 +187,7 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
         logger.exception("Could not open a run for this chat turn")
         yield _sse("error", {"code": "audit_unavailable", "message": str(exc)[:200]})
         return
+    progress["run_id"] = run_id
 
     yield _sse("meta", {"run_id": str(run_id), "trace_id": trace_id, "provider": backend_name,
                         "model": model,
@@ -196,15 +210,21 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
             trace_id=trace_id,
         )
         completion = None
+        # A comment frame keeps the connection alive across the longest idle gap there
+        # is — waiting for the model's first token. Proxies drop silent connections, and
+        # a dropped connection is indistinguishable from a hung model at the browser.
+        yield ": waiting for model\n\n"
         try:
             for event in backend.stream(request):
                 if event.kind == "text" and event.text:
+                    progress["emitted_text"] = True
                     yield _sse("text", {"text": event.text})
                 elif event.kind == "done":
                     completion = event.result
         except ModelError as exc:
             yield _sse("error", {"code": exc.code, "message": str(exc),
-                                 "retryable": exc.retryable})
+                                 "retryable": exc.retryable,
+                                 "after_text": progress["emitted_text"]})
             return
 
         if completion is None:
@@ -214,6 +234,7 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
         _record_call(run_id, trace_id, model, completion)
 
         if not completion.wants_tools:
+            progress["state"] = "completed"
             yield _sse("done", {"run_id": str(run_id), "rounds": round_index + 1,
                                 "finish_reason": completion.finish_reason,
                                 "output_tokens": completion.usage.output_tokens})
@@ -222,6 +243,7 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
         messages.append(ChatMessage(role="assistant", content=completion.content,
                                     tool_calls=completion.tool_calls))
         for call in completion.tool_calls:
+            yield ": running tool\n\n"
             outcome = _dispatch(registry, call, run_id, trace_id)
             yield _sse("tool", {"name": call.name, "arguments": call.arguments,
                                 "status": outcome.status, "error_code": outcome.error_code,
@@ -233,6 +255,53 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
     # Only reachable when the cap was hit with tool calls still pending.
     yield _sse("error", {"code": "tool_rounds_exhausted",
                          "message": f"Model still wanted tools after {MAX_TOOL_ROUNDS} rounds"})
+
+
+def _close_run(run_id, state: str, reason: str) -> None:
+    """Every turn ends in a terminal state, including the ones that crashed.
+
+    A run left in `analyzing` forever is indistinguishable from one still working, which
+    makes the audit trail unusable for the one question it exists to answer: what
+    happened to this request.
+    """
+    try:
+        with get_engine().begin() as connection:
+            connection.execute(text("UPDATE run SET state = :state WHERE run_id = :id"),
+                               {"state": state, "id": run_id})
+            connection.execute(
+                text("""INSERT INTO run_state_event(run_id, from_state, to_state, reason,
+                                                    evidence_ref)
+                        VALUES (:id, 'analyzing', :state, :reason, '{}')"""),
+                {"id": run_id, "state": state, "reason": reason[:400]})
+    except Exception:
+        logger.exception("Could not close run %s", run_id)
+
+
+def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
+    """Wraps one turn so that no failure can end the stream without saying why.
+
+    An exception escaping the generator after the response headers are sent truncates
+    the stream silently: the browser sees the connection close and has nothing to show.
+    Infrastructure failures — the database going away mid-turn — reach the user as a
+    named error instead.
+    """
+    progress: dict = {"state": "failed", "run_id": None, "emitted_text": False}
+    try:
+        yield from _turn(payload, trace_id, progress)
+    except GeneratorExit:
+        # The client went away. Nothing can be sent now; only the record is updated.
+        progress["state"] = "cancelled"
+        raise
+    except Exception as exc:
+        logger.exception("Chat turn failed (trace_id=%s)", trace_id)
+        yield _sse("error", {"code": "internal_error", "message": str(exc)[:200],
+                             # The browser needs to know the answer already on screen is
+                             # a fragment, not a short reply.
+                             "after_text": progress["emitted_text"]})
+    finally:
+        if progress["run_id"] is not None:
+            _close_run(progress["run_id"], progress["state"],
+                       f"chat turn {progress['state']}")
 
 
 @router.post("/stream")

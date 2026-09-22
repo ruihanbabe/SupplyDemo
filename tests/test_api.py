@@ -261,3 +261,58 @@ def test_envelope_serializes_dates_and_uuids():
 
     body = envelope({"when": date(2026, 12, 1), "who": DEMAND_ID, "qty": Decimal("1.500000")})
     assert body["data"] == {"when": "2026-12-01", "who": str(DEMAND_ID), "qty": "1.500000"}
+
+
+# ---------- 流式对话的兜底（F13 修补） ----------
+
+def test_a_crash_mid_turn_becomes_a_named_error_not_a_truncated_stream(monkeypatch):
+    """An exception escaping the generator after headers are sent closes the connection
+    with nothing to show. The browser must be told what happened."""
+    from api.routers import chat
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(chat, "_turn", explode)
+    frames = "".join(chat._events(chat.ChatRequest(message="hi"), "trace-1"))
+    assert "event: error" in frames
+    assert "internal_error" in frames
+    assert "database went away" in frames
+
+
+def test_a_failed_turn_still_closes_its_run(monkeypatch):
+    """A run left in `analyzing` forever is indistinguishable from one still working."""
+    from api.routers import chat
+
+    closed = {}
+
+    def turn(_payload, _trace, progress):
+        progress["run_id"] = "run-1"
+        raise RuntimeError("boom")
+        yield  # pragma: no cover - generator marker
+
+    monkeypatch.setattr(chat, "_turn", turn)
+    monkeypatch.setattr(chat, "_close_run",
+                        lambda run_id, state, reason: closed.update(
+                            {"run_id": run_id, "state": state}))
+    list(chat._events(chat.ChatRequest(message="hi"), "trace-2"))
+    assert closed == {"run_id": "run-1", "state": "failed"}
+
+
+def test_a_client_that_disconnects_marks_the_run_cancelled(monkeypatch):
+    from api.routers import chat
+
+    closed = {}
+
+    def turn(_payload, _trace, progress):
+        progress["run_id"] = "run-2"
+        yield "event: text\ndata: {}\n\n"
+        yield "event: text\ndata: {}\n\n"
+
+    monkeypatch.setattr(chat, "_turn", turn)
+    monkeypatch.setattr(chat, "_close_run",
+                        lambda run_id, state, reason: closed.update({"state": state}))
+    stream = chat._events(chat.ChatRequest(message="hi"), "trace-3")
+    next(stream)
+    stream.close()  # what StreamingResponse does when the client goes away
+    assert closed == {"state": "cancelled"}
