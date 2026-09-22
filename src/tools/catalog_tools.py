@@ -1,23 +1,47 @@
 """Read-only tools over the deterministic procurement core.
 
 Every number these return was computed or stored by code, never by a model. That is the
-whole point of routing the model through tools instead of letting it answer from the
-prompt: the model may choose *which* question to ask, never *what the answer is*
-(ARCHITECTURE.md invariant 1).
+point of routing the model through tools: it may choose *which* question to ask, never
+*what the answer is* (BR-07).
 
-Payloads are kept deliberately small. A tool result becomes the next request's context,
-so returning a whole BOM would spend the budget that the actual reasoning needs.
+Payloads stay small. A tool result becomes the next request's context, so returning a
+whole BOM would spend the budget the actual reasoning needs.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Any
+from uuid import uuid4
 
 from contracts.llm import ToolSpec
-from tools.registry import RegisteredTool, ToolOutcome, ToolRegistry
+from procurement_core.demand import prepare_demand
+from procurement_core.shortage import calculate_shortages
+from tools.registry import RegisteredTool, RetryPolicy, ToolOutcome, ToolRegistry
 
 #: How many lines a summary may name before it stops being a summary.
 SAMPLE_LINES = 8
+#: How many shortage rows travel back to the model at once.
+MAX_SHORTAGE_ROWS = 10
+#: Used when the caller does not state a need-by date. Long enough that in-transit stock
+#: with a near ETA still counts, short enough that a far one does not.
+DEFAULT_HORIZON_DAYS = 60
+
+#: Why a component came out short, in the words a buyer would use. Translated from the
+#: exclusion reasons the deterministic core already recorded — never re-derived here,
+#: because two places computing the same explanation will eventually disagree.
+EXCLUSION_WORDS = {
+    "eta_unknown": "在途无到货日期",
+    "unconfirmed": "在途未确认",
+    "after_need_by_date": "在途到货晚于需求日",
+    "allocated_to_other_demand": "在途已指派给其他需求",
+}
+WARNING_WORDS = {
+    "inventory_snapshot_missing": "无库存快照",
+    "resource_competition": "库存被其他需求占用",
+    "allocations_exceed_on_hand": "占用量超过实物库存",
+}
 
 
 @dataclass
@@ -25,6 +49,7 @@ class ToolContext:
     """What a tool is allowed to reach. Nothing wider than this is in scope."""
 
     repository: Any
+    run_id: Any = None
 
 
 def _list_projects(_: dict[str, Any], context: ToolContext) -> ToolOutcome:
@@ -60,25 +85,108 @@ def _bom_summary(arguments: dict[str, Any], context: ToolContext) -> ToolOutcome
             for line in lines[:SAMPLE_LINES]],
     }
     # partial, not ok: the caller is seeing a sample and must not summarise it as if it
-    # had seen every line. Collapsing the two is exactly what invariant 3 forbids.
+    # had seen every line. Collapsing the two is what BR-05 forbids.
     status = "partial" if len(lines) > SAMPLE_LINES else "ok"
     return ToolOutcome(status, render="bom_summary", content=summary,
                        message=None if status == "ok"
                        else f"Showing {SAMPLE_LINES} of {len(lines)} lines")
 
 
+def _why_short(breakdown: dict[str, Any]) -> str:
+    reasons = {EXCLUSION_WORDS.get(row.get("excluded_reason"), row.get("excluded_reason"))
+               for row in breakdown.get("excluded_transit") or []}
+    reasons |= {WARNING_WORDS[warning] for warning in breakdown.get("warnings") or []
+                if warning in WARNING_WORDS}
+    words = sorted(reason for reason in reasons if reason)
+    # Nothing was excluded and nothing was flagged: the stock on hand plus what arrives
+    # in time simply does not cover the demand. Saying so beats an empty cell, which
+    # reads as "we do not know why" when in fact we do.
+    return "，".join(words) if words else "库存与按期在途合计不足"
+
+
+def _compute_shortage(arguments: dict[str, Any], context: ToolContext) -> ToolOutcome:
+    """Expand a BOM for a production run and compute per-component shortage.
+
+    Single-candidate lines are selected automatically; lines with a real choice are left
+    unresolved for a human. Auto-selecting where the choice is unique is not choosing for
+    someone (EV-07): there was nothing to choose.
+    """
+    project_id = str(arguments["project_id"])
+    try:
+        production_qty = Decimal(str(arguments["production_qty"]))
+    except (InvalidOperation, TypeError):
+        return ToolOutcome("error", error_code="invalid_arguments",
+                           message="production_qty must be a number")
+    repository = context.repository
+    lines = repository.bom(project_id)
+    if not lines:
+        return ToolOutcome("not_found", render="shortage", content=None,
+                           message=f"No BOM for project {project_id!r}")
+    selected = {row["line_id"]: row["candidates"][0]["component_id"]
+                for row in lines if len(row["candidates"]) == 1}
+    need_by = (datetime.now(UTC) + timedelta(days=DEFAULT_HORIZON_DAYS)).date()
+
+    demand_id = uuid4()
+    expansion = prepare_demand(
+        repository, demand_id=demand_id, project_id=project_id,
+        product_version=str(arguments.get("product_version") or project_id),
+        production_qty=production_qty, need_by_date=need_by, created_by="chat",
+        selected=selected, is_simulated=True)
+    if not any(row["unresolved_reason"] is None for row in expansion["lines"]):
+        blockers = sorted({row["unresolved_reason"] for row in expansion["lines"]})
+        return ToolOutcome("error", render="shortage", error_code="expansion_blocked",
+                           message=f"No line could be expanded: {', '.join(blockers)}")
+
+    # A child run: the shortage is its own computation, and its budget will later be
+    # deducted from the conversation's (F29).
+    run = repository.create_run({
+        "run_id": uuid4(), "tenant_id": "default", "demand_id": demand_id,
+        "trigger_kind": "user", "state": "analyzing",
+        "budget_total": None, "parent_run_id": context.run_id})
+    result = calculate_shortages(repository, run["run_id"])
+
+    short = sorted((snapshot for snapshot in result["snapshots"]
+                    if snapshot["shortage_qty"] > 0),
+                   key=lambda snapshot: -snapshot["shortage_qty"])
+    names = {row["component_id"]: row["mpn"] for row in repository.components(
+        [snapshot["component_id"] for snapshot in short])}
+    rows = [{"mpn": names.get(snapshot["component_id"], snapshot["component_id"]),
+             "required_qty": str(snapshot["required_qty"]),
+             "allocatable_qty": str(snapshot["allocatable_qty"]),
+             "shortage_qty": str(snapshot["shortage_qty"]),
+             "why": _why_short(snapshot["breakdown"])}
+            for snapshot in short[:MAX_SHORTAGE_ROWS]]
+    unresolved = [row for row in expansion["lines"] if row["unresolved_reason"] is not None]
+    content = {"project_id": project_id, "production_qty": str(production_qty),
+               "need_by_date": need_by.isoformat(), "run_id": str(run["run_id"]),
+               "components_checked": len(result["snapshots"]),
+               "unresolved_lines": len(unresolved),
+               "policy_versions": expansion["policy_versions"], "rows": rows}
+    status = "ok" if not unresolved and len(short) <= MAX_SHORTAGE_ROWS else "partial"
+    message = None
+    if unresolved:
+        message = f"{len(unresolved)} 行未能展开，未计入缺口"
+    elif len(short) > MAX_SHORTAGE_ROWS:
+        message = f"缺口共 {len(short)} 项，显示前 {MAX_SHORTAGE_ROWS} 项"
+    # Simulated stock produced these numbers; the label travels with them (BR-09).
+    return ToolOutcome(status, render="shortage", content=content, message=message,
+                       provenance="sample")
+
+
 def _refuse_draft(_: dict[str, Any], __: ToolContext) -> ToolOutcome:  # pragma: no cover
     raise AssertionError("unreachable: the registry refuses this tool before dispatch")
 
 
-def build_registry() -> ToolRegistry:
-    registry = ToolRegistry()
+def build_registry(*, audit=None) -> ToolRegistry:
+    registry = ToolRegistry(audit=audit)
     registry.register(RegisteredTool(
         spec=ToolSpec(
             name="list_projects",
             description="列出已导入的项目及其 BOM 行数与总用量。数据来自数据库，不是估算。",
             parameters={"type": "object", "properties": {}, "required": []}),
-        effect="read", handler=_list_projects))
+        effect="read", handler=_list_projects,
+        permission="catalog.read", scenarios=frozenset({"procurement"}),
+        workers=frozenset({"supervisor", "internal"})))
     registry.register(RegisteredTool(
         spec=ToolSpec(
             name="get_bom_summary",
@@ -89,8 +197,27 @@ def build_registry() -> ToolRegistry:
                             "type": "string",
                             "description": "项目标识，可先用 list_projects 取得"}},
                         "required": ["project_id"]}),
-        effect="read", handler=_bom_summary))
-    # Declared so the boundary is visible and testable, and refused for a named reason.
+        effect="read", handler=_bom_summary,
+        permission="catalog.read", scenarios=frozenset({"procurement"}),
+        workers=frozenset({"supervisor", "internal"})))
+    registry.register(RegisteredTool(
+        spec=ToolSpec(
+            name="compute_shortage",
+            description=("按项目与生产数量计算每个元件的缺口。数量由确定性代码算出，"
+                         "结果含缺口原因。当前库存为模拟数据。"),
+            parameters={"type": "object",
+                        "properties": {
+                            "project_id": {"type": "string"},
+                            "production_qty": {"type": "number",
+                                               "description": "生产套数，正数"}},
+                        "required": ["project_id", "production_qty"]}),
+        effect="read", handler=_compute_shortage,
+        permission="procurement.compute", idempotency="idempotent",
+        timeout_seconds=60.0, retry_policy=RetryPolicy(attempts=1),
+        scenarios=frozenset({"procurement"}),
+        # internal owns internal arithmetic. spec_check and sourcing must not be able to
+        # reach internal stock at all, which is what makes T04's explain worth printing.
+        workers=frozenset({"supervisor", "internal"})))
     registry.register(RegisteredTool(
         spec=ToolSpec(
             name="create_procurement_draft",
@@ -98,6 +225,9 @@ def build_registry() -> ToolRegistry:
             parameters={"type": "object",
                         "properties": {"plan_id": {"type": "string"}},
                         "required": ["plan_id"]}),
-        effect="write", handler=_refuse_draft, available=False,
+        effect="write", handler=_refuse_draft,
+        permission="procurement.write", idempotency="unsafe",
+        scenarios=frozenset({"procurement"}), workers=frozenset({"action"}),
+        available=False,
         unavailable_reason="外部采购系统与其幂等能力尚未确定（Q-03）；在此之前不做任何外部写入"))
     return registry

@@ -24,6 +24,7 @@
 | 统一 `ModelBackend` 端口、能力协商、云端后端、回放后端、录制 | `src/contracts/llm.py`、`src/infrastructure/llm.py`、`src/infrastructure/replay.py` | 已验证，含跨后端契约测试 |
 | 口径版本化（单板用量、身份接受策略）与模拟供应数据 | `src/persistence/seed_business_rules.py`、`seed_simulated_supply.py` | 已验证：50 套 Glasgow_revC3 算出 5 个缺口 |
 | 证据账本（字段型）：只插入、内容去重、取代链、读取时判新鲜度 | `src/contracts/evidence.py`、`src/persistence/evidence.py`、`src/procurement_core/freshness.py` | 已验证，含真库列级权限断言 |
+| ToolRegistry：元数据、按场景/worker 注入、重试收口、幂等分级、审计落库、外部内容标记 | `src/tools/registry.py`、`src/tools/catalog_tools.py`、`src/persistence/tool_audit.py` | 已验证，含真实模型端到端 |
 | 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据
@@ -31,7 +32,7 @@
 | 范围 | 证据 |
 |---|---|
 | 静态契约 | 2026-09-22：`make compile` 通过；`make lint` All checks passed |
-| 离线测试 | 2026-09-22：`make test` 132 passed / 27 deselected |
+| 离线测试 | 2026-09-22：`make test` 154 passed / 27 deselected |
 | 集成 | 2026-09-22：`make test-integration` 27 passed（真 PostgreSQL / Redis） |
 | 模型后端 | 2026-09-22：真实 GLM 端到端两轮工具对话；录制后断网重放逐字重现，零花费 |
 
@@ -40,7 +41,7 @@
 按 `requirements.md` 的技术点编号：
 
 - **T01 / T02 / T03** Graph 编排器、Worker 名册、fan-out/fan-in、部分失败语义、RiskEvent 异步流——全部未建，是第一期主体
-- **T04** 分层权限策略与 `explain`——未建
+- **T04** 分层权限策略与 `explain`——工具层的 scenario/worker 过滤已就位（F13），分层链与 explain 未建（F26）
 - **T05** 能力探测套件、本地部署后端——未建（端口与回放已就绪）
 - **T06** MCP 客户端与进程内 skill 的并存——未建
 - **T07** 树状调用轨迹、三类日志分离——未建

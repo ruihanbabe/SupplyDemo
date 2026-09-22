@@ -16,7 +16,7 @@ import json
 import logging
 import os
 from collections.abc import Iterator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -29,7 +29,9 @@ from infrastructure.agent_config import load_agent_config
 from infrastructure.llm import backend_for, load_settings
 from infrastructure.replay import RecordingBackend, ReplayBackend
 from persistence.procurement import ProcurementRepository
+from persistence.tool_audit import PostgresAuditSink
 from tools.catalog_tools import ToolContext, build_registry
+from tools.registry import Invocation
 
 logger = logging.getLogger("supplyagent.chat")
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -41,6 +43,11 @@ MAX_TOOL_ROUNDS = 3
 
 #: The worker whose config/agents/*.yaml supplies model and sampling for this entry.
 WORKER = "supervisor"
+
+#: Which tool set this entry may see. Scenario and worker together decide what gets
+#: injected, so a tool outside them is not merely discouraged — it is never offered and
+#: is refused again at dispatch if the model names it anyway.
+SCENARIO = "procurement"
 
 SYSTEM_PROMPT = """你是元件供应风险预警系统的对话入口。
 
@@ -96,9 +103,14 @@ def _select_backend():
     return backend, backend.name, config
 
 
-def _open_run(trace_id: str) -> str:
-    """One chat turn is one Run. Auditing it is not optional even in a spike."""
-    run_id = str(uuid4())
+def _open_run(trace_id: str) -> UUID:
+    """One chat turn is one Run. Auditing it is not optional even in a spike.
+
+    The id stays a UUID all the way through. Carrying it as a string works until it is
+    compared with one read back from the database, which comes back as a UUID — and then
+    two values that denote the same run stop being equal.
+    """
+    run_id = uuid4()
     with get_engine().begin() as connection:
         connection.execute(
             text("""INSERT INTO run(run_id, trigger_kind, state)
@@ -110,7 +122,7 @@ def _open_run(trace_id: str) -> str:
     return run_id
 
 
-def _record_call(run_id: str, trace_id: str, model: str, completion) -> None:
+def _record_call(run_id: UUID, trace_id: str, model: str, completion) -> None:
     with get_engine().begin() as connection:
         connection.execute(
             text("""INSERT INTO llm_call(llm_call_id, run_id, trace_id, worker, model,
@@ -119,6 +131,22 @@ def _record_call(run_id: str, trace_id: str, model: str, completion) -> None:
             {"id": str(uuid4()), "run_id": run_id, "trace_id": trace_id, "worker": WORKER,
              "model": model, "prompt": completion.usage.prompt_tokens,
              "output": completion.usage.output_tokens, "ms": completion.latency_ms})
+
+
+def _dispatch(registry, call, run_id: UUID, trace_id: str):
+    """One tool call, one transaction.
+
+    Short and self-contained rather than one transaction for the whole turn: a tool that
+    writes (a demand, a run, a shortage snapshot) should be durable the moment it
+    succeeds, and a model failure three rounds later must not roll it back. The audit row
+    is written in the same transaction as the work it describes, so the two cannot
+    disagree about whether the call happened.
+    """
+    with get_engine().begin() as connection:
+        return registry.dispatch(call, Invocation(
+            data=ToolContext(repository=ProcurementRepository(connection), run_id=run_id),
+            run_id=run_id, trace_id=trace_id, worker=WORKER, scenario=SCENARIO,
+            audit=PostgresAuditSink(connection)))
 
 
 def _conversation(request: ChatRequest) -> list[ChatMessage]:
@@ -137,7 +165,7 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
     model = config.model
 
     registry = build_registry()
-    tools = registry.specs(effects=("read",))
+    tools = registry.specs(effects=("read",), scenario=SCENARIO, worker=WORKER)
     messages = _conversation(payload)
 
     try:
@@ -147,63 +175,60 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
         yield _sse("error", {"code": "audit_unavailable", "message": str(exc)[:200]})
         return
 
-    yield _sse("meta", {"run_id": run_id, "trace_id": trace_id, "provider": backend_name,
+    yield _sse("meta", {"run_id": str(run_id), "trace_id": trace_id, "provider": backend_name,
                         "model": model,
                         "provenance": "replay" if backend_name == "replay" else "real",
                         "tools": [tool.name for tool in tools]})
 
-    # One connection for the whole turn's reads; tools never open their own.
-    with get_engine().connect() as connection:
-        context = ToolContext(repository=ProcurementRepository(connection))
-        for round_index in range(MAX_TOOL_ROUNDS + 1):
-            last_round = round_index == MAX_TOOL_ROUNDS
-            # The last round is offered no tools at all: the cap has to be enforced by
-            # what the model can reach, not by asking it politely to stop.
-            request = ModelRequest(
-                call_id=str(uuid4()),
-                model=config.model,
-                messages=tuple(messages),
-                tools=() if last_round else tuple(tools),
-                temperature=config.temperature,
-                max_tokens=config.max_tokens,
-                stream=True,
-                timeout_seconds=config.timeout_seconds,
-                trace_id=trace_id,
-            )
-            completion = None
-            try:
-                for event in backend.stream(request):
-                    if event.kind == "text" and event.text:
-                        yield _sse("text", {"text": event.text})
-                    elif event.kind == "done":
-                        completion = event.result
-            except ModelError as exc:
-                yield _sse("error", {"code": exc.code, "message": str(exc),
-                                     "retryable": exc.retryable})
-                return
+    for round_index in range(MAX_TOOL_ROUNDS + 1):
+        last_round = round_index == MAX_TOOL_ROUNDS
+        # The last round is offered no tools at all: the cap has to be enforced by
+        # what the model can reach, not by asking it politely to stop.
+        request = ModelRequest(
+            call_id=str(uuid4()),
+            model=config.model,
+            messages=tuple(messages),
+            tools=() if last_round else tuple(tools),
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            stream=True,
+            timeout_seconds=config.timeout_seconds,
+            trace_id=trace_id,
+        )
+        completion = None
+        try:
+            for event in backend.stream(request):
+                if event.kind == "text" and event.text:
+                    yield _sse("text", {"text": event.text})
+                elif event.kind == "done":
+                    completion = event.result
+        except ModelError as exc:
+            yield _sse("error", {"code": exc.code, "message": str(exc),
+                                 "retryable": exc.retryable})
+            return
 
-            if completion is None:
-                yield _sse("error", {"code": "malformed_response",
-                                     "message": "Stream ended without a completion"})
-                return
-            _record_call(run_id, trace_id, model, completion)
+        if completion is None:
+            yield _sse("error", {"code": "malformed_response",
+                                 "message": "Stream ended without a completion"})
+            return
+        _record_call(run_id, trace_id, model, completion)
 
-            if not completion.wants_tools:
-                yield _sse("done", {"run_id": run_id, "rounds": round_index + 1,
-                                    "finish_reason": completion.finish_reason,
-                                    "output_tokens": completion.usage.output_tokens})
-                return
+        if not completion.wants_tools:
+            yield _sse("done", {"run_id": str(run_id), "rounds": round_index + 1,
+                                "finish_reason": completion.finish_reason,
+                                "output_tokens": completion.usage.output_tokens})
+            return
 
-            messages.append(ChatMessage(role="assistant", content=completion.content,
-                                        tool_calls=completion.tool_calls))
-            for call in completion.tool_calls:
-                outcome = registry.dispatch(call, context)
-                yield _sse("tool", {"name": call.name, "arguments": call.arguments,
-                                    "status": outcome.status, "error_code": outcome.error_code,
-                                    "message": outcome.message, "content": outcome.content,
-                                    "render": outcome.render})
-                messages.append(ChatMessage(role="tool", content=outcome.for_model(),
-                                            tool_call_id=call.id))
+        messages.append(ChatMessage(role="assistant", content=completion.content,
+                                    tool_calls=completion.tool_calls))
+        for call in completion.tool_calls:
+            outcome = _dispatch(registry, call, run_id, trace_id)
+            yield _sse("tool", {"name": call.name, "arguments": call.arguments,
+                                "status": outcome.status, "error_code": outcome.error_code,
+                                "message": outcome.message, "content": outcome.content,
+                                "render": outcome.render, "provenance": outcome.provenance})
+            messages.append(ChatMessage(role="tool", content=outcome.for_model(),
+                                        tool_call_id=call.id))
 
     # Only reachable when the cap was hit with tool calls still pending.
     yield _sse("error", {"code": "tool_rounds_exhausted",

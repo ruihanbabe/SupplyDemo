@@ -78,6 +78,14 @@ class ProcurementRepository:
             {"tenant": tenant_id, "rule": rule_id}).mappings().first()
         return dict(row) if row else None
 
+    def components(self, component_ids):
+        """Identity lookup for display. Empty in, empty out — never a wildcard query."""
+        if not component_ids:
+            return []
+        table = self.table("component")
+        return [dict(row) for row in self.connection.execute(
+            select(table).where(table.c.component_id.in_(list(component_ids)))).mappings()]
+
     def list_projects(self):
         table = self.table("project")
         return [dict(row) for row in self.connection.execute(
