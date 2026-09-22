@@ -30,8 +30,9 @@ class ToolContext:
 def _list_projects(_: dict[str, Any], context: ToolContext) -> ToolOutcome:
     projects = context.repository.list_projects()
     if not projects:
-        return ToolOutcome("not_found", content=[], message="No projects are loaded")
-    return ToolOutcome("ok", content=[
+        return ToolOutcome("not_found", render="projects", content=[],
+                           message="No projects are loaded")
+    return ToolOutcome("ok", render="projects", content=[
         {"project_id": row["project_id"], "bom_lines": row["bom_lines"],
          "total_quantity": row["total_quantity"]}
         for row in projects])
@@ -41,7 +42,7 @@ def _bom_summary(arguments: dict[str, Any], context: ToolContext) -> ToolOutcome
     project_id = str(arguments["project_id"])
     lines = context.repository.bom(project_id)
     if not lines:
-        return ToolOutcome("not_found", content=None,
+        return ToolOutcome("not_found", render="bom_summary", content=None,
                            message=f"No BOM for project {project_id!r}")
     unverified = [line["line_id"] for line in lines if not line["qty_basis_verified"]]
     no_candidate = [line["line_id"] for line in lines if not line["candidates"]]
@@ -61,7 +62,7 @@ def _bom_summary(arguments: dict[str, Any], context: ToolContext) -> ToolOutcome
     # partial, not ok: the caller is seeing a sample and must not summarise it as if it
     # had seen every line. Collapsing the two is exactly what invariant 3 forbids.
     status = "partial" if len(lines) > SAMPLE_LINES else "ok"
-    return ToolOutcome(status, content=summary,
+    return ToolOutcome(status, render="bom_summary", content=summary,
                        message=None if status == "ok"
                        else f"Showing {SAMPLE_LINES} of {len(lines)} lines")
 

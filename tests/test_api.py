@@ -33,6 +33,11 @@ class StubRepository:
     def atomic(self):
         yield
 
+    def effective_rule(self, rule_id, tenant_id="default"):
+        """No rule in force unless a test puts one there: the strict default is the
+        behaviour most endpoints are asserting against."""
+        return self.overrides.get("rules", {}).get(rule_id)
+
     def list_projects(self):
         return self.overrides.get("projects", [{"project_id": "demo", "source_file": "x.csv",
                                                 "bom_lines": 1, "total_quantity": 2}])

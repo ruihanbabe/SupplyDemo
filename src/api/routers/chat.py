@@ -200,7 +200,8 @@ def _events(payload: ChatRequest, trace_id: str) -> Iterator[str]:
                 outcome = registry.dispatch(call, context)
                 yield _sse("tool", {"name": call.name, "arguments": call.arguments,
                                     "status": outcome.status, "error_code": outcome.error_code,
-                                    "message": outcome.message, "content": outcome.content})
+                                    "message": outcome.message, "content": outcome.content,
+                                    "render": outcome.render})
                 messages.append(ChatMessage(role="tool", content=outcome.for_model(),
                                             tool_call_id=call.id))
 

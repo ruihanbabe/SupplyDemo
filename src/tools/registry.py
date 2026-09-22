@@ -32,6 +32,12 @@ class ToolOutcome:
     content: Any = None
     error_code: str | None = None
     message: str | None = None
+    #: How a viewer should present this. The tool names it rather than the UI guessing
+    #: from the payload's shape: a guess breaks the moment two tools return similar
+    #: fields, and it would put a presentation decision inside the renderer, where the
+    #: tool's author cannot see or test it. Unknown kinds fall back to raw JSON, so a
+    #: new tool is always viewable, just not pretty.
+    render: str = "raw"
 
     def for_model(self) -> str:
         """The string handed back as the tool message.
@@ -40,6 +46,8 @@ class ToolOutcome:
         list cannot tell "there are none" from "the lookup failed", and would report the
         second as the first.
         """
+        # `render` is deliberately absent: it is a hint for the viewer, and telling the
+        # model how its answer will be drawn invites it to write for the layout.
         return json.dumps(
             {"status": self.status, "content": self.content,
              "error_code": self.error_code, "message": self.message},

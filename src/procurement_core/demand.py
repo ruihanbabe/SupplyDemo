@@ -1,11 +1,57 @@
-"""BOM demand expansion; arithmetic is gated by quantity-basis verification."""
+"""BOM demand expansion; arithmetic is gated by an explicit, versioned policy."""
+from dataclasses import dataclass, field
 from decimal import Decimal, localcontext
 
 from procurement_core.numbers import quantity
 
 
+@dataclass(frozen=True)
+class ExpansionPolicy:
+    """What the caller has established about data this BOM only asserts.
+
+    Both flags encode something nobody verified at ingest time: whether the `quantity`
+    column means per-board or total, and whether a candidate's identity can be trusted.
+    Refusing to compute until each row is individually confirmed would mean never
+    computing anything, so the decision is made once, as a versioned business rule, and
+    handed in here. The default stays strict: with no policy, nothing expands.
+
+    `versions` carries the rule versions this policy came from, so any number derived
+    under it can be traced back to the rule that allowed it.
+    """
+
+    quantity_basis_confirmed: bool = False
+    accepted_identity_status: frozenset[str] = frozenset({"verified"})
+    versions: dict[str, int] = field(default_factory=dict)
+
+
+#: business_rule ids this policy is built from.
+QUANTITY_BASIS_RULE = "bom.quantity_basis"
+IDENTITY_POLICY_RULE = "component.identity_policy"
+
+
+def load_policy(repository, tenant_id="default") -> ExpansionPolicy:
+    """Build the policy from versioned business rules, not from code constants."""
+    basis = repository.effective_rule(QUANTITY_BASIS_RULE, tenant_id)
+    identity = repository.effective_rule(IDENTITY_POLICY_RULE, tenant_id)
+    versions = {}
+    confirmed = False
+    if basis is not None:
+        # Only "per_board" licenses the multiplication. "total" or anything unrecognised
+        # leaves it blocked rather than guessing which reading was meant.
+        confirmed = (basis["value"] or {}).get("basis") == "per_board"
+        versions[QUANTITY_BASIS_RULE] = basis["version"]
+    accepted = frozenset({"verified"})
+    if identity is not None:
+        accepted = frozenset((identity["value"] or {}).get("accepted_status") or ["verified"])
+        versions[IDENTITY_POLICY_RULE] = identity["version"]
+    return ExpansionPolicy(quantity_basis_confirmed=confirmed,
+                           accepted_identity_status=accepted, versions=versions)
+
+
 def expand_lines(production_qty: Decimal, bom_lines: list[dict],
-                 selected: dict[str, str]) -> list[dict]:
+                 selected: dict[str, str],
+                 policy: ExpansionPolicy | None = None) -> list[dict]:
+    policy = policy or ExpansionPolicy()
     quantity(production_qty, positive=True)
     known = {row["line_id"] for row in bom_lines}
     if set(selected) - known:
@@ -13,7 +59,7 @@ def expand_lines(production_qty: Decimal, bom_lines: list[dict],
     result = []
     for row in bom_lines:
         line_id = row["line_id"]
-        if not row["qty_basis_verified"]:
+        if not (policy.quantity_basis_confirmed or row["qty_basis_verified"]):
             result.append({"line_id": line_id, "component_id": None, "required_qty": None,
                            "unresolved_reason": "quantity_basis_unverified"})
             continue
@@ -30,7 +76,7 @@ def expand_lines(production_qty: Decimal, bom_lines: list[dict],
             reason = "missing_candidate"
         elif chosen is None:
             reason = "candidate_selection_required"
-        elif candidates[chosen]["identity_status"] != "verified":
+        elif candidates[chosen]["identity_status"] not in policy.accepted_identity_status:
             reason = "candidate_identity_unverified"
         result.append({"line_id": line_id, "component_id": chosen if reason is None else None,
                        "required_qty": required, "unresolved_reason": reason})
@@ -52,10 +98,12 @@ def prepare_demand(repository, *, demand_id, project_id, product_version, produc
         bom_lines = repository.bom(project_id)
         if not bom_lines:
             raise ValueError("Project has no BOM lines")
-        lines = expand_lines(production_qty, bom_lines, selected or {})
+        policy = load_policy(repository, tenant_id)
+        lines = expand_lines(production_qty, bom_lines, selected or {}, policy)
         repository.save_demand_lines(demand_id, lines)
         return {"demand_id": demand_id, "lines": lines,
                 "ready": all(row["unresolved_reason"] is None for row in lines),
+                "policy_versions": policy.versions,
                 "confirmation_requests": confirmation_requests(bom_lines, lines)}
 
 

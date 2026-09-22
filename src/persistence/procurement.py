@@ -63,6 +63,21 @@ class ProcurementRepository:
         return [dict(row) for row in self.connection.execute(select(table).where(
             table.c.demand_id == demand_id).order_by(table.c.line_id)).mappings()]
 
+    def effective_rule(self, rule_id, tenant_id="default"):
+        """The highest version already in force, or None.
+
+        Versions only ever get added (data-model.md §7), so "current" is a read-time
+        question: the newest row whose effective_from has passed. Returning the version
+        alongside the value is not optional — a conclusion has to stay traceable to the
+        rule version it was computed under.
+        """
+        row = self.connection.execute(text("""
+            SELECT version, value FROM business_rule
+            WHERE tenant_id = :tenant AND rule_id = :rule AND effective_from <= now()
+            ORDER BY version DESC LIMIT 1"""),
+            {"tenant": tenant_id, "rule": rule_id}).mappings().first()
+        return dict(row) if row else None
+
     def list_projects(self):
         table = self.table("project")
         return [dict(row) for row in self.connection.execute(

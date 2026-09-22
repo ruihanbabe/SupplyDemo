@@ -57,6 +57,19 @@
   pre{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;
       word-break:break-word;color:var(--text)}
   .hint{color:var(--muted);font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-weight:600;color:var(--muted);padding:4px 6px 4px 0;
+     border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:4px 6px 4px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  .short{color:var(--bad);font-weight:600}
+  .why{color:var(--muted);font-size:11px}
+  .stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .stat b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
+  .stat span{color:var(--muted);font-size:11px}
+  .risk{border-left:3px solid var(--warn);padding-left:10px}
+  .risk .src{font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -104,18 +117,90 @@ function bubble(cls, text=''){
   return el;
 }
 
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// 渲染器按 render 类型登记。工具自己声明类型，前端不靠猜字段——
+// 猜法在两个工具返回相似字段时就会串台。未登记的类型退回原始 JSON，
+// 所以新工具永远看得见，只是不好看。
+const RENDER = {
+  projects: rows => rows?.length ? `<table>
+      <tr><th>项目</th><th>BOM 行</th><th>总用量</th></tr>
+      ${rows.map(r => `<tr><td>${esc(r.project_id)}</td>
+        <td class="num">${esc(r.bom_lines)}</td>
+        <td class="num">${esc(r.total_quantity)}</td></tr>`).join('')}
+    </table>` : '<div class="hint">没有已导入的项目。</div>',
+
+  bom_summary: c => !c ? '' : `
+    <div class="stats">
+      <div class="stat"><b>${esc(c.line_count)}</b><span>用料行</span></div>
+      <div class="stat"><b>${esc(c.lines_without_candidates)}</b><span>无候选</span></div>
+      <div class="stat"><b>${esc(c.lines_needing_selection)}</b><span>待选型</span></div>
+      <div class="stat"><b>${esc(c.lines_with_unverified_quantity_basis)}</b><span>口径未核验</span></div>
+    </div>
+    <table><tr><th>行</th><th>位号</th><th>单板用量</th><th>候选</th></tr>
+      ${(c.sample || []).map(r => `<tr><td>${esc(r.line_id)}</td>
+        <td>${esc((r.reference || '').slice(0, 24))}</td>
+        <td class="num">${esc(r.quantity)}</td>
+        <td>${esc((r.candidate_mpns || []).join(' / '))}</td></tr>`).join('')}
+    </table>`,
+
+  // 缺口表的重点不是数字，是「为什么缺」——只给一个数看不出所以然。
+  shortage: c => !c?.rows?.length ? '<div class="hint">没有缺口。</div>' : `
+    <table><tr><th>元件</th><th>需求</th><th>可分配</th><th>缺口</th></tr>
+      ${c.rows.map(r => `<tr>
+        <td>${esc(r.mpn)}${r.why ? `<div class="why">${esc(r.why)}</div>` : ''}</td>
+        <td class="num">${esc(r.required_qty)}</td>
+        <td class="num">${esc(r.allocatable_qty)}</td>
+        <td class="num short">${esc(r.shortage_qty)}</td></tr>`).join('')}
+    </table>
+    ${c.policy_versions ? `<div class="why" style="margin-top:6px">口径版本：
+      ${Object.entries(c.policy_versions).map(([k, v]) => `${esc(k)} v${esc(v)}`).join('，')}</div>` : ''}`,
+};
+
+function panel(kind, content, message){
+  const render = RENDER[kind];
+  if (render) {
+    const html = render(content);
+    if (html) return html;
+  }
+  const pre = document.createElement('pre');
+  pre.textContent = content == null ? (message || '（无内容）')
+    : JSON.stringify(content, null, 2);
+  return pre.outerHTML;
+}
+
 function card(evt){
   empty.style.display = 'none';
   const el = document.createElement('div');
   el.className = 'card';
-  const body = evt.content === null || evt.content === undefined
-    ? (evt.message || '（无内容）')
-    : JSON.stringify(evt.content, null, 2);
   el.innerHTML = `<h3><span></span><span class="st ${evt.status}">${evt.status}</span></h3>
-                  <pre></pre>`;
+                  <div class="body"></div>`;
   el.querySelector('h3 span').textContent = evt.name;
-  el.querySelector('pre').textContent =
-    (evt.message && evt.content ? evt.message + '\n' : '') + body;
+  const body = el.querySelector('.body');
+  body.innerHTML = panel(evt.render || 'raw', evt.content, evt.message);
+  if (evt.message && evt.content != null) {
+    const note = document.createElement('div');
+    note.className = 'why';
+    note.style.marginTop = '6px';
+    note.textContent = evt.message;
+    body.appendChild(note);
+  }
+  side.appendChild(el);
+  side.scrollTop = side.scrollHeight;
+}
+
+// RiskEvent 是异步进来的提示，不占用工具卡片的位置。
+function risk(evt){
+  empty.style.display = 'none';
+  const el = document.createElement('div');
+  el.className = 'card risk';
+  el.innerHTML = `<h3><span></span><span class="st partial">${esc(evt.severity || 'risk')}</span></h3>
+                  <div></div><div class="src"></div>`;
+  el.querySelector('h3 span').textContent = evt.subject || 'RiskEvent';
+  el.querySelectorAll('div')[0].textContent = evt.detail || '';
+  el.querySelector('.src').textContent =
+    `来源：${evt.source || '未知'}` + (evt.rule_ref ? ` · ${evt.rule_ref}` : '');
   side.appendChild(el);
   side.scrollTop = side.scrollHeight;
 }
@@ -160,6 +245,9 @@ async function ask(message){
           buffered += evt.text;
           reply.textContent = buffered;
           log.scrollTop = log.scrollHeight;
+          break;
+        case 'risk':
+          risk(evt);
           break;
         case 'tool':
           card(evt);

@@ -107,3 +107,11 @@ model-smoke: ## 调用真实模型，执行前必须获得用户明确授权并�
 .PHONY: import-data
 import-data: ## F02：事务性导入 normalized 静态数据，重跑幂等
 	@PYTHONPATH=src $(VPY) -m persistence.import_normalized
+
+.PHONY: seed-rules
+seed-rules: ## 写入口径类 business_rule（单板用量、身份接受策略），版本化且重跑幂等
+	@PYTHONPATH=src $(VPY) -m persistence.seed_business_rules
+
+.PHONY: seed-supply
+seed-supply: ## 生成模拟库存/在途/占用（固定随机种子，全部标 is_simulated），重跑幂等
+	@PYTHONPATH=src $(VPY) -m persistence.seed_simulated_supply
