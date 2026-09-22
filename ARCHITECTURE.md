@@ -1,250 +1,200 @@
-# SupplyAgent 当前架构
+# SupplyAgent 架构
 
-> **文档契约** · 类型：契约层 · 读取：Feature 开始时按 `## ` 章节定点读，禁止通读
-> 更新：模块划分、职责、依赖方向或不变量变更时更新
-> 独占：系统架构图、模块职责与数据所有权、依赖方向、不变量、存储分工、物理落点和待设计区
-> 不收录：设计理由（见 `DECISIONS.md`）、需求条款（见 `docs/product/requirements.md`）、当前状态（见 `PROGRESS.md`）、命令实现（见 `Makefile`）
+> **文档契约** · 类型：契约层 · 读取：实现某模块时按 `## ` 章节定点读，禁止通读
+> 更新：模块划分、契约类型、依赖方向或不变量变更时
+> 独占：编排模式、模块职责与落点、契约类型、依赖方向、并行与失败语义、权限分层、存储分工、不变量
+> 不收录：需求条款（见 `docs/product/requirements.md`）、决策理由（见 `DECISIONS.md`）、当前状态（见 `PROGRESS.md`）、表结构（见 `docs/spec/data-model.md`）
 
-本文描述目标架构与当前代码的对应关系。已存在目录不代表能力完成，完成状态只看 `PROGRESS.md` 与 `docs/features.json` 的执行证据。
+## 1. 三种编排模式
 
-## 1. 总体架构图
+不是单一架构，而是按子场景选模式。**「一个项目里用了两种通信模式，且能说清为什么这里同步那里异步」是本项目的核心论点**（T02）。
 
-```mermaid
-flowchart TD
-    UI[UI / API] --> SUP[Supervisor · 上下文枢纽与条件路由]
-
-    SUP -->|简单| FAST[Intake → Internal → Report]
-    SUP -->|分析| FULL[Intake → Internal → Sourcing/Manufacturer → Adjudicator → Report → Action]
-
-    subgraph W[Workers · 包装为可调用工具]
-      IN[Intake · agent]
-      INT[Internal · service]
-      SRC[Sourcing · service]
-      MFR[Manufacturer · agent]
-      ADJ[Adjudicator · agent]
-      REP[Report · agent]
-      ACT[Action · service]
-    end
-
-    FAST --> W
-    FULL --> W
-
-    IN --> SEM[Semantic Layer · 指标注册表]
-    INT --> CORE[Procurement Core]
-    SRC --> TR[Tool Registry]
-    MFR --> DR[Document Resolver]
-    MFR --> TR
-    ADJ --> EL[Evidence Ledger]
-    REP --> EL
-    ACT --> EL
-
-    IN --> CC[Context Compiler]
-    MFR --> CC
-    ADJ --> CC
-    REP --> CC
-    CC --> MG[Model Gateway]
-    MG --> MB1[OpenAI-compatible]
-    MG --> MB2[Native · TBD]
-    MG --> RPL[Replay]
-
-    SEM --> BR[(business_rule)]
-    CORE --> EL
-    TR --> EL
-    EL --> PG[(PostgreSQL)]
-    SUP --> REDIS[(Redis 协调)]
-    EL --> EVAL[Replay / Eval]
+```
+入口（Web / CLI）
+      │  转成同一结构化请求
+      ▼
+┌─────────────────┐
+│   Supervisor    │  会话状态、意图路由、预算分配、分派留痕
+└────────┬────────┘
+         │
+         ▼
+   ┌──────────────────────────────────────────┐
+   │  Graph 编排器（确定性 DAG，自研）          │   ← 同步：fan-out / fan-in
+   │                                          │
+   │  缺口计算                                 │
+   │      │ fan-out：元件 × 核验类型            │
+   │      ├── 内部库存/在途   (service, skill) │
+   │      ├── 外部报价/供货   (service, MCP)   │
+   │      └── 技术规格核验    (agent, LLM)     │
+   │      │ fan-in：证据完整性校验 (agent)      │
+   │      ▼                                   │
+   │  方案生成 (agent + 确定性回填)             │
+   └────────┬─────────────────────────────────┘
+            │                    ╲
+            ▼                     ╲ 异常发出 RiskEvent
+      Human Gate（审批）            ╲     ← 异步：事件流
+            │                       ▼
+            ▼                 ┌───────────────┐
+        外部草稿创建           │  预警流        │  声明式 matcher → actions
+                              │  通知 / 升级级别│
+                              └───────────────┘
 ```
 
-Supervisor 持有会话状态并按复杂度路由；Worker 包装为可调用工具，不作为独立实体。四个 agent（Intake / Manufacturer / Adjudicator / Report）与三个确定性服务（Internal / Sourcing / Action）的划分依据见 `DECISIONS.md` D02。
-
-## 2. 确定性快路径与 Agent 兜底
-
-```mermaid
-flowchart LR
-    E[事件触发：提交 BOM / 需求] --> FP[确定性快路径]
-    FP --> OK[可判定 → 直接产出]
-    FP -->|无法判定| EX[抛出 typed ExceptionCase]
-
-    EX --> R{例外类型}
-    R -->|口径/指标歧义| A1[Intake agent]
-    R -->|寻址失败·参数式文档| A2[Manufacturer agent]
-    R -->|多源分歧·证据不足·生命周期判定| A3[Adjudicator agent]
-
-    A1 --> RES{解决?}
-    A2 --> RES
-    A3 --> RES
-    RES -->|是| BACK[落回快路径继续]
-    RES -->|否| HU[升级人工]
-```
-
-**80% 的请求零 LLM 成本**。Agent 是例外处理器，不在主路径上；人工是最终兜底。每次由 agent 解决的例外必须留痕，记录例外类型、经手 agent 与判定依据。
-
-触发是**事件驱动**：提交 BOM 或需求后主动暴露问题。不做定时巡检。
-
-## 3. 一级逻辑模块
-
-| 模块 | 计划落点 | 职责与所有权 | 不变量 |
-|---|---|---|---|
-| API | `src/api/` | HTTP DTO、鉴权、响应包络、事务边界 | 不包含业务算术或模型编排；精确数值不经 float |
-| Event Trigger | `src/monitor/` | 把用户提交的业务事件转换为去重后的 Run 入口 | 不做定时巡检；事件入口与人工入口共用同一状态机、权限与证据要求 |
-| Supervisor | `src/supervisor/` | 会话状态、上下文枢纽、按复杂度条件路由、Worker 调用分派 | 不推理业务、不改写 Worker 结果；路由结果可审计；路由失败退到最简链路而非报错 |
-| Workers | `src/workers/{intake,internal,sourcing,manufacturer,adjudicator,report,action}/` | 七项责任的实现；agent 与 service 形态见 D02 | 包装为可调用工具，不作为独立实体；只传类型化结果，不以自然语言互相协商 |
-| Semantic Layer | `src/semantic/`（待建） | 业务术语到冻结口径的注册表；指标解析为枚举分类 | 不生成 SQL；未识别指标返回 `unknown_metric`，不猜；口径版本化在 `business_rule` |
-| Alert Engine | `src/alerting/`（待建） | 事件触发下的状态差分、告警产生/更新/关闭 | 阈值来自 `business_rule`，不进 prompt；同一对象同一类型只一条活动告警 |
-| Exception Router | `src/runtime/exceptions/`（待建） | typed ExceptionCase 的分类与到 agent 的分派 | 例外类型是枚举不是自由文本；agent 解决不了必须升级人工，不得自行放宽 |
-| Document Resolver | `src/harness/documents/`（待建） | 型号解码、官方文档寻址、内容寻址去重与缓存 | 三态输出；寻址失败不伪装为“查无此项”；不以相似度检索代替寻址 |
-| Run Manager | `src/runtime/run/`（待建） | Run 生命周期、状态迁移、暂停、恢复、预算、重试和事件 | PostgreSQL 保存恢复必需事实；恢复不重放已完成副作用 |
-| Workflow Controller | `src/runtime/workflow/`（待建） | 按 workflow 定义和当前状态选择下一个合法节点 | 节点选择由状态与显式规则决定，不由模型自由跳转 |
-| Procurement Core | `src/procurement_core/` | BOM 展开、候选规则、缺口、MOQ、金额、版本和哈希 | 算术与硬规则不交给模型；未知不用零代替 |
-| Model Gateway | `src/harness/models/`（待建；现有适配在 `src/infrastructure/llm.py`） | 统一模型消息、tool call、结构化结果、流、错误与用量 | Provider 差异不能改变业务权限；能力缺失必须显式降级或拒绝 |
-| Context Compiler | `src/harness/context/`（待建） | 从 Run、Artifact、证据和预算构建一次模型调用的上下文 | Context 是可重建投影；记录输入引用与裁剪原因 |
-| Tool Registry | `src/tools/` | 工具注册、schema、权限、场景过滤和调用分派 | 模型只能调用被注入的工具；只读/写入权限由服务端强制 |
-| Evidence & Artifact Ledger | `src/persistence/` + `src/contracts/` | 保存业务快照、工具结果、风险发现、建议和引用关系 | 实质性结论必须可回指；历史证据不覆盖更新 |
-| Human Gate | `src/runtime/human_gate/`（待建） | 人工补充、候选选择、要求修改、批准和驳回 | 等待不是错误；批准绑定方案版本、哈希和动作范围 |
-| Replay / Eval | `tests/evals/`（待建） | 固定输入、工具回放、跨模型比较和判定 | 模型不得看到隐藏答案；业务硬门禁独立断言 |
-| Infrastructure | `src/infrastructure/` | PostgreSQL、Redis、模型和外部 API 客户端 | 凭据不进入配置、Trace 或 ToolResult |
-| UI | `frontend/`（待确认） | 展示业务状态、证据、风险、建议和人工动作 | 未知不显示为零；不得提供绕过审批入口 |
-
-Worker 落点（形态划分依据见 `DECISIONS.md` D02）：
-
-| Worker | 落点 | 形态 |
+| 子场景 | 模式 | 为什么 |
 |---|---|---|
-| Intake | `src/workers/intake/` | agent |
-| Internal | `src/workers/internal/` | service |
-| Sourcing | `src/workers/sourcing/` | service |
-| Manufacturer | `src/workers/manufacturer/` | agent |
-| Adjudicator | `src/workers/adjudicator/` | agent |
-| Report | `src/workers/report/` | agent |
-| Action | `src/workers/action/` | service |
+| 对话入口 | Supervisor 意图路由 | 请求形态不定，需要从冻结枚举中选 workflow |
+| 采购核验 | 确定性 Graph（同步 fan-out/fan-in） | 步骤已知且有依赖，必须等全部分支汇合才能出建议 |
+| 预警 | 事件驱动（异步） | 不阻塞主流程；一个异常可触发多个互不相关的响应 |
 
-Worker 之间不互相调用，一律经 Supervisor 分派；Worker 只返回类型化结果，不以自然语言段落协商。
+## 2. 模块
 
-## 4. 核心运行时类型
+| 模块 | 落点 | 职责 | 不变量 |
+|---|---|---|---|
+| 渠道适配 | `src/api/channels/` | Web / CLI 输入转成同一结构化请求 | 核心不感知入口形态；适配层不含业务逻辑 |
+| API | `src/api/` | HTTP DTO、鉴权、响应包络、事务边界 | 不含业务算术或模型编排；精确数值不经 float |
+| Supervisor | `src/supervisor/` | 会话状态、意图路由、预算分配、分派与留痕 | 不推理业务、不改写 Worker 结果；意图从冻结枚举中选，未命中即 `unknown_intent` 转人工 |
+| Graph 编排器 | `src/orchestration/` | DAG 定义、并发调度、fan-in 汇合、失败语义、预算沿边扣除 | 图用 Python 定义（D23）；节点选择由图与状态决定，不由模型决定；不引入工作流框架 |
+| Workers | `src/workers/<name>/` | 单个节点的实现，agent 或 service | 包装为可调用工具；Worker 之间零直接调用；只传类型化结果 |
+| 预警流 | `src/alerting/` | `RiskEvent` 的接收、去重与声明式响应分派 | 响应规则是配置不是代码；不阻塞主流程；采集失败不产生也不关闭告警 |
+| 权限层 | `src/permissions/` | 分层策略链求值与 `explain` | 下层只能收紧；服务端强制，不靠 prompt |
+| Model Gateway | `src/harness/models/` | 统一模型端口、能力协商、能力探测、用量上报 | 能力缺失显式拒绝，不删约束降级；Provider 差异不改变业务权限 |
+| Tool Registry | `src/tools/` | 工具注册、schema、按场景与权限注入、调用分派 | 模型只能调用被注入的工具；写权限由服务端强制 |
+| 采购业务核 | `src/procurement_core/` | BOM 展开、候选规则、缺口、MOQ、金额、版本与哈希 | 算术与硬规则不交给模型；未知不用零代替 |
+| Evidence Ledger | `src/persistence/` | 证据、产物、引用与版本关系 | 只插入；取代用 `superseded_by` 回填；实质性结论必须可回指 |
+| Human Gate | `src/runtime/human_gate/` | 审批、驳回、要求修改、恢复 | 等待不是错误；审批绑定方案版本与内容哈希 |
+| Run Manager | `src/runtime/run/` | Run 生命周期、暂停、恢复、checkpoint | PostgreSQL 保存恢复必需事实；恢复不重放已完成副作用 |
+| Trace | `src/observability/` | 树状调用轨迹、三类日志分离 | 并行分支在轨迹中是树；凭据与原文不进轨迹 |
+| Eval Harness | `tests/evals/` | 固定数据集、回放、失败用例登记、回归门禁 | 模型不得看到隐藏答案；门禁阻止合并 |
+| Infrastructure | `src/infrastructure/` | PostgreSQL、Redis、模型后端、MCP 客户端 | 凭据不进入配置、轨迹或工具结果 |
 
-跨层只传类型化对象，不让模块以自然语言段落互相协商：
+### Worker 名册
+
+| Worker | 形态 | 工具集特征 | 模型档 |
+|---|---|---|---|
+| `internal` | service | 进程内 skill，只读内部库存/在途 | — |
+| `sourcing` | service | MCP，只读外部报价/供货 | — |
+| `spec_check` | **agent** | datasheet 读取与规格比对，**无任何写权限、不可读内部库存** | 旗舰 |
+| `evidence_check` | **agent** | 只读证据账本，**不可出网** | 中档 |
+| `proposal` | **agent** | 只读计算结果，**不可出网**；数值由确定性代码回填 | 中档 |
+| `action` | service | 外部写入，须 PermissionDecision | — |
+
+三个 agent 的工具集两两不同，且拒绝理由来自不同策略层——这是 `explain` 有东西可解释的前提（T04）。
+
+## 3. 契约类型
+
+跨层只传类型化对象，不以自然语言段落协商：
 
 ```text
-Run
-RunEvent
-ContextBundle
-ToolDefinition
-ToolCall
-ToolResult
-EvidenceRef
-ShortageSnapshot
-RiskFinding
-ReplenishmentProposal
-PermissionDecision
-ExternalAction
+Request            入口归一后的结构化请求
+Run                一次执行的生命周期
+GraphNode          节点定义：worker、输入引用、依赖边、超时、预算份额
+NodeResult         节点产出：status(ok|partial|not_found|error)、结果引用、用量、耗时
+RiskEvent          source(rule|model_judgment|collection_failed)、严重级别、
+                   触发规则或证据引用、关联 run_id 与元件
+Evidence           值、来源、取得时间、定位块、provenance
+Proposal           采购建议，版本化，绑定 content_hash
+PermissionDecision 审批结果，绑定方案版本、哈希与动作范围
+ModelRequest       call_id、model、消息、工具、输出 schema、预算、超时
+ModelResult        文本、结构化输出、工具请求、完成原因、用量、后端
+ModelCapabilities  探测得出的实测能力，非手写声明
+ToolCall/ToolResult
 ```
 
-`ContextBundle` 至少记录：Run 状态、业务快照引用、证据引用、未解决项、允许的工具、token 预算、裁剪/压缩记录和构建版本。
-
-`ModelBackend` 至少声明：原生 tool calling、并行 tool call、结构化输出、流式输出、视觉输入和最大上下文等能力。Harness 不假定所有 Provider 语义相同。
-
-## 5. 依赖方向
+## 4. 依赖方向
 
 ```text
-UI → API → Supervisor
-Event Trigger → Supervisor                            事件入口与人工入口同一状态机
-Supervisor → Run Manager / Workflow Controller        Run 生命周期与下一个合法节点
-Supervisor → Workers                                  条件路由；Worker 包装为可调用工具
-Workers ↛ Workers                                     Worker 间无直接依赖，一律经 Supervisor 分派
-Workflow Controller → 确定性快路径 → Procurement Core / Semantic Layer / Alert Engine
-确定性快路径 → Exception Router → Workers(agent)       只在 typed ExceptionCase 时唤起
-Workers(service) → Procurement Core / Tool Registry
-Workers(agent) → Context Compiler → Model Gateway → ModelBackend
-Workers(agent) → Document Resolver → Tool Registry
-Tool Registry → Infrastructure adapters
-Workflow Controller → Human Gate
-Semantic Layer / Alert Engine → business_rule（版本化口径与阈值）
-以上模块 → Runtime contracts → Evidence & Artifact Ledger → PostgreSQL
-Supervisor / Run Manager → Redis（锁、短期协调、可重建缓存）
-Replay / Eval → Model Gateway、Tool Registry、Evidence & Artifact Ledger（只读或隔离 fixture）
+Web / CLI → 渠道适配 → API → Supervisor
+Supervisor → Graph 编排器 → Worker（节点）
+Worker ↛ Worker                       零直接依赖，一律经编排器分派
+Worker(service) → Tool Registry → 进程内 skill / MCP 客户端
+Worker(agent)   → Model Gateway → ModelBackend（云端 / 本地 / 回放）
+Worker(agent)   → Tool Registry（按权限注入的子集）
+Graph 编排器 → Evidence Ledger、Run Manager、Human Gate
+Graph 编排器 ⇢ 预警流                  单向异步投递，不等待、不回读
+权限层 ← Tool Registry、Model Gateway   调用前求值
+以上模块 → PostgreSQL
+Supervisor / Run Manager → Redis（锁与短期协调，丢失可重建）
+Eval Harness → Model Gateway、Tool Registry、Evidence Ledger（只读或隔离 fixture）
 ```
 
 禁止的反向依赖：
 
-- Procurement Core 不依赖模型、Prompt、MCP 或具体 Provider；
-- ModelBackend 不读取业务数据库并自行决定工具权限；
-- Tool adapter 不实现全局重试循环或业务审批；
-- UI 不重新计算缺口、金额或风险结论；
+- 采购业务核不依赖模型、Prompt、MCP 或具体 Provider；
+- ModelBackend 不读业务库、不自行决定工具权限；
+- 工具适配器不实现全局重试或业务审批；
+- 预警流不回写主流程状态；
 - Redis 不保存唯一的恢复事实；
-- 外部返回内容不直接进入 workflow 控制条件。
+- 外部返回内容不进入编排的控制条件。
 
-## 6. Context 与证据数据流
+## 5. 并行与失败语义
 
-```mermaid
-sequenceDiagram
-    participant W as Workflow
-    participant L as Ledger
-    participant C as Context Compiler
-    participant M as Model Backend
-    participant T as Tool Registry
+**部分失败是本设计的核心，不是边角。**一个不处理部分失败的 fan-in，技术上等于没做并行。
 
-    W->>L: load Run + artifacts + evidence metadata
-    W->>C: build context for bounded task
-    C->>L: resolve fresh, authorized evidence
-    C-->>W: ContextBundle + manifest
-    W->>M: messages + tools + output schema
-    M-->>W: normalized ModelTurn
-    W->>T: validated ToolCall
-    T-->>W: ToolResult + evidence refs
-    W->>L: append call, result, finding, next state
+fan-out 的并发单位是 **元件 × 核验类型** 的二维展开：3 个缺料元件 × 3 类核验 = 9 个并发节点，落在 3 个 Worker 上。
+
+| 情形 | fan-in 的处理 |
+|---|---|
+| 全部 `ok` | 正常产出建议 |
+| 任一 `partial` / `error` / 超时 | 仍产出建议，但标注缺哪一项、为何缺；发 `RiskEvent(source=collection_failed)`；**抬高审批级别** |
+| 任一 `not_found` | 与 `error` 分开记录——「查了没有」与「没查成」不是一回事 |
+| 预算耗尽 | 停止未开始的分支，已完成的保留，显式说明哪些元件未核验 |
+
+失败分支已消耗的预算不退。节点重试只在编排层发生，适配器内部不自行循环。
+
+## 6. 权限分层
+
+```
+全局策略  →  Worker 策略  →  会话策略
 ```
 
-完整外部 payload 默认不进入模型上下文或用户响应；保留脱敏摘要、哈希、采集时间和安全存储引用。是否长期保存完整 payload 见 A-TBD-04。
+下层只能收紧，不能放宽。求值发生在 Tool Registry 注入工具时与调用分派时，两处都执行。
+
+`explain --session S --worker W` 输出该 Worker 在该会话中实际可调用的工具，以及每条允许/拒绝来自哪一层。
+
+三档会话模式：`Explore`（只查询出建议）/ `Ask`（写操作需审批，默认）/ `Auto`（低金额且无 RiskEvent 自动放行）。**`RiskEvent` 强制把会话从 `Auto` 降到 `Ask`。**
 
 ## 7. 存储分工
 
-| 数据 | 存储 | 说明 |
-|---|---|---|
-| BOM、元件、需求、库存、在途、方案 | PostgreSQL | 权威业务事实 |
-| Run、状态事件、人工决定、外部动作 | PostgreSQL | 恢复与审计事实 |
-| Run 事件流（SSE 可重放序列） | PostgreSQL | 与 RunEvent 同表，带单调 `event_id`；Redis 只做实时 fan-out，断线重连从 PostgreSQL 续读 |
-| Tool/LLM 调用、证据元数据、风险发现 | PostgreSQL | append-only 或版本化 |
-| workflow 锁、短期缓存、限流协调 | Redis | 丢失后可从 PostgreSQL 重建 |
-| Prompt、workflow、模型策略 | Git 管理的配置 | 不与业务阈值混放 |
-| 业务阈值 | PostgreSQL `business_rule` | 版本化并记录修改人 |
-| Evidence 与定位、文档元数据 | PostgreSQL | 只插入；取代用 `superseded_by` 回填，不覆盖 |
-| 官方文档原始字节与抽取文本 | 本地文件系统，`sha256` 内容寻址 | 单份 MB 量级，不进 PostgreSQL；重启后必须仍在，否则「已采集不重复采集」失效 |
-| 原始 BOM | `data/supplychain/domdata/` | 只读不可变 |
-| 规范化导入数据 | `data/supplychain/normalized/` | 原始层到数据库的唯一中间层 |
+| 数据 | 存储 |
+|---|---|
+| BOM、元件、库存、在途、需求、方案 | PostgreSQL，权威业务事实 |
+| Run、节点 checkpoint、审批、外部动作 | PostgreSQL，恢复与审计事实 |
+| 工具/模型调用、证据、RiskEvent | PostgreSQL，只插入或版本化 |
+| 阈值规则、预警响应规则 | PostgreSQL `business_rule`，版本化并记录修改人 |
+| Prompt、Worker 行为配置、Graph 定义 | Git 管理的配置，不与业务阈值混放 |
+| 模型回放录音 | `fixtures/model/`，按请求内容哈希寻址 |
+| 官方文档原始字节与抽取文本 | 本地文件系统，`sha256` 内容寻址 |
+| 锁、短期缓存、限流协调 | Redis，丢失后可从 PostgreSQL 重建 |
+| 原始 BOM / 规范化数据 | `data/supplychain/`，只读单向 |
 
-## 8. 全局不变量
+## 8. 不变量
 
-1. 模型不得产生或覆盖权威数量、金额和状态；
-2. 每个风险结论与建议行必须包含可解析的证据引用；
-3. `not_found`、`unknown`、`partial` 和 `error` 不得合并；
-4. 任何写操作必须经过人工批准与执行前复核；
+1. 模型不得产生或覆盖权威数量、金额与状态；
+2. 每个实质性结论必须包含可解析的证据引用；
+3. `ok` / `partial` / `not_found` / `error` 不得合并；
+4. 外部写操作必须经人工批准与执行前复核（`Auto` 档仅在无 `RiskEvent` 且低金额时豁免，且由服务端判定）；
 5. 同一 `logical_action_id` 最终最多产生一个外部草稿；
-6. 恢复后不重复已完成的工具副作用；
-7. Provider 切换不能增加工具权限或绕过 schema；
-8. 外部内容只能作为数据，不能成为系统指令；
-9. Context 必须可由权威状态重建，并保存构建清单；
-10. 真实、模拟、缓存和回放数据在全链路显式标注；
-11. 同一监测对象的同一告警类型同时最多一条活动告警；采集失败不产生也不关闭告警；
-12. 多源对同一事实的分歧必须各自保留，不得合并为单一数值；
-13. 仅按部件号编码解码命中（未枚举命中）时，不得断言该型号的生命周期状态；
-14. 寻址失败、无文字层、文档中无此型号是三个独立结论，不得合并；
-15. Agent 只在确定性快路径抛出 typed 例外时被唤起，不得进入主路径；
-16. Agent 之间只传类型化结果，不以自然语言段落互相协商；
-17. 指标解析是从冻结注册表中选择，不生成 SQL；未识别即 `unknown_metric`。
+6. 恢复后不重复已完成的副作用；
+7. 后端切换不能增加工具权限或绕过 schema；
+8. 外部内容只作数据，不作系统指令；
+9. Worker 之间零直接调用，一律经编排器分派，且只传类型化结果；
+10. 任一分支失败不得在 fan-in 处被当作成功；
+11. 真实 / 模拟 / 缓存 / 回放数据在全链路显式标注；
+12. 后端能力由探测得出，不由手写声明代替；
+13. 预算沿依赖边分配，子任务从父预算扣除，超预算显式停止而非截断证据。
 
-## 9. 当前物理结构边界
+## 9. 当前落点
 
-- 已实现并验证的主体是 `src/procurement_core/`、`src/persistence/` 与部分 `src/api/`；
-- `src/contracts/llm.py` 与 `src/infrastructure/llm.py` 是现有单 Provider 基础，不等于完整 Model Gateway；
-- `src/supervisor/`、`src/monitor/` 和 `src/workers/*/` 目前主要是占位目录，不代表目标能力；
-- Runtime、Context Compiler、Tool Registry 运行实现、Evidence Ledger 扩展和 Eval Harness 尚未完成；
-- 任何状态判断以 `PROGRESS.md` 和 `docs/features.json` 为准。
+已实现并验证：`src/procurement_core/`、`src/persistence/`、部分 `src/api/`、`src/contracts/llm.py` 与 `src/infrastructure/llm.py`（统一端口 + 云端后端 + 回放后端）、`src/tools/`（注册与派发雏形）。
 
-## 10. 待设计区
+未建：`src/orchestration/`、`src/workers/*`、`src/supervisor/`、`src/alerting/`、`src/permissions/`、`src/observability/`、`tests/evals/`。
+
+状态以 `PROGRESS.md` 与 `docs/features.json` 的执行证据为准；目录存在不代表能力完成。
+
+## 10. 待定
 
 | ID | 待定内容 | 不允许提前假设 |
 |---|---|---|
-| A-TBD-01 | workflow 定义采用 Python、YAML 还是二者组合 | 不先绑定 LangGraph 等框架 |
-| A-TBD-03 | Context 压缩算法 | 不以“删除旧消息数量”冒充语义摘要 |
-| A-TBD-04 | 完整外部 payload 的保存位置和保留期 | 不把敏感 payload 写入普通 Trace |
-
-本文还依赖以下跨文档未决项，正文见 `docs/OPEN-QUESTIONS.md`：**Q-02**（第二个真实模型后端；追加 OpenAI-compatible endpoint 不算多后端能力）、**Q-03**（目标采购系统与幂等能力；在冻结前不得声称 exactly-once）、**Q-05**（风险严重度与聚合策略；不让模型自由决定阈值）、**Q-07**（UI 技术栈）。
+| A-01 | 预警响应规则存 YAML 还是 `business_rule` 表 | 不与模型行为配置混放 |
+| A-02 | 上下文压缩策略 | 不以「删除旧消息数量」冒充语义摘要 |
+| A-03 | 完整外部 payload 的保存位置与保留期 | 不把敏感 payload 写入普通轨迹 |

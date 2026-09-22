@@ -27,8 +27,7 @@
 | 入口 | `AGENTS.md` | 每次会话启动，全文 | 全局硬约束变更 | 用户授权的维护者 |
 | 状态 | `PROGRESS.md` | 每次会话启动，全文 | **Feature 完成、遇阻塞、验证失败后即时** | Codex |
 | 队列 | `docs/features.json` | 取任务时只读自己那条 + 被依赖条目 | Feature 状态流转 | Harness |
-| 契约 | `ARCHITECTURE.md`、`DECISIONS.md`、`productinfo.md` | **Feature 开始时定点读，禁止通读** | 架构/决策/需求变更 | 用户授权的维护者 |
-| 交接 | `docs/HANDOFF.md` | **新会话第一条，全文读** | 技术点矩阵、参考边界、被否决方案或阻塞项变化时 | 用户授权的维护者 |
+| 契约 | `ARCHITECTURE.md`、`DECISIONS.md` | **Feature 开始时定点读，禁止通读** | 架构或决策变更 | 用户授权的维护者 |
 | 契约 | `docs/OPEN-QUESTIONS.md`（跨文档未决项） | 遇到 `Q-xx` 引用时定点读 | 未决项新增、冻结或被产品决定取代 | 用户授权的维护者 |
 | 契约 | `docs/product/requirements.md`、`docs/product/acceptance-cases.md`、`docs/product/GLOSSARY.md` | 按 FR/BR/EV 编号或术语定点读 | 需求条款、验收用例或术语变更 | 用户授权的维护者 |
 | 契约 | `docs/spec/interfaces.md`、`docs/spec/state-machine.md`、`docs/spec/data-model.md`、`docs/spec/http-api.md`、`docs/spec/ui-contract.md` | 实现对应接口/状态/表/端点/视图时定点读 | 接口签名、状态迁移、表结构、端点或呈现规则变更 | 用户授权的维护者 |
@@ -36,7 +35,6 @@
 | 参考 | `docs/research/procurement-platforms.md` | 选型或评估配额时定点读 | 重新核对平台能力或条款 | 用户授权的维护者 |
 | 规则 | `DEVELOPMENT.md`、本文件 | 首次 + 按节 | 工具链或治理规则变更 | 用户授权的维护者 |
 | 模块 | `src/*/AGENTS.md`、`src/*/ARCHITECTURE.md` | 进入该模块前 | 该模块接口或不变量变更 | Codex |
-| 归档 | `data/supplychain/` 下三份设计初稿 | **不读入**（正文已迁出，仅剩去向对照表） | 冻结 | — |
 
 ### SSOT 矩阵：每个信息要素只有一处正文
 
@@ -48,8 +46,7 @@
 | 模块不变量（invariant） | 见下方「不变量的双写分工」 | — |
 | 设计决策与其理由 | `DECISIONS.md` | 只写「见 D0x」，不复制理由正文 |
 | Codex 行为硬约束 | `AGENTS.md` | 其他文档不重述，可引用条目 |
-| 产品定位 / MVP 范围 / 非范围 / 业务边界 | `productinfo.md` | 引章节号 |
-| 功能需求 FR / 业务规则 BR 条款正文 | `docs/product/requirements.md` | 只写「见 FR-0x」「见 BR-0x」，不复制条款 |
+| 技术展示清单 / 产品形态 / 非范围 / 切片范围 / 数据现状 | `docs/product/requirements.md` | 引 T / FR / BR 编号或章节号 |
 | 验收用例 EV / 判定原则 / 追踪矩阵 | `docs/product/acceptance-cases.md` | 只写「见 EV-0x」 |
 | 工具 schema / ToolResult 信封 / 错误码 | `docs/spec/interfaces.md` | 引工具名 |
 | 任务状态取值与合法迁移 | `docs/spec/state-machine.md` | 引状态名 |
@@ -94,13 +91,13 @@
 `FR-xx`、`BR-xx`、`EV-xx`、`Dxx`、`Fxx` 与 `Q-xx` 一经分配即**永久占位**：
 
 - 条目删除后编号**不回收、不重排、不复用**，空缺就是空缺；
-- 已知空缺：`EV-15`、`EV-16`（随旧 D12 删除），`FR-10`（同上）；
+- 2026-09-22 产品形态重定：`FR` / `BR` / `EV` 全套重写，旧编号不再有效；`Q-02` 已废止（见 `docs/OPEN-QUESTIONS.md`「已废止编号」）；`D01` / `D02` / `D05` / `D10` 含义已改写，旧引用按当前正文解读；
 - 新增条目一律取当前最大编号 +1，不填补空缺；
 - 需要说明某个编号为何消失时，写在该编号所属文档的「已删除编号」处，不改动其他编号。
 
 理由：编号是跨文档引用的唯一锚点。一次重排会让 `docs/features.json` 的 `context_refs`、模块 `AGENTS.md` 的前置阅读清单和测试注释同时失效，且失效是静默的。
 
-`DECISIONS.md` 的 `Dxx` 在 2026-09-21 架构重构中做过一次性重排，对照表见该文附录。这是**唯一一次**例外，之后不再重排。
+`Dxx` 只改写含义、不重排位置；含义改写的编号在 `DECISIONS.md` 题头列出。
 
 ## 跨会话与多 Agent 初始化契约
 

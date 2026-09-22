@@ -11,7 +11,7 @@
 
 ## 修改前
 
-阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的采购业务核行、`DECISIONS.md` D04 / D18、`productinfo.md` §5 与 §8，以及 `docs/product/requirements.md` 中本模块需满足的条款（FR-02/04/05/07、BR-01～07、BR-10，反向索引见该文 §3）。**不要读 `data/supplychain/` 归档区**。
+阅读本目录 `ARCHITECTURE.md`、仓库根 `ARCHITECTURE.md` 的「采购业务核」行、`DECISIONS.md` D04 / D18，以及 `docs/product/requirements.md` 的 FR-02 与 §5 业务规则。
 
 ## 不变量与 contract
 

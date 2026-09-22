@@ -1,77 +1,74 @@
-# SupplyAgent 当前进度
+# 当前进度
 
-> **文档契约** · 类型：当前状态 SSOT · 读取：每次会话启动
+> **文档契约** · 类型：当前状态 SSOT · 读取：每次会话启动，全文
 > 更新：实现、验证、阻塞或下一步变化时覆盖更新
-> 独占：当前完成度、当前证据、阻塞和下一步
-> 不收录：历史流水账、需求正文和设计理由；历史由 Git 保存
+> 独占：当前完成度、当前证据、阻塞与下一步
+> 不收录：历史流水账、需求正文、设计理由；历史由 Git 保存
 
-更新时间：2026-09-21。
+更新时间：2026-09-22。
 
 ## 当前结论
 
-项目已完成采购确定性基础和部分 API。产品主线已定为**供应风险主动预警**（D01、`productinfo.md` §1），告警引擎、Harness 与 Durable Runtime 均未实现。旧的固定 Query/Detail/Research/Summary/Action Worker 目录只有占位文件，不代表已具备多 Agent 能力。
+产品形态已于本日重定为**元件采购决策助手**（D01），需求与架构文档已按技术展示清单（`requirements.md` §2）整体重写。旧的「供应风险主动预警为主线」形态及其派生设计作废。
 
-既有的缺口计算与版本化方案（F01—F07）在新主线中承担两个角色：库存告急告警的判据，以及告警派生的比价建议基础。它们的职责未变，不需要重写。
+代码侧有两块可用资产：**确定性采购业务核**与**统一模型端口**。Graph 编排器、Worker、权限层、预警流、trace、eval 全部未建。
 
 ## 已有实现
 
-- 本地 Python 3.11、Makefile、PostgreSQL 16、Redis 7 与 Alembic 迁移。
-- 只读原始 BOM 数据、确定性规范化流水线和 PostgreSQL 导入。
-- 需求展开、候选处理、缺口计算、报价规则、MOQ/包装/阶梯价和版本化方案。
-- FastAPI 基础包络及项目、BOM、需求、Run、缺口和方案端点的**代码与测试**；对应 Feature F08 仍为 `planned`，未经验收，不得称“已完成”。
-- LLM provider 基础 Adapter 与 2 次经授权的 GLM 工具调用冒烟；这不等于统一 ModelBackend 或多后端已完成。当前已关闭真实调用。
-
-`docs/features.json` 中 F01—F07 为 `passing`，F08—F09 为 `planned`。Feature 状态只能由用户按四层验证授权流转（D14），文档工作不修改 state 或 evidence。
+| 能力 | 落点 | 验证状态 |
+|---|---|---|
+| 本地环境、PostgreSQL 16、Redis 7、Alembic 迁移 | `Makefile`、`compose.yaml`、`alembic/` | 已验证 |
+| 只读原始 BOM → 规范化 → 入库 | `data/supplychain/`、`src/persistence/import_normalized.py` | 已验证 |
+| 需求展开、候选处理、缺口计算、报价规则、MOQ/包装/阶梯价、版本化方案 | `src/procurement_core/`、`src/persistence/procurement.py` | 已验证 |
+| FastAPI 包络与项目/BOM/需求/Run/缺口/方案端点 | `src/api/` | 代码与测试在，未按四层验收 |
+| 统一 `ModelBackend` 端口、能力协商、云端后端、回放后端、录制 | `src/contracts/llm.py`、`src/infrastructure/llm.py`、`src/infrastructure/replay.py` | 已验证，含跨后端契约测试 |
+| 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据
 
-| 范围 | 最近记录的证据 | 限制 |
-|---|---|---|
-| F01—F07 | 2026-09-21：`make compile` 通过；`make lint` All checks passed；`make test` 108 passed / 22 deselected；`make test-integration` 22 passed | 覆盖确定性业务核与持久化，未覆盖 Harness 与恢复 |
-| F08（FastAPI） | 2026-09-21：①②③ 三层随全量套件一并通过（离线 108、集成 22 含 API 用例） | **④ 未执行；Feature 仍为 `planned`，等待用户按 D14 授权流转** |
-| 真实模型 | 2026-09-18：2 次 GLM 调用成功并触发工具调用 | 单后端、小样本、无长上下文与多轮恢复；当前已关闭真实调用 |
-| 文档一致性 | 2026-09-21：D 编号对照表、编号治理规则、`docs/OPEN-QUESTIONS.md` 已建；三个活代码模块 AGENTS.md 已去除废弃架构术语 | 不等于产品功能实现 |
+| 范围 | 证据 |
+|---|---|
+| 静态契约 | 2026-09-22：`make compile` 通过；`make lint` All checks passed |
+| 离线测试 | 2026-09-22：`make test` 125 passed / 22 deselected |
+| 集成 | 2026-09-21：`make test-integration` 22 passed（真 PostgreSQL / Redis） |
+| 模型后端 | 2026-09-22：真实 GLM 端到端两轮工具对话；录制后断网重放逐字重现，零花费 |
 
 ## 尚未实现
 
-对应 `docs/features.json` 的 F10—F20，全部为 `planned`：
+按 `requirements.md` 的技术点编号：
 
-- F10/F11 统一 ModelBackend、能力协商、ReplayBackend、EvidenceGuard；
-- F12/F14 Evidence & Artifact Ledger 与可重建 ContextBundle；
-- F13 Tool Registry 的权限、副作用和 provenance 元数据；
-- F15/F16 持久化 Workflow、节点 checkpoint、Human Gate、恢复和重放；
-- F17 Document Resolver 与文档型取证（型号寻址、内容寻址去重、原文定位）；
-- **F18 告警引擎——产品心脏，事件触发下的告警去重与关闭**；
-- F19 多源采集与分歧呈现；
-- F20 Replay/Eval Harness 与回归门禁；
-- 外部采购草稿 Adapter 与幂等核对（Q-03）；
-- 告警工作台 UI（F09，Q-07 未冻结）。
+- **T01 / T02 / T03** Graph 编排器、Worker 名册、fan-out/fan-in、部分失败语义、RiskEvent 异步流——全部未建，是第一期主体
+- **T04** 分层权限策略与 `explain`——未建
+- **T05** 能力探测套件、本地部署后端——未建（端口与回放已就绪）
+- **T06** MCP 客户端与进程内 skill 的并存——未建
+- **T07** 树状调用轨迹、三类日志分离——未建
+- **T08** Human Gate、审批绑定哈希、重启后仍等待——未建
+- **T09** 父子预算与沿边扣除——未建
+- **T10** eval 数据集、失败用例登记、回归门禁——未建（回放后端是前置件，已就绪）
 
-开发顺序即依赖顺序：F10→F11→F12→F13→F14→F15→F16→F17→F18，F19/F20 可并行收尾。
+## 文档体系状态
 
-## 当前阻塞与待用户决定
-
-未决项的正文、当前对策和冻结条件统一在 `docs/OPEN-QUESTIONS.md`，本文不复制。当前全部 8 项（Q-01 ～ Q-08）均未冻结。
-
-其中**实际阻塞下一步实施**的只有两项：
-
-| 编号 | 为何现在阻塞 |
+| 文档 | 状态 |
 |---|---|
-| Q-02 | 决定第二个真实后端之前，能力协商的差异面无法定稿；但 `ReplayBackend` + 契约测试不受阻，可先做 |
-| Q-01 | 决定首个真实供应源之前，`search_supplier_parts` / `get_supplier_offer` 的字段校准无法定稿；可先用 sample fixture 打通工作流 |
+| `docs/product/requirements.md` | ✅ 已按新形态重写（207 行） |
+| `ARCHITECTURE.md` | ✅ 已重写（200 行） |
+| `DECISIONS.md` | ✅ 已重写，D01/D02/D05/D10 含义改变，新增 D20–D24（167 行） |
+| `docs/OPEN-QUESTIONS.md` | ✅ 已重写，Q-02 废止 |
+| `productinfo.md`、`docs/HANDOFF.md` | ✅ 已删除，内容并入上述文档 |
+| `AGENTS.md`、`README.md`、`CODING_RULES.md`、`GLOSSARY.md` | ⏳ 待对齐 |
+| `docs/features.json` | ⏳ 待按新形态重排队列 |
+| `docs/product/acceptance-cases.md` | ⏳ 待重写（旧 EV 用例引用已废止的 FR/BR） |
+| `docs/spec/*` | ⏳ 待检查：`interfaces.md` 需加 `RiskEvent` / `NodeResult`；`data-model.md` 的预警层随新形态调整；`ui-contract.md` 暂缓 |
 
-Q-03 ～ Q-08 目前不阻塞：对应能力本就排在后续切片。
+## 阻塞
 
-另有一项等待用户裁决：**F08 是否按 2026-09-21 的 ①②③ 证据置为 `passing`**（④ 无外部依赖，属 `not_applicable`）。
+无技术阻塞。Q-01 / Q-03 / Q-04 / Q-05 未冻结，但第一期切片用 `sample` / `replay` 数据即可跑完前三层验证。
 
-## 下一实施顺序
+## 下一步
 
-1. 裁决 F08 状态（证据见上表），再对齐 `docs/features.json` 与新架构，拆分 ModelBackend、Context Compiler、Evidence Ledger 和 Durable Workflow 的 Feature；状态变更需用户授权。
-2. 先实现 ReplayBackend + ModelBackend contract tests，形成无需真实模型的离线基线。
-3. 建立最小 Evidence、Artifact、ContextBundle 与 node checkpoint 数据迁移。
-4. 用一个“已有 shortage_snapshot → 样例供应证据 → 风险无法判断/发现 → proposal”工作流打通恢复。
-5. 获得用户授权后接入首个真实模型和供应来源，执行 EV-39。
+1. 对齐剩余文档（`AGENTS.md`、`README.md`、`CODING_RULES.md`、`GLOSSARY.md`）；
+2. 按新形态重排 `docs/features.json`，旧 F 编号的处置需用户确认；
+3. 重写 `docs/product/acceptance-cases.md`；
+4. 然后才开工：Graph 编排器 → Worker 名册 → 第一期纵向切片。
 
-## 工作树保护
-
-`src/infrastructure/database.py` 的未提交修改早于本次文档工作，未被修改、覆盖或回退。
+Feature 状态只能由用户按 D14 授权流转，文档工作不修改 `state` 或 `evidence`。

@@ -142,11 +142,11 @@ Feature 是 Harness 和项目进度层的最小可独立验收单元，不是 Ag
 
 ### 每 Feature 的上下文投影
 
-实现某个 Feature 时，避免 context 过载导致判断被无关决策干扰。**禁止在实现单个 Feature 时完整读取 `DECISIONS.md`、`ARCHITECTURE.md`、`productinfo.md` 三份文件的全文**，按以下定点读取流程执行：
+实现某个 Feature 时，避免 context 过载导致判断被无关决策干扰。**禁止在实现单个 Feature 时完整读取 `DECISIONS.md`、`ARCHITECTURE.md`、`requirements.md` 三份文件的全文**，按以下定点读取流程执行：
 
 1. 打开 `docs/features.json`，只读该 Feature 自己的条目，取出它的 `context_refs` 字段（`decisions` / `architecture_sections` / 可选 `requirements_sections`）。
 2. 对 `context_refs.decisions` 里的每个 ID（如 `D07`），在 `DECISIONS.md` 里 `grep '^## D07'` 定位到该决策的标题行，只读取从这一行到下一个 `## ` 标题之前的内容。编号稳定，不依赖标题其余文字。
-3. 对 `context_refs.architecture_sections` 里的每个章节标题（如「一级逻辑模块」），在 `ARCHITECTURE.md` 里定位对应的 `## ` 标题，只读取该章节到下一个同级或更高级标题之前的内容。`requirements_sections`（如 `8`）对 `productinfo.md`（编号章节 `## N.`）按同样方式定点读取。
+3. 对 `context_refs.architecture_sections` 里的每个章节标题（如「一级逻辑模块」），在 `ARCHITECTURE.md` 里定位对应的 `## ` 标题，只读取该章节到下一个同级或更高级标题之前的内容。`requirements_sections`（如 `2`）对 `docs/product/requirements.md`（编号章节 `## N.`）按同样方式定点读取。
 4. 如果该 Feature 有 `depends_on`，额外读取被依赖 Feature 在 `docs/features.json` 里的条目（了解上游产出的接口），但不需要读被依赖 Feature 关联的 `context_refs` 内容。
 
 例外：仅当某次调试明确怀疑是“决策理解错了”、且已按上述方式定点读取仍无法确认时，才允许临时读整份文件排查；排查完成后仍按第 1–4 条方式继续后续工作，不得把整份文件保留在长期上下文里。
