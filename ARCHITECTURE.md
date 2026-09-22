@@ -57,7 +57,7 @@
 | Workers | `src/workers/<name>/` | 单个节点的实现，agent 或 service | 包装为可调用工具；Worker 之间零直接调用；只传类型化结果 |
 | 预警流 | `src/alerting/` | `RiskEvent` 的接收、去重与声明式响应分派 | 响应规则是配置不是代码；不阻塞主流程；采集失败不产生也不关闭告警 |
 | 权限层 | `src/permissions/` | 分层策略链求值与 `explain` | 下层只能收紧；服务端强制，不靠 prompt |
-| Model Gateway | `src/harness/models/` | 统一模型端口、能力协商、能力探测、用量上报 | 能力缺失显式拒绝，不删约束降级；Provider 差异不改变业务权限 |
+| Model Gateway | `src/harness/models/` | 统一模型端口、能力协商、能力探测、上下文装配与 manifest、用量上报 | 能力缺失显式拒绝，不删约束降级；Context 必须可由权威状态重建并保存构建清单 |
 | Tool Registry | `src/tools/` | 工具注册、schema、按场景与权限注入、调用分派 | 模型只能调用被注入的工具；写权限由服务端强制 |
 | 采购业务核 | `src/procurement_core/` | BOM 展开、候选规则、缺口、MOQ、金额、版本与哈希 | 算术与硬规则不交给模型；未知不用零代替 |
 | Evidence Ledger | `src/persistence/` | 证据、产物、引用与版本关系 | 只插入；取代用 `superseded_by` 回填；实质性结论必须可回指 |
@@ -94,6 +94,9 @@ RiskEvent          source(rule|model_judgment|collection_failed)、严重级别�
 Evidence           值、来源、取得时间、定位块、provenance
 Proposal           采购建议，版本化，绑定 content_hash
 PermissionDecision 审批结果，绑定方案版本、哈希与动作范围
+ContextBundle      一次模型调用实际纳入的内容及其 manifest：included / excluded
+                   （五值理由不合并）、token_estimate、构建版本。轨迹靠它回答
+                   「这次调用看到了什么」，预算靠它计量
 ModelRequest       call_id、model、消息、工具、输出 schema、预算、超时
 ModelResult        文本、结构化输出、工具请求、完成原因、用量、后端
 ModelCapabilities  探测得出的实测能力，非手写声明

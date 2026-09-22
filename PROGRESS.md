@@ -45,6 +45,7 @@
 - **T08** Human Gate、审批绑定哈希、重启后仍等待——未建
 - **T09** 父子预算与沿边扣除——未建
 - **T10** eval 数据集、失败用例登记、回归门禁——未建（回放后端是前置件，已就绪）
+- **T12** 业务术语注册表（MOQ / MPQ / SPQ 三条独立）——未建
 
 ## 文档体系状态
 
@@ -56,7 +57,7 @@
 | `docs/OPEN-QUESTIONS.md` | ✅ 已重写，Q-02 废止 |
 | `productinfo.md`、`docs/HANDOFF.md` | ✅ 已删除，内容并入上述文档 |
 | `AGENTS.md`、`README.md`、`CODING_RULES.md`、`GLOSSARY.md` | ⏳ 待对齐 |
-| `docs/features.json` | ⏳ 待按新形态重排队列 |
+| `docs/features.json` | ✅ 已重排：F23 作废，F09/F15/F18/F24 改写，新增 F26–F30（29 条） |
 | `docs/product/acceptance-cases.md` | ⏳ 待重写（旧 EV 用例引用已废止的 FR/BR） |
 | `docs/spec/*` | ⏳ 待检查：`interfaces.md` 需加 `RiskEvent` / `NodeResult`；`data-model.md` 的预警层随新形态调整；`ui-contract.md` 暂缓 |
 
@@ -66,9 +67,8 @@
 
 ## 下一步
 
-1. 对齐剩余文档（`AGENTS.md`、`README.md`、`CODING_RULES.md`、`GLOSSARY.md`）；
-2. 按新形态重排 `docs/features.json`，旧 F 编号的处置需用户确认；
-3. 重写 `docs/product/acceptance-cases.md`；
-4. 然后才开工：Graph 编排器 → Worker 名册 → 第一期纵向切片。
+1. 重写 `docs/product/acceptance-cases.md`（旧 EV 用例引用已废止的 FR/BR）；
+2. 检查 `docs/spec/*`：`interfaces.md` 需加 `RiskEvent` / `NodeResult`，`data-model.md` 的预警层随新形态调整；
+3. 然后开工，依赖顺序见 `docs/features.json` 的 `_slice`：F12 → F13 → F14 → **F15 Graph 编排器（第一期主体）** → F24 → F18 → F16。
 
 Feature 状态只能由用户按 D14 授权流转，文档工作不修改 `state` 或 `evidence`。
