@@ -19,19 +19,22 @@
       "bytes": 17647
     },
     "kicad/bms-c1.kicad_sch": {
-      "sha256": "1f88ff1e1391db88278e801f97d9c6ddb50cdc17ada4877a01c5c06e5031b509",
+      "sha256": "6596ba414ec2e1d4f468af5cf8542bf9fdcb1fa1656676a92021dc379acd2953",
       "git_blob": "3da29d9bcee448a02d580895a25ab7b081def8cc",
-      "bytes": 264295
+      "bytes": 211476,
+      "upstream_sha256": "1f88ff1e1391db88278e801f97d9c6ddb50cdc17ada4877a01c5c06e5031b509"
     },
     "kicad/bq76952.kicad_sch": {
-      "sha256": "a5a971f63bcabb93ccc73a2d4c06e22ef3cc30e0d2b25005031d4734e3b17dfc",
+      "sha256": "8006e729dab9cdcb63f1874d99c990493d13bc0fe6e404c14204555f518376e0",
       "git_blob": "42ec627143e20d55b8ec5ac69c48d27bd5c00b38",
-      "bytes": 259180
+      "bytes": 254771,
+      "upstream_sha256": "a5a971f63bcabb93ccc73a2d4c06e22ef3cc30e0d2b25005031d4734e3b17dfc"
     },
     "kicad/esp32-c3.kicad_sch": {
-      "sha256": "06db911cb94ccf0d6276f7ed67957788cb6bb8447f9d8304a8fb35aecba2deac",
+      "sha256": "a40933bd4475a546902c7d09f4b98a0824fc4f3cd42d7155d6b1497252ae700d",
       "git_blob": "00024b278ea9c6d1976d0721ff5583b95fc69ed3",
-      "bytes": 111547
+      "bytes": 107147,
+      "upstream_sha256": "06db911cb94ccf0d6276f7ed67957788cb6bb8447f9d8304a8fb35aecba2deac"
     },
     "kicad/power-part.kicad_sch": {
       "sha256": "2ace1b2c201dbc99241e0fb5600de54a13cef1c7d08a2d8ab812447545c5343f",
@@ -43,5 +46,17 @@
       "git_blob": "4c673e6625476fd6fe76506fa09539757cad7013",
       "bytes": 66072
     }
+  },
+  "pruned": {
+    "rule": "knowledge.parts.is_electronic",
+    "removed_mpns": [
+      "225852-E",
+      "662024231722",
+      "B2B-PH-SM4-TB(LF)(SN)",
+      "B3B-PH-SM4-TB(LF)(SN)",
+      "B4B-PH-SM4-TB(LF)(SN)",
+      "TL3305AF160QG",
+      "USB4105-GF-A"
+    ]
   }
 }

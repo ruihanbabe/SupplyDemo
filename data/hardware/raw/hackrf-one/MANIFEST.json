@@ -14,14 +14,16 @@
       "bytes": 8930
     },
     "hardware/hackrf-one/baseband.kicad_sch": {
-      "sha256": "4012494dc03e32505a5a5199c9c42852db6649b6ebd3b5f51284be34682bd1ec",
+      "sha256": "455c7877375c41ec5d0d2b5c2e46c11e47ee645e891f96d568aaf1e92d4510a2",
       "git_blob": "6a651b26712ef3e8d8355262cd0f0fafeb36dfa5",
-      "bytes": 391473
+      "bytes": 379391,
+      "upstream_sha256": "4012494dc03e32505a5a5199c9c42852db6649b6ebd3b5f51284be34682bd1ec"
     },
     "hardware/hackrf-one/frontend.kicad_sch": {
-      "sha256": "3e25bb217377f7fdfc4f98e647cf61edacd66ffb53c9416019be396567ba9f0f",
+      "sha256": "91353ca1544039fb1e7c718b1c67504526942c0c5f820b13b4b20acf44ab3b8e",
       "git_blob": "a84df997a3f843c0fb9b2c685a8eb2c5e59df1a8",
-      "bytes": 375992
+      "bytes": 373743,
+      "upstream_sha256": "3e25bb217377f7fdfc4f98e647cf61edacd66ffb53c9416019be396567ba9f0f"
     },
     "hardware/hackrf-one/hackrf-one.kicad_pro": {
       "sha256": "38a976062a0fc88b4617605410e8ed5f71da87e7d8f544e9e3f61ef95b8efc35",
@@ -29,14 +31,27 @@
       "bytes": 10084
     },
     "hardware/hackrf-one/hackrf-one.kicad_sch": {
-      "sha256": "c9ee4e2b92119338a3f8029674482e6b920f3343a4577c56b34d45b85f281b08",
+      "sha256": "0068821f6495bcdfdb5dfee55134e4ea016071d44f376a20e87816890a5cf35e",
       "git_blob": "dec712560b76e0e16b67bece1f841fba0bb4f620",
-      "bytes": 127056
+      "bytes": 125240,
+      "upstream_sha256": "c9ee4e2b92119338a3f8029674482e6b920f3343a4577c56b34d45b85f281b08"
     },
     "hardware/hackrf-one/mcu.kicad_sch": {
-      "sha256": "de07470d47e1ab10fc6d69788aaff081043870711618897e0d83a8f0437666fa",
+      "sha256": "bc0a8aa34580486ec25d9b3a6ef249b5630d2a3e65eb16f906f942783c0aefde",
       "git_blob": "087ea542647b7faed4cab376cb07fd8ca0586ea9",
-      "bytes": 562046
+      "bytes": 528249,
+      "upstream_sha256": "de07470d47e1ab10fc6d69788aaff081043870711618897e0d83a8f0437666fa"
     }
+  },
+  "pruned": {
+    "rule": "knowledge.parts.is_electronic",
+    "removed_mpns": [
+      "10103592-0001LF",
+      "73251-2121",
+      "FSMRA3JH",
+      "PPPC082LFBN-RC",
+      "PPPC112LFBN-RC",
+      "PPPC132LFBN-RC"
+    ]
   }
 }

@@ -1,9 +1,10 @@
 """Pull each registered hardware project, pinned to one commit, into the raw layer.
 
-The raw layer is a verbatim copy: same bytes as upstream at that commit, never edited.
-MANIFEST.json records where each file came from and its SHA-256, so any later doubt about
-a parsed value can be settled by pointing at the exact source byte range. Files are made
-read-only after writing, as with the existing domdata layer.
+Each file is downloaded as upstream wrote it at that commit, checked against git's blob id,
+and then pruned to electronic components only (knowledge.prune). MANIFEST.json records where
+each file came from and its SHA-256, so any later doubt about a parsed value can be settled
+by pointing at the exact source byte range. Files are made read-only after writing, as with
+the existing domdata layer.
 
 Only public GitHub reads happen here — no credentials, no cost.
 
@@ -120,10 +121,14 @@ def verify(project_id: str, raw: Path = RAW) -> list[str]:
 
 
 def main() -> None:
+    # Imported here: prune imports this module for RAW and load_registry.
+    from knowledge.prune import prune_project
+
     for project in load_registry():
         manifest = fetch_project(project)
         print(f"{project['project_id']}: {len(manifest['files'])} files "
               f"@ {manifest['commit'][:10]}")
+        print(f"  pruned: {prune_project(project['project_id'])}")
 
 
 if __name__ == "__main__":

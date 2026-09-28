@@ -30,7 +30,7 @@ def test_symbols_are_kept_whole_with_their_own_field_names(migrated):
     import_project(conn, "hackrf-one")
     manifest = json.loads((RAW / "hackrf-one" / "MANIFEST.json").read_text())
     expected = raw_symbols(RAW / "hackrf-one" / manifest["root_schematic"])
-    assert conn.scalar(text("SELECT count(*) FROM hw_raw_symbol")) == len(expected) == 742
+    assert conn.scalar(text("SELECT count(*) FROM hw_raw_symbol")) == len(expected) == 732
     # Nothing renamed: HackRF says "Part Number", and so does the database.
     assert conn.scalar(text("SELECT count(*) FROM hw_raw_symbol WHERE properties ? 'MPN'")) == 0
     assert conn.scalar(text(
@@ -69,9 +69,14 @@ def test_the_part_table_is_built_from_the_raw_layer_and_rebuilds_the_same(migrat
         import_project(conn, project_id)
     first = build_all(conn)
     assert {r["project_id"]: r["parts"] for r in first} == {
-        "hackrf-one": 68, "jetson-agx-thor-baseboard": 115, "bms-c1": 62}
+        "hackrf-one": 62, "jetson-agx-thor-baseboard": 96, "bms-c1": 55}
     assert build_all(conn) == first
-    assert conn.scalar(text("SELECT count(*) FROM hw_part")) == 245
+    assert conn.scalar(text("SELECT count(*) FROM hw_part")) == 213
+    # Connector, spacer and battery are not certainly electronic, so they are left out;
+    # a switch IC under a "...Switches" library stays in.
+    kept = set(conn.scalars(text("SELECT mpn FROM hw_part")))
+    assert not kept & {"USB4105-GF-A", "9774025151R", "MS621FE-FL11E"}
+    assert "AP22615AWU-7" in kept
     row = conn.execute(text("""SELECT manufacturer, quantity, alternates FROM hw_part
                                WHERE mpn = 'CL05C220JB5NNNC'""")).one()
     assert row == ("Samsung", 12, "Murata GRM1555C1H220JA01D")

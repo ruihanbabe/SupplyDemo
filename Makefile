@@ -117,8 +117,12 @@ explain: ## 解释某个 worker 实际能调用哪些工具，以及每条允许
 	@PYTHONPATH=src $(VPY) -m permissions.explain --worker $(WORKER) $(ARGS)
 
 .PHONY: fetch-hardware
-fetch-hardware: ## 按 config/knowledge/sources.yaml 钉死的提交拉取 KiCad 原理图到只读原始层（公开 GitHub，无费用）
+fetch-hardware: ## 按 config/knowledge/sources.yaml 钉死的提交拉取 KiCad 原理图到只读原始层，并裁到只剩电子元件（公开 GitHub，无费用）
 	@PYTHONPATH=src $(VPY) -m knowledge.fetch
+
+.PHONY: prune-hardware
+prune-hardware: ## 从本地原始层原理图删除非电子元件（连接器、开关、电池、机械件），重算 MANIFEST 哈希；可重跑
+	@PYTHONPATH=src $(VPY) -m knowledge.prune
 
 .PHONY: build-parts
 build-parts: ## 从硬件原始层生成料号表 hw_part：每项目每料号一行（纯确定性，零 token）

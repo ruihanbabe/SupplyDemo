@@ -1578,9 +1578,6 @@
     (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-000052ea190b"
       (reference "FB3") (unit 1) (value "FILTER") (footprint "hackrf:GSG-0805")
     )
-    (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00004f766bdf"
-      (reference "J1") (unit 1) (value "USB-MICRO-B") (footprint "hackrf:GSG-USB-MICROB-FCI-10103592-EXT")
-    )
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-0000527e97cf"
       (reference "J2") (unit 1) (value "RF-SHIELD-FRAME") (footprint "hackrf:GSG-SHIELD-BMI-S-230")
     )
@@ -1659,14 +1656,8 @@
     (path "/00000000-0000-0000-0000-000050370666/00000000-0000-0000-0000-0000616a11c7"
       (reference "NT3") (unit 1) (value "VAA") (footprint "gsg-modules:HEADER-1x2-SHORTED")
     )
-    (path "/00000000-0000-0000-0000-000050370666/00000000-0000-0000-0000-000050462549"
-      (reference "P2") (unit 1) (value "CLKOUT") (footprint "hackrf:GSG-SMA-73251-2120")
-    )
     (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00005043d24d"
       (reference "P3") (unit 1) (value "GND") (footprint "hackrf:GSG-HEADER-NOMARK-1x2")
-    )
-    (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-00004f94d0f2"
-      (reference "P4") (unit 1) (value "ANTENNA") (footprint "hackrf:GSG-SMA-73251-2120")
     )
     (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-0000528023db"
       (reference "P5") (unit 1) (value "LEDS") (footprint "hackrf:GSG-HEADER-2x3")
@@ -1677,9 +1668,6 @@
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-0000528044d2"
       (reference "P7") (unit 1) (value "GPO2") (footprint "hackrf:GSG-TESTPOINT-50MIL")
     )
-    (path "/00000000-0000-0000-0000-000050370666/00000000-0000-0000-0000-00005294060f"
-      (reference "P9") (unit 1) (value "BASEBAND") (footprint "hackrf:GSG-HEADER-2x8")
-    )
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-0000528044d9"
       (reference "P13") (unit 1) (value "GPO1") (footprint "hackrf:GSG-TESTPOINT-50MIL")
     )
@@ -1688,9 +1676,6 @@
     )
     (path "/00000000-0000-0000-0000-000050370666/00000000-0000-0000-0000-00005037a16f"
       (reference "P15") (unit 1) (value "INTR") (footprint "hackrf:GSG-TESTPOINT-50MIL")
-    )
-    (path "/00000000-0000-0000-0000-000050370666/00000000-0000-0000-0000-00004f5d16d6"
-      (reference "P16") (unit 1) (value "CLKIN") (footprint "hackrf:GSG-SMA-73251-2120")
     )
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-000052805038"
       (reference "P17") (unit 1) (value "GPO6") (footprint "hackrf:GSG-TESTPOINT-50MIL")
@@ -1701,14 +1686,8 @@
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-00005280432b"
       (reference "P19") (unit 1) (value "GPO3") (footprint "hackrf:GSG-TESTPOINT-50MIL")
     )
-    (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00004f838167"
-      (reference "P20") (unit 1) (value "GPIO") (footprint "hackrf:GSG-HEADER-2x11")
-    )
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-0000528044e0"
       (reference "P21") (unit 1) (value "REF_IN") (footprint "hackrf:GSG-TESTPOINT-50MIL")
-    )
-    (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-0000526b4073"
-      (reference "P22") (unit 1) (value "I2S") (footprint "hackrf:GSG-HEADER-2x13")
     )
     (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00005045734c"
       (reference "P23") (unit 1) (value "DBGEN") (footprint "hackrf:GSG-TESTPOINT-50MIL")
@@ -1724,9 +1703,6 @@
     )
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-0000528054f2"
       (reference "P27") (unit 1) (value "MIXER_SDATA") (footprint "hackrf:GSG-TESTPOINT-50MIL")
-    )
-    (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00004f837d97"
-      (reference "P28") (unit 1) (value "SD") (footprint "hackrf:GSG-HEADER-2x11")
     )
     (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00004f82f4c0"
       (reference "P29") (unit 1) (value "CPLD_JTAG") (footprint "hackrf:GSG-HEADER-1x2")
@@ -2189,12 +2165,6 @@
     )
     (path "/00000000-0000-0000-0000-000050370666/00000000-0000-0000-0000-0000503c4ab0"
       (reference "R105") (unit 1) (value "10k") (footprint "hackrf:GSG-0402")
-    )
-    (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00005248e27d"
-      (reference "SW1") (unit 1) (value "DFU") (footprint "hackrf:GSG-SWITCH-FSMRA")
-    )
-    (path "/00000000-0000-0000-0000-00005037043e/00000000-0000-0000-0000-00005248ff4f"
-      (reference "SW2") (unit 1) (value "RESET") (footprint "hackrf:GSG-SWITCH-FSMRA")
     )
     (path "/00000000-0000-0000-0000-0000503bb638/00000000-0000-0000-0000-0000501ef483"
       (reference "T1") (unit 1) (value "MIX_IN_BALUN") (footprint "hackrf:GSG-B0310J50100AHF")

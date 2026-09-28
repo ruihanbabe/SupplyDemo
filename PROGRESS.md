@@ -28,8 +28,8 @@
 | 分层权限（全局→worker→会话，交集语义）与 `make explain` | `src/permissions/`、`config/permissions.yaml`、`config/agents/*.yaml` | 已验证：同一工具 supervisor 可调、spec_check 被拒，且指出来自哪一层 |
 | MCP 子进程（自实现 stdio JSON-RPC）+ 环境变量白名单 | `src/tools/mcp_client.py`、`mcp_servers/supplier/server.py` | 已验证：子进程只收到白名单变量 |
 | **三家真实分销商接入**（Mouser / element14 / DigiKey），按家降级、按行标 provenance | `mcp_servers/supplier/adapters/` | **已验证：真实 API 三家全通**，字段按实测响应校准 |
-| 硬件设计原始层：3 个开源项目（HackRF One / Antmicro Thor / LibreSolar BMS-C1）KiCad 原理图钉提交拉取、原样入库（文件全文 + 图纸页 + 符号，原属性名不改） | `config/knowledge/sources.yaml`、`src/knowledge/`、`src/persistence/import_hardware_raw.py`、迁移 0004 | 已验证（2026-09-28）：30 个文件入库后逐字节哈希一致；2940 个符号全部经实例表解析出位号；重跑跳过；应用角色不可改写 |
-| 硬件料号表 `hw_part`：从原始层派生，每项目每个要采购的料号一行（料号、厂商、描述、单板用量、设计者替代料原文），同一料号多厂商直接报错 | `src/knowledge/parts.py`、`src/persistence/build_hardware_parts.py`、迁移 0005、`make build-parts` | 已验证（2026-09-28）：hackrf-one 68 / thor 115 / bms-c1 62 共 245 行，重跑一致；真库集成测试通过 |
+| 硬件设计原始层：3 个开源项目（HackRF One / Antmicro Thor / LibreSolar BMS-C1）KiCad 原理图钉提交拉取、裁到只剩电子元件（`make prune-hardware`，MANIFEST 同时记新哈希与上游哈希）后入库（文件全文 + 图纸页 + 符号，原属性名不改） | `config/knowledge/sources.yaml`、`src/knowledge/`、`src/persistence/import_hardware_raw.py`、迁移 0004 | 已验证（2026-09-28）：30 个文件入库后逐字节哈希一致；裁掉 32 个非电子料号共 78 个符号后余 2862 个，全部经实例表解析出位号；重跑跳过；应用角色不可改写 |
+| 硬件料号表 `hw_part`：从原始层派生，每项目每个要采购的料号一行（料号、厂商、描述、单板用量、设计者替代料原文），同一料号多厂商直接报错；只收确定是电子元件的料号（连接器、开关、电池、机械件排除） | `src/knowledge/parts.py`、`src/persistence/build_hardware_parts.py`、迁移 0005、`make build-parts` | 已验证（2026-09-28）：hackrf-one 62 / thor 96 / bms-c1 55 共 213 行，重跑一致；真库集成测试通过 |
 | 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据

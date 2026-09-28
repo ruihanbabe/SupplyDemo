@@ -5,9 +5,11 @@ A part counts when it is in the BOM, has a part number, and is fitted. Board fea
 (fiducials, holes, logos) have no part number and drop out on their own. Do-not-place is
 recognised in the three ways designers mark it — the KiCad attribute, a DNP/DNM
 property, or the value itself reading "DNP" — because a part nobody fits is not bought.
+Only parts that are certainly electronic components are kept (see is_electronic).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from knowledge.kicad import Placement
@@ -19,6 +21,16 @@ DESCRIPTION_FIELDS = ("description",)
 ALTERNATE_FIELDS = ("substitution", "alternative", "alternates")
 DNP_FIELDS = ("dnp", "dnm")
 EMPTY = {"", "~"}
+
+#: Reference prefixes that are certainly electronic components: resistor, thermistor,
+#: capacitor, inductor, ferrite bead, diode, LED, transistor, IC, crystal, oscillator,
+#: transformer/balun. Connectors (J, P), switches (S, SW), batteries (BT) and mechanical
+#: parts (H) are left out, and so is anything not listed: when in doubt, it is not ours.
+ELECTRONIC_PREFIXES = {"R", "RT", "C", "L", "FB", "D", "LED", "Q", "U", "X", "Y", "T"}
+#: Symbol-library words that mark a part as not purely electronic even under a listed prefix.
+#: "switch" is not one: switch ICs live in libraries like "...PowerDistributionSwitches...",
+#: and mechanical switches are already out by their S / SW prefix.
+NON_ELECTRONIC_LIBRARY_WORDS = ("mechanical", "connector", "battery")
 
 
 def pick(props: dict[str, str], names: tuple[str, ...]) -> str | None:
@@ -35,6 +47,15 @@ def is_fitted(placement: Placement) -> bool:
                 or pick(placement.properties, DNP_FIELDS) is not None)
 
 
+def is_electronic(placement: Placement) -> bool:
+    # Letters before the first digit, e.g. "LED" from "LED3", "RT" from "RT1".
+    prefix = re.match(r"[A-Za-z]*", placement.reference).group().upper()
+    # The library part of lib_id, e.g. "antmicroMechanicalParts" from "antmicroMechanicalParts:Spacer".
+    library = placement.lib_id.split(":", 1)[0].casefold()
+    return (prefix in ELECTRONIC_PREFIXES
+            and not any(word in library for word in NON_ELECTRONIC_LIBRARY_WORDS))
+
+
 @dataclass
 class Part:
     mpn: str
@@ -47,10 +68,15 @@ class Part:
 
 def build_parts(placements: list[Placement]) -> list[Part]:
     parts: dict[str, Part] = {}
+    # A part number with even one placement that is not certainly electronic is dropped whole.
+    uncertain: set[str] = set()
     for placement in placements:
         props = placement.properties
         mpn = pick(props, MPN_FIELDS)
         if not (placement.in_bom and mpn and is_fitted(placement)):
+            continue
+        if not is_electronic(placement):
+            uncertain.add(mpn)
             continue
         manufacturer = pick(props, MANUFACTURER_FIELDS)
         part = parts.get(mpn)
@@ -63,4 +89,5 @@ def build_parts(placements: list[Placement]) -> list[Part]:
             # One part number, two makers: which one is meant is not ours to decide.
             raise ValueError(f"{mpn}: manufacturer {part.manufacturer!r} vs {manufacturer!r}")
         part.quantity += 1
-    return sorted(parts.values(), key=lambda part: part.mpn)
+    return sorted((part for part in parts.values() if part.mpn not in uncertain),
+                  key=lambda part: part.mpn)
