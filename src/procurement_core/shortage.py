@@ -17,9 +17,13 @@ def unique(rows, keys):
     return list(seen.values())
 
 
-def compute_shortage(required_qty, demand_id, need_by_date, inventory, allocations, transit):
-    """Inputs are for one component and tenant; quantities remain Decimal throughout."""
-    quantity(required_qty, positive=True)
+def availability(demand_id, need_by_date, inventory, allocations, transit):
+    """What one component has on hand and arriving in time, for one demand.
+
+    No requirement is involved, so no shortage: the same arithmetic serves the shortage
+    calculation and a plain "how many are there" question about an alternate part.
+    `demand_id=None` treats every allocation and assigned transit as someone else's.
+    """
     inventory = unique(inventory, ("warehouse",))
     allocations = unique(allocations, ("demand_id", "component_id"))
     transit = unique(transit, ("in_transit_id",))
@@ -50,6 +54,23 @@ def compute_shortage(required_qty, demand_id, need_by_date, inventory, allocatio
         incoming = sum((r["qty"] for r in eligible), Decimal(0))
         own_incoming = sum((r["qty"] for r in committed), Decimal(0))
         available = quantity(available_stock + incoming)
+    return {"inventory": inventory, "allocations": allocations, "on_hand": on_hand,
+            "other": other, "available_stock": available_stock, "eligible": eligible,
+            "committed": committed, "excluded": excluded, "incoming": incoming,
+            "own_incoming": own_incoming, "available": available}
+
+
+def compute_shortage(required_qty, demand_id, need_by_date, inventory, allocations, transit):
+    """Inputs are for one component and tenant; quantities remain Decimal throughout."""
+    quantity(required_qty, positive=True)
+    supply = availability(demand_id, need_by_date, inventory, allocations, transit)
+    inventory, allocations = supply["inventory"], supply["allocations"]
+    on_hand, other, available = supply["on_hand"], supply["other"], supply["available"]
+    available_stock, incoming = supply["available_stock"], supply["incoming"]
+    eligible, committed, excluded = supply["eligible"], supply["committed"], supply["excluded"]
+    own_incoming = supply["own_incoming"]
+    with localcontext() as ctx:
+        ctx.prec = 60
         unmet = max(Decimal(0), required_qty - own_incoming)
         shortage = quantity(max(Decimal(0), unmet - available))
     warnings = ["advisory_only_no_reservation", "recheck_before_execution"]

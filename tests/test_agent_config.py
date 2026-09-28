@@ -55,16 +55,16 @@ def test_per_worker_model_override_actually_takes_effect(tmp_path):
     """
     write_configs(
         tmp_path,
-        intake="worker: intake\nmodel: cheap-tier\n",
-        manufacturer="worker: manufacturer\nmodel: flagship-tier\nmax_tokens: 8192\n",
-        report="worker: report\nmodel: mid-tier\n",
+        evidence_check="worker: evidence_check\nmodel: cheap-tier\n",
+        spec_check="worker: spec_check\nmodel: flagship-tier\nmax_tokens: 8192\n",
+        proposal="worker: proposal\nmodel: mid-tier\n",
     )
-    assert load_agent_config("intake", tmp_path).model == "cheap-tier"
-    assert load_agent_config("manufacturer", tmp_path).model == "flagship-tier"
-    assert load_agent_config("report", tmp_path).model == "mid-tier"
+    assert load_agent_config("evidence_check", tmp_path).model == "cheap-tier"
+    assert load_agent_config("spec_check", tmp_path).model == "flagship-tier"
+    assert load_agent_config("proposal", tmp_path).model == "mid-tier"
     # Sampling limits stay per-worker even when the model is shared.
-    assert load_agent_config("manufacturer", tmp_path).max_tokens == 8192
-    assert load_agent_config("intake", tmp_path).max_tokens == 2048
+    assert load_agent_config("spec_check", tmp_path).max_tokens == 8192
+    assert load_agent_config("evidence_check", tmp_path).max_tokens == 2048
 
 
 def test_repository_config_is_internally_consistent():
@@ -78,8 +78,8 @@ def test_repository_config_is_internally_consistent():
 # ---------- 合并与校验 ----------
 
 def test_worker_file_overrides_defaults(tmp_path):
-    write_configs(tmp_path, intake="worker: intake\nmodel: cheap-model\nmax_tokens: 4096\n")
-    config = load_agent_config("intake", tmp_path)
+    write_configs(tmp_path, evidence_check="worker: evidence_check\nmodel: cheap-model\nmax_tokens: 4096\n")
+    config = load_agent_config("evidence_check", tmp_path)
     assert config.model == "cheap-model"
     assert config.max_tokens == 4096
     assert config.temperature == 0.0
@@ -88,22 +88,22 @@ def test_worker_file_overrides_defaults(tmp_path):
 
 def test_worker_name_mismatch_is_rejected(tmp_path):
     """A copy-paste slip would route one worker's traffic to another's model."""
-    write_configs(tmp_path, intake="worker: manufacturer\nmodel: x\n")
-    with pytest.raises(ValueError, match="declares worker='manufacturer'"):
-        load_agent_config("intake", tmp_path)
+    write_configs(tmp_path, evidence_check="worker: spec_check\nmodel: x\n")
+    with pytest.raises(ValueError, match="declares worker='spec_check'"):
+        load_agent_config("evidence_check", tmp_path)
 
 
 def test_missing_model_is_rejected(tmp_path):
-    write_configs(tmp_path, report="worker: report\n")
+    write_configs(tmp_path, proposal="worker: proposal\n")
     (tmp_path / "_defaults.yaml").write_text("provider: zhipu\n")
     with pytest.raises(ValueError, match="missing required keys: model"):
-        load_agent_config("report", tmp_path)
+        load_agent_config("proposal", tmp_path)
 
 
 def test_non_mapping_config_is_rejected(tmp_path):
-    write_configs(tmp_path, adjudicator="- not\n- a mapping\n")
+    write_configs(tmp_path, evidence_check="- not\n- a mapping\n")
     with pytest.raises(ValueError, match="must be a mapping"):
-        load_agent_config("adjudicator", tmp_path)
+        load_agent_config("evidence_check", tmp_path)
 
 
 # ---------- 凭据解析（D07：凭据只在 env） ----------
@@ -128,8 +128,8 @@ def test_credential_key_names_are_provider_scoped():
 
 def test_agent_config_never_carries_credentials(tmp_path):
     """Behaviour config is committed to Git; a key must not be reachable through it."""
-    write_configs(tmp_path, intake="worker: intake\nmodel: m\napi_key: leaked-into-yaml\n")
-    config = load_agent_config("intake", tmp_path)
+    write_configs(tmp_path, evidence_check="worker: evidence_check\nmodel: m\napi_key: leaked-into-yaml\n")
+    config = load_agent_config("evidence_check", tmp_path)
     assert not hasattr(config, "api_key")
     assert "leaked-into-yaml" not in repr(config)
 
@@ -139,21 +139,21 @@ def test_agent_config_never_carries_credentials(tmp_path):
 def test_backend_for_binds_the_workers_model():
     environ = {"SUPPLYAGENT_LLM_ZHIPU_API_KEY": "k", "SUPPLYAGENT_LLM_ZHIPU_BASE_URL": "https://e",
                "SUPPLYAGENT_LLM_ENABLED": "true"}
-    intake = backend_for("intake", environ=environ)
-    manufacturer = backend_for("manufacturer", environ=environ)
+    evidence_check = backend_for("evidence_check", environ=environ)
+    spec_check = backend_for("spec_check", environ=environ)
     # Each provider carries the model its own YAML declares. Whether those values
     # differ is a configuration choice, not something this test should pin down.
-    assert intake.settings.model == load_agent_config("intake").model
-    assert manufacturer.settings.model == load_agent_config("manufacturer").model
-    assert intake.config.worker == "intake"
-    assert manufacturer.config.worker == "manufacturer"
-    assert intake.config.max_tokens != manufacturer.config.max_tokens
+    assert evidence_check.settings.model == load_agent_config("evidence_check").model
+    assert spec_check.settings.model == load_agent_config("spec_check").model
+    assert evidence_check.config.worker == "evidence_check"
+    assert spec_check.config.worker == "spec_check"
+    assert evidence_check.config.max_tokens != spec_check.config.max_tokens
 
 
 def test_backend_for_redaction_hides_the_key():
     environ = {"SUPPLYAGENT_LLM_ZHIPU_API_KEY": "super-secret-value",
                "SUPPLYAGENT_LLM_ZHIPU_BASE_URL": "https://e"}
-    provider = backend_for("report", environ=environ)
+    provider = backend_for("proposal", environ=environ)
     assert "super-secret-value" not in str(provider.settings.redacted)
     assert provider.settings.redacted["api_key"] == "set(18 chars)"
 
@@ -164,4 +164,4 @@ def test_backend_for_rejects_unknown_vendor(tmp_path, monkeypatch):
     monkeypatch.setitem(llm.BACKENDS, "zhipu", llm.OpenAICompatibleBackend)
     monkeypatch.delitem(llm.BACKENDS, "zhipu")
     with pytest.raises(Exception, match="known backends"):
-        backend_for("intake", environ={"SUPPLYAGENT_LLM_API_KEY": "k"})
+        backend_for("evidence_check", environ={"SUPPLYAGENT_LLM_API_KEY": "k"})

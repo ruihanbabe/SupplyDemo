@@ -1,0 +1,15 @@
+{
+  "project_id": "hackrf-one",
+  "repo": "greatscottgadgets/hackrf",
+  "commit": "7f96cc8e3fa625c4263a71ba8dd44d1f6110e4fa",
+  "license": "GPL-2.0",
+  "source_manifest_sha256": "e808030cb1a3fc617952903add5982ae866cd83be809cb4b70b17d924b4f819b",
+  "placements": 419,
+  "excluded_not_in_bom": 78,
+  "bom_items": 87,
+  "dnp_items": 19,
+  "distinct_mpns": 72,
+  "items_without_mpn": 12,
+  "items_with_alternates": 38,
+  "aml_rows": 113
+}

@@ -29,7 +29,8 @@ def revision():
 EVIDENCE_SECTION = "## 8. \u2465 \u8bc1\u636e\u5c42"
 
 #: Tables migrated after 0001. F12 took only the field-type half of the evidence layer.
-MIGRATED_BEYOND_0001 = {"evidence", "evidence_field_locator"}
+MIGRATED_BEYOND_0001 = {"evidence", "evidence_field_locator", "hw_source_snapshot",
+                        "hw_source_file", "hw_raw_sheet", "hw_raw_symbol"}
 
 
 def _create_blocks(markdown):
@@ -54,8 +55,8 @@ def test_frozen_migration_matches_contract():
     assert len(re.findall(r"CREATE TABLE", frozen_ddl())) == 22
     # The evidence (F12), alerting (F18), runtime (F14/F15) and semantic (F21) layers
     # grow the contract; they migrate separately from 0001, but must not drift silently.
-    assert len(re.findall(r"CREATE TABLE", spec_ddl())) == 35
-    # 35 contracted, 22 migrated. The gap is registered in data-model.md §12;
+    assert len(re.findall(r"CREATE TABLE", spec_ddl())) == 39
+    # 39 contracted, 28 migrated. The gap is registered in data-model.md §12;
     # when ⑥⑦⑧⑨ get migrations these two numbers converge and this test changes.
 
 
@@ -83,7 +84,7 @@ def test_upgrade_repeat_and_downgrade(migrated):
     expected = set(re.findall(r"CREATE TABLE (\w+)", frozen_ddl())) | MIGRATED_BEYOND_0001
     assert set(inspect(conn).get_table_names(schema=schema)) == expected | {"alembic_version"}
     command.upgrade(config, "head")
-    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
+    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0004"
     for table in expected:
         for column in inspect(conn).get_columns(table, schema=schema):
             assert str(column["type"]) not in {"FLOAT", "DOUBLE PRECISION"}
@@ -133,7 +134,7 @@ def test_ddl_failure_is_atomic(migrated):
     assert conn.scalar(text("SELECT count(*) FROM alembic_version")) == 0
     conn.execute(text("DROP TABLE business_rule"))
     command.upgrade(config, "head")
-    assert len(inspect(conn).get_table_names(schema=schema)) == 25
+    assert len(inspect(conn).get_table_names(schema=schema)) == 29  # 28 migrated + alembic_version
 
 
 @pytest.mark.integration

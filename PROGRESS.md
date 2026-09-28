@@ -22,12 +22,13 @@
 | 需求展开、候选处理、缺口计算、报价规则、MOQ/包装/阶梯价、版本化方案 | `src/procurement_core/`、`src/persistence/procurement.py` | 已验证 |
 | FastAPI 包络与项目/BOM/需求/Run/缺口/方案端点 | `src/api/` | 代码与测试在，未按四层验收 |
 | 统一 `ModelBackend` 端口、能力协商、云端后端、回放后端、录制 | `src/contracts/llm.py`、`src/infrastructure/llm.py`、`src/infrastructure/replay.py` | 已验证，含跨后端契约测试 |
-| 口径版本化（单板用量、身份接受策略）与模拟供应数据 | `src/persistence/seed_business_rules.py`、`seed_simulated_supply.py` | 已验证：50 套 Glasgow_revC3 算出 5 个缺口 |
+| 口径版本化（单板用量、身份接受策略）与模拟供应数据 | `src/persistence/seed_business_rules.py`、`seed_simulated_supply.py` | 已验证（2026-09-28，真库集成测试）：50 套 PCB-Stimulator 算出 5 个缺口，覆盖四种在途排除与资源竞争；多候选行进入待选 |
 | 证据账本（字段型）：只插入、内容去重、取代链、读取时判新鲜度 | `src/contracts/evidence.py`、`src/persistence/evidence.py`、`src/procurement_core/freshness.py` | 已验证，含真库列级权限断言 |
 | ToolRegistry：元数据、按场景注入、重试收口、幂等分级、审计落库、外部内容标记 | `src/tools/registry.py`、`src/tools/catalog_tools.py`、`src/persistence/tool_audit.py` | 已验证，含真实模型端到端 |
-| 分层权限（全局→worker→会话，交集语义）与 `make explain` | `src/permissions/`、`config/permissions.yaml`、`config/agents/*.yaml` | 已验证：同一工具 supervisor 可调、manufacturer 被拒，且指出来自哪一层 |
+| 分层权限（全局→worker→会话，交集语义）与 `make explain` | `src/permissions/`、`config/permissions.yaml`、`config/agents/*.yaml` | 已验证：同一工具 supervisor 可调、spec_check 被拒，且指出来自哪一层 |
 | MCP 子进程（自实现 stdio JSON-RPC）+ 环境变量白名单 | `src/tools/mcp_client.py`、`mcp_servers/supplier/server.py` | 已验证：子进程只收到白名单变量 |
 | **三家真实分销商接入**（Mouser / element14 / DigiKey），按家降级、按行标 provenance | `mcp_servers/supplier/adapters/` | **已验证：真实 API 三家全通**，字段按实测响应校准 |
+| 硬件设计原始层：3 个开源项目（HackRF One / Antmicro Thor / LibreSolar BMS-C1）KiCad 原理图钉提交拉取、原样入库（文件全文 + 图纸页 + 符号，原属性名不改） | `config/knowledge/sources.yaml`、`src/knowledge/`、`src/persistence/import_hardware_raw.py`、迁移 0004 | 已验证（2026-09-28）：30 个文件入库后逐字节哈希一致；2940 个符号全部经实例表解析出位号；重跑跳过；应用角色不可改写 |
 | 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据

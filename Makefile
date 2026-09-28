@@ -116,6 +116,18 @@ probe-suppliers: ## ④ 授权端到端：对真实分销商 API 跑一次只读
 explain: ## 解释某个 worker 实际能调用哪些工具，以及每条允许/拒绝来自哪一层
 	@PYTHONPATH=src $(VPY) -m permissions.explain --worker $(WORKER) $(ARGS)
 
+.PHONY: fetch-hardware
+fetch-hardware: ## 按 config/knowledge/sources.yaml 钉死的提交拉取 KiCad 原理图到只读原始层（公开 GitHub，无费用）
+	@PYTHONPATH=src $(VPY) -m knowledge.fetch
+
+.PHONY: normalize-hardware
+normalize-hardware: ## 解析原始层原理图，生成各项目的 BOM / AML / 位号表（纯确定性，零 token）
+	@PYTHONPATH=src $(VPY) -m knowledge.bom
+
+.PHONY: import-hardware
+import-hardware: ## 把原始层原理图原样入库（硬件设计原始层，只插入；同一提交重跑跳过）
+	@PYTHONPATH=src $(VPY) -m persistence.import_hardware_raw
+
 .PHONY: seed-rules
 seed-rules: ## 写入口径类 business_rule（单板用量、身份接受策略），版本化且重跑幂等
 	@PYTHONPATH=src $(VPY) -m persistence.seed_business_rules

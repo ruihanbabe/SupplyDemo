@@ -1,0 +1,15 @@
+{
+  "project_id": "bms-c1",
+  "repo": "LibreSolar/bms-c1",
+  "commit": "0ca09706f49906bdc73f6ccf99635de349d47474",
+  "license": "CERN-OHL-W-2.0",
+  "source_manifest_sha256": "a05f62aa52863fcf4178f02faa737907d51188bb98dacf9b438a5e775948bcb5",
+  "placements": 209,
+  "excluded_not_in_bom": 0,
+  "bom_items": 70,
+  "dnp_items": 0,
+  "distinct_mpns": 62,
+  "items_without_mpn": 8,
+  "items_with_alternates": 0,
+  "aml_rows": 62
+}

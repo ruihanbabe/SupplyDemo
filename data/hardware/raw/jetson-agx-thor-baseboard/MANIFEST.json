@@ -1,0 +1,97 @@
+{
+  "project_id": "jetson-agx-thor-baseboard",
+  "repo": "antmicro/jetson-agx-thor-baseboard",
+  "commit": "d966e9ca4049ae58b77bbc25bd75b074588b6484",
+  "path": "",
+  "root_schematic": "jetson-agx-thor-baseboard.kicad_sch",
+  "license": "Apache-2.0",
+  "license_file": "LICENSE",
+  "fetched_at": "2026-09-28T05:32:01+00:00",
+  "files": {
+    "LICENSE": {
+      "sha256": "c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c",
+      "git_blob": "57bc88a15a0ee8266c259b2667e64608d3f7e292",
+      "bytes": 11358
+    },
+    "csi.kicad_sch": {
+      "sha256": "90d11a3209b96f594495dfc8863f24cc502739f2a0f734f4e96c3514ce7b8959",
+      "git_blob": "100fd2c58403074345c0996880c77d3af1198096",
+      "bytes": 638320
+    },
+    "dcdc.kicad_sch": {
+      "sha256": "6a599c1bde42a69fb156cb6e6bc9420290fc36024f020f1e9d822a5f678b99f8",
+      "git_blob": "cfae20346f34764e7629f53b1db2cc08e625eb79",
+      "bytes": 1286812
+    },
+    "expansion_connector.kicad_sch": {
+      "sha256": "15305e097aa822c5d061c79725351a2aa3bfc1dde59c17a6d0f93b95121781bd",
+      "git_blob": "d3b8049b5da574d4b2ed446524643aeaf8b50d9b",
+      "bytes": 1016043
+    },
+    "jetson-agx-thor-baseboard.kicad_pro": {
+      "sha256": "17be32b85e16e8e81b90c5ba4be64d268cfbf26a7e4a9aaf9add97aa003fbf98",
+      "git_blob": "b850d10e276ab14ba18913ed0a30ff25df202d81",
+      "bytes": 59256
+    },
+    "jetson-agx-thor-baseboard.kicad_sch": {
+      "sha256": "43031abb60fabaca46a840e6d4ef3879df9653bd3e6c672f12e4f69b7d015002",
+      "git_blob": "bc54f68c351a06a6a728fb2288bb0251546f10ba",
+      "bytes": 275364
+    },
+    "m2.kicad_sch": {
+      "sha256": "9c139ab199d44ebbc3c0c865496c541ffebb4fc4426426a896d40e909e875279",
+      "git_blob": "636b408c711df5eed70080d95c6dda0d6c4e17de",
+      "bytes": 498685
+    },
+    "peripherals.kicad_sch": {
+      "sha256": "24194d047aae1b38c242b765ca393a4b5afe33268aea0f444f2d4d80d24b9d15",
+      "git_blob": "744ae9cad303fe1220bd144785f9420c9f559171",
+      "bytes": 630742
+    },
+    "power.kicad_sch": {
+      "sha256": "2b061ac31fe7d1e38e44855c6262822855a18e4c109358d57076725eacd2ab21",
+      "git_blob": "3137565c52bf7e4e6c7ac1f8dae3535f6672bc4d",
+      "bytes": 635443
+    },
+    "recovery_usb.kicad_sch": {
+      "sha256": "c3c6694f859acbaf3ae9528a960fc7daa4f56dd7b7c7ae14f0a64882e6805eda",
+      "git_blob": "3011c107cbb9e2110a2dd509464c60b6ebee40aa",
+      "bytes": 488472
+    },
+    "sfp.kicad_sch": {
+      "sha256": "04db23eb7fc08dfc71d6c90b0e3878f43f1eb33532ba22a5e20ac77c28603505",
+      "git_blob": "58ae47154952059eb99065f11eeb039eb9e683b0",
+      "bytes": 376723
+    },
+    "som_io.kicad_sch": {
+      "sha256": "d48a025c9e213a7ff601731ce0e96526b454ef9161dbfc07f66ba65cee0d7559",
+      "git_blob": "cbb2e8259eee1d616ef704abd2c169d09cabaeab",
+      "bytes": 864680
+    },
+    "som_io2.kicad_sch": {
+      "sha256": "8a6765bc66d535ce1bb755dc52ff7f4d6bb53d84e9c8f60c2511e1b25f2ac7ba",
+      "git_blob": "0d2182684a8619af152adfc4c18e6fe23d783070",
+      "bytes": 1123376
+    },
+    "som_power.kicad_sch": {
+      "sha256": "c1d30ca51ebfcaad75b2a9531b2f2ac67c328d3f845178bd96dc3c262cc6694b",
+      "git_blob": "0222f2071351be8c9f869fe4117136fc518f29ce",
+      "bytes": 1099700
+    },
+    "usb_debug_pd.kicad_sch": {
+      "sha256": "7d2d2a7ca2945da1a15b879cc82b08642002a409b8fcf8439c2f23740c71d59f",
+      "git_blob": "d9039364b4aaede72a91701ebf3fd5672b330319",
+      "bytes": 759919
+    },
+    "usb_dp.kicad_sch": {
+      "sha256": "f1b3812b7e8d30ce18fa7d26b7abe3b7c45d7d906bd4ed893b8ab9b85106037a",
+      "git_blob": "d58c92a62bcbe409c73114aa939d1ff3c38a50a2",
+      "bytes": 597008
+    },
+    "usb_hub.kicad_sch": {
+      "sha256": "9652781398b790a989027304d288fcea1250d2b7771698f2a1b6517b17b85d6e",
+      "git_blob": "b9099429233e89e30a2693f2799e4e23edefd882",
+      "bytes": 892603
+    }
+  }
+}

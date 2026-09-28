@@ -13,6 +13,7 @@ granted:
   - procurement.compute   # 需求展开与缺口计算（只写内部快照，不触达外部）
   - documents.read        # 厂商官方资料的读取（F17 接入后生效）
   - sourcing.read         # 分销商库存与报价的只读查询（F19/F30 接入后生效）
+  - inventory.read        # 内部库存、占用与在途的只读查询；与 catalog.read 分开，spec_check 不得持有
 
 # 无论下层怎么声明都一律拒绝。留空即无禁用项。
 # procurement.write 不在 granted 之列：外部采购系统与其幂等能力尚未确定（Q-03），

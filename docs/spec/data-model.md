@@ -251,7 +251,7 @@ CREATE TABLE llm_call (
     llm_call_id   UUID PRIMARY KEY,
     run_id        UUID        NOT NULL REFERENCES run(run_id),
     trace_id      TEXT        NOT NULL,
-    worker        TEXT        NOT NULL,           -- supervisor / intake / manufacturer / adjudicator / report
+    worker        TEXT        NOT NULL,           -- supervisor / spec_check / evidence_check / proposal
     model         TEXT        NOT NULL,
     prompt_tokens INTEGER,
     output_tokens INTEGER,
@@ -719,11 +719,71 @@ CREATE TABLE metric_definition (
 | 项 | 状态 |
 |---|---|
 | ⑥ 证据层分两期 | F12 已迁移字段型两张表；文档型三张表随 F17 迁移。迁移表数 22 → 24 |
+| ⑩ 硬件设计原始层 | 迁移 0004 建 4 张表（§13）。契约表数 35 → 39，迁移表数 24 → 28；加工层（统一字段）待定，不预建 |
 | ⑦ 预警层待重塑 | 形态重定后告警改以 `RiskEvent` 表达，本文 §9 仍是旧形态且未迁移；重塑随 F18 进行，届时表数会变 |
 | 契约 35 表 vs 迁移 22 表 | 有意分期：`0001` 冻结 ①～⑤ 层 22 表；⑥ 证据层（F12）、⑦ 预警层（F18）、⑧ 运行时层（F14/F15）、⑨ 语义层（F21）已写契约、迁移待建。`tests/test_schema.py` 对两个数字分别断言，任何一侧漂移都会失败 |
-| `llm_call.worker` 与新 Worker 名册 | 注释已随 D02 更新为 `supervisor / intake / manufacturer / adjudicator / report`；`internal`、`sourcing`、`action` 是确定性服务，不产生 llm_call |
+| `llm_call.worker` 与新 Worker 名册 | 注释与 `ARCHITECTURE.md` Worker 名册一致：`supervisor / spec_check / evidence_check / proposal`；`internal`、`sourcing`、`action` 是确定性服务，不产生 llm_call |
 | `llm_call.worker` 与 `metrics_snapshot` | 遗留兼容结构。前者暂写 node_id，后者当前不读写；删除或改名必须通过迁移并同步测试 |
 | `component` 的技术规格字段（参数、分类、规格书链接） | 不预建通用知识库；当前任务需要时由工具产生 Evidence |
 | 目标业务系统（ERP）侧的表 | 不在本项目库内。Agent 自有 PostgreSQL 与 ERP 是两个独立系统 |
 | `identity_status` 的 `verified` 取值 | CHECK 已允许，但核验流程未建（T12），当前数据全部为 `source_asserted` |
 | 税费与运费 | 有意不建模，见 §5 |
+
+## 13. ⑩ 硬件设计原始层（知识库，迁移 0004）
+
+**原样保留，不做统一字段。**各项目自己的属性名（`MPN` / `Part Number` / `PartNumber` …）原封不动存在 `properties` 里；拆分只沿 KiCad 文件自身的结构（文件 → 图纸页 → 符号），不合并多单元、不过滤电源符号、不解释 DNP。统一字段与业务含义在后续加工层按"相近字段 + 业务功能"确定，届时从本层重新派生，本层不改。
+
+`hw_source_file.content` 保存文件全文，是最终依据：`hw_raw_sheet` / `hw_raw_symbol` 只是为了查询方便从它解析出来的，二者不一致时以全文为准。同一项目换提交 = 新增一个快照，旧快照保留，可对比版本差异。应用角色只有 SELECT / INSERT。
+
+```sql
+CREATE TABLE hw_source_snapshot (
+    snapshot_id      UUID PRIMARY KEY,
+    tenant_id        TEXT        NOT NULL DEFAULT 'default',
+    project_id       TEXT        NOT NULL,
+    repo             TEXT        NOT NULL,
+    commit_sha       TEXT        NOT NULL,
+    source_path      TEXT        NOT NULL,
+    root_schematic   TEXT        NOT NULL,
+    license          TEXT        NOT NULL,
+    manifest_sha256  TEXT        NOT NULL,
+    fetched_at       TIMESTAMPTZ NOT NULL,
+    imported_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_hw_source_snapshot_project_commit UNIQUE (project_id, commit_sha)
+);
+
+CREATE TABLE hw_source_file (
+    snapshot_id      UUID        NOT NULL REFERENCES hw_source_snapshot(snapshot_id),
+    path             TEXT        NOT NULL,           -- 仓库内路径
+    sha256           TEXT        NOT NULL,
+    git_blob         TEXT        NOT NULL,           -- 与上游 git 对象一致的校验
+    byte_size        INTEGER     NOT NULL,
+    content          TEXT        NOT NULL,           -- 文件全文，逐字
+    PRIMARY KEY (snapshot_id, path)
+);
+
+CREATE TABLE hw_raw_sheet (
+    snapshot_id      UUID        NOT NULL REFERENCES hw_source_snapshot(snapshot_id),
+    sheet_path       TEXT        NOT NULL,           -- 实例路径；同一文件被引用两次即两行
+    parent_path      TEXT,                           -- 根页为 NULL
+    file_path        TEXT        NOT NULL,           -- 相对根原理图目录
+    sheet_uuid       TEXT,
+    properties       JSONB       NOT NULL,           -- 父页中该图纸块的属性，原样
+    PRIMARY KEY (snapshot_id, sheet_path)
+);
+
+CREATE TABLE hw_raw_symbol (
+    snapshot_id      UUID        NOT NULL REFERENCES hw_source_snapshot(snapshot_id),
+    sheet_path       TEXT        NOT NULL,
+    symbol_uuid      TEXT        NOT NULL,
+    file_path        TEXT        NOT NULL,
+    reference        TEXT,                           -- 来自实例表；解析不到为 NULL
+    reference_source TEXT        NOT NULL,
+    lib_id           TEXT        NOT NULL,
+    unit             INTEGER,
+    attributes       JSONB       NOT NULL,           -- in_bom / on_board / dnp … 原始取值
+    properties       JSONB       NOT NULL,           -- 全部属性，原属性名
+    PRIMARY KEY (snapshot_id, sheet_path, symbol_uuid),
+    CONSTRAINT ck_hw_raw_symbol_reference_source CHECK (reference_source IN ('instance', 'property'))
+);
+CREATE INDEX ix_hw_raw_symbol_properties ON hw_raw_symbol USING GIN (properties);
+```

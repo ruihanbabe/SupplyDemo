@@ -189,7 +189,7 @@ CREATE TABLE llm_call (
     llm_call_id   UUID PRIMARY KEY,
     run_id        UUID        NOT NULL REFERENCES run(run_id),
     trace_id      TEXT        NOT NULL,
-    worker        TEXT        NOT NULL,           -- supervisor / intake / manufacturer / adjudicator / report
+    worker        TEXT        NOT NULL,           -- supervisor / spec_check / evidence_check / proposal
     model         TEXT        NOT NULL,
     prompt_tokens INTEGER,
     output_tokens INTEGER,

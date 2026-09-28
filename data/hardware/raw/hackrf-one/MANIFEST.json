@@ -1,0 +1,42 @@
+{
+  "project_id": "hackrf-one",
+  "repo": "greatscottgadgets/hackrf",
+  "commit": "7f96cc8e3fa625c4263a71ba8dd44d1f6110e4fa",
+  "path": "hardware/hackrf-one",
+  "root_schematic": "hardware/hackrf-one/hackrf-one.kicad_sch",
+  "license": "GPL-2.0",
+  "license_file": "hardware/hackrf-one/LICENSE",
+  "fetched_at": "2026-09-28T05:31:13+00:00",
+  "files": {
+    "hardware/hackrf-one/LICENSE": {
+      "sha256": "2ee68e63fd7f724c9d6a42a517bec9d451dca2234c9024882cc4faeaed95e499",
+      "git_blob": "47cbf15e5fd99625f79546a3261b9f3f3e0d9111",
+      "bytes": 8930
+    },
+    "hardware/hackrf-one/baseband.kicad_sch": {
+      "sha256": "4012494dc03e32505a5a5199c9c42852db6649b6ebd3b5f51284be34682bd1ec",
+      "git_blob": "6a651b26712ef3e8d8355262cd0f0fafeb36dfa5",
+      "bytes": 391473
+    },
+    "hardware/hackrf-one/frontend.kicad_sch": {
+      "sha256": "3e25bb217377f7fdfc4f98e647cf61edacd66ffb53c9416019be396567ba9f0f",
+      "git_blob": "a84df997a3f843c0fb9b2c685a8eb2c5e59df1a8",
+      "bytes": 375992
+    },
+    "hardware/hackrf-one/hackrf-one.kicad_pro": {
+      "sha256": "38a976062a0fc88b4617605410e8ed5f71da87e7d8f544e9e3f61ef95b8efc35",
+      "git_blob": "957ce5a238049b7dcb906fc6ae186557461f569c",
+      "bytes": 10084
+    },
+    "hardware/hackrf-one/hackrf-one.kicad_sch": {
+      "sha256": "c9ee4e2b92119338a3f8029674482e6b920f3343a4577c56b34d45b85f281b08",
+      "git_blob": "dec712560b76e0e16b67bece1f841fba0bb4f620",
+      "bytes": 127056
+    },
+    "hardware/hackrf-one/mcu.kicad_sch": {
+      "sha256": "de07470d47e1ab10fc6d69788aaff081043870711618897e0d83a8f0437666fa",
+      "git_blob": "087ea542647b7faed4cab376cb07fd8ca0586ea9",
+      "bytes": 562046
+    }
+  }
+}

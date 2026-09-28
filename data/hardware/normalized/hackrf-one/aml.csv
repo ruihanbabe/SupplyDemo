@@ -1,0 +1,114 @@
+Item,Rank,Kind,Manufacturer,Manufacturer Part Number,Source Text
+1,1,primary,Samsung,CL05C330JB5NNNC,
+1,2,designer_specified,Murata,GRM1555C1H330JA01D,Murata GRM1555C1H330JA01D
+2,1,primary,Samsung,CL05B103KB5NNNC,
+2,2,designer_specified,Murata,GRM155R71C103KA01D,Murata GRM155R71C103KA01D
+3,1,primary,Samsung,CL05C220JB5NNNC,
+3,2,designer_specified,Murata,GRM1555C1H220JA01D,Murata GRM1555C1H220JA01D
+4,1,primary,Samsung,CL05A104KA5NNNC,
+4,2,designer_specified,Murata,GRM155R61A104KA01D,Murata GRM155R61A104KA01D
+5,1,primary,Samsung,CL05C331JB5NNNC,
+5,2,designer_specified,Murata,GRM155R71H331KA01D,Murata GRM155R71H331KA01D
+6,1,primary,Yageo,CC0402CRNPO9BN8R2,
+6,2,designer_specified,Taiyo Yuden,UMK105CG8R2DV-F,Taiyo Yuden UMK105CG8R2DV-F
+7,1,primary,Yageo,CC0402JRNPO9BN181,
+7,2,designer_specified,Murata,GRM1555C1H181JA01D,Murata GRM1555C1H181JA01D
+8,1,primary,Samsung,CL05C470JB5NNNC,
+8,2,designer_specified,Murata,GRM1555C1H470JA01D,Murata GRM1555C1H470JA01D
+9,1,primary,Samsung,CL05C101JB5NNNC,
+9,2,designer_specified,Murata,GRM1555C1H101JA01D,Murata GRM1555C1H101JA01D
+10,1,primary,Samsung,CL05A105KP5NNNC,
+10,2,designer_specified,Taiyo Yuden,LMK105BJ105KV-F,Taiyo Yuden LMK105BJ105KV-F
+11,1,primary,Taiyo Yuden,LMK105BJ225MV-F,
+12,1,primary,Yageo,CC0402KRX5R6BB334,
+12,2,designer_specified,Murata,GRM155R61A334KE15D,Murata GRM155R61A334KE15D
+13,1,primary,Murata,GCM1555C1H3R0CA16D,
+14,1,primary,Samsung,CL21A106KOQNNNE,
+14,2,designer_specified,Murata,GRM21BR61A106KE19L,Murata GRM21BR61A106KE19L
+15,1,primary,Yageo,CC0402KRX7R9BB332,
+16,1,primary,Samsung,CL05C180JB5NNNC,
+16,2,designer_specified,Murata,GRM1555C1H180JA01D,Murata GRM1555C1H180JA01D
+17,1,primary,Yageo,CC0402CRNPO9BN1R8,
+18,1,primary,Murata,LXES15AAA1-100,
+19,1,primary,Lite-On,LTST-S220KRKT,
+20,1,primary,Lite-On,LTST-S220KGKT,
+21,1,primary,Lite-On,LTST-S220KSKT,
+22,1,primary,Nexperia,PMEG4010ESBYL,
+23,1,primary,Murata,BLM21PG221SN1D,
+24,1,primary,FCI,10103592-0001LF,
+25,1,primary,Taiyo Yuden,BRL1608T100M,
+26,1,primary,Murata,LQG15HS6N2S02D,
+26,2,designer_specified,Taiyo Yuden,HK10056N2S-T,Taiyo Yuden HK10056N2S-T
+27,1,primary,Taiyo Yuden,NRS4018T4R7MDGJ,
+27,2,designer_specified,,NRG4026T4R7M,NRG4026T4R7M
+28,1,primary,Molex,73251-2121,
+29,1,primary,Sullins,PPPC082LFBN-RC,
+30,1,primary,Sullins,PPPC112LFBN-RC,
+31,1,primary,Sullins,PPPC132LFBN-RC,
+32,1,primary,Yangzhou Yangjie,YJL2301C,
+33,1,primary,Stackpole,RMCF0402JT470R,
+33,2,any_equivalent,,,any equivalent
+34,1,primary,Panasonic,ERJ-2GEJ223X,
+34,2,any_equivalent,,,any equivalent
+35,1,primary,Stackpole,RMCF0402FT51K0,
+35,2,any_equivalent,,,any equivalent
+36,1,primary,Stackpole,RMCF0402JT10K0,
+36,2,any_equivalent,,,any equivalent
+37,1,primary,Stackpole,RMCF0402FT1K00,
+37,2,any_equivalent,,,any equivalent
+38,1,primary,Stackpole,RMCF0402FT4K70,
+38,2,any_equivalent,,,any equivalent
+39,1,primary,Stackpole,RMCF0402JT1K80,
+39,2,any_equivalent,,,any equivalent
+40,1,primary,Stackpole,RMCF0402JT39R0,
+40,2,any_equivalent,,,any equivalent
+41,1,primary,Stackpole,RMCF0402ZT0R00,
+41,2,any_equivalent,,,any equivalent
+42,1,primary,Yageo,RC0402FR-0715K4L,
+42,2,any_equivalent,,,any equivalent
+43,1,primary,Stackpole,RMCF0402FT330K,
+43,2,any_equivalent,,,any equivalent
+44,1,primary,Yageo,RC0402JR-0718RL,
+44,2,any_equivalent,,,any equivalent
+45,1,primary,Stackpole,RMCF0402FT162K,
+45,2,any_equivalent,,,any equivalent
+46,1,primary,Stackpole,RMCF0402FT715K,
+46,2,any_equivalent,,,any equivalent
+47,1,primary,Yageo,RC0402JR-0718KL,
+47,2,any_equivalent,,,any equivalent
+48,1,primary,Yageo,RC0402FR-0712KL,
+48,2,any_equivalent,,,any equivalent
+49,1,primary,TE Connectivity,FSMRA3JH,
+50,1,primary,TTM,B0310J50100AHF,
+51,1,primary,Johanson Technology,2500BL14M100T,
+52,1,primary,Skyworks,SKY13453-385LF,
+53,1,primary,AVX,LP0603A1880ANTR,
+54,1,primary,RFMD,RFFC5072TR7,
+54,2,designer_pattern,,RFFC5072*,RFFC5072*
+55,1,primary,TDK,DEA162400HT-8004B1,
+56,1,primary,Skyworks,SKY13317-373LF,
+57,1,primary,Avago,MGA-81563-TR1G,
+57,2,designer_pattern,,MGA-81563*,MGA-81563*
+58,1,primary,Vishay,VBUS54CV-HSF-G4-08,
+59,1,primary,Maxim,MAX2837ETM+T,
+59,2,designer_specified,,MAX2837ETM+,MAX2837ETM+
+60,1,primary,Maxim,MAX5864ETM+T,
+60,2,designer_specified,,MAX5864ETM+,MAX5864ETM+
+61,1,primary,Silicon Laboratories Inc,SI5351C-B-GM,
+62,1,primary,Winbond,W25Q80DVSSIG,
+63,1,primary,Texas Instruments,TPS62410DRCR,
+64,1,primary,NXP,"LPC4320FBD144,551",
+65,1,primary,Xilinx,XC2C64A-7VQG100C,
+66,1,primary,Abracon,ABM8-25.000MHZ-10-D1G-T,
+67,1,primary,TXC,7V-12.000MAAE-T,
+68,1,primary,Abracon,AB26TRQ-32.768KHZ-T,
+69,1,primary,Samsung,CL05C101JB5NNNC,
+69,2,designer_specified,Murata,GRM1555C1H101JA01D,Murata GRM1555C1H101JA01D
+70,1,primary,Samsung,CL05C220JB5NNNC,
+70,2,designer_specified,Murata,GRM1555C1H220JA01D,Murata GRM1555C1H220JA01D
+72,1,primary,Samsung,CL05C470JB5NNNC,
+72,2,designer_specified,Murata,GRM1555C1H470JA01D,Murata GRM1555C1H470JA01D
+73,1,primary,Laird,BMI-S-230-F-R,
+74,1,primary,Laird,BMI-S-230-C,
+75,1,primary,Harwin,S1751-46R,
+83,1,primary,Sullins,GRPB052VWVN-RC,

@@ -102,11 +102,11 @@ def test_an_unknown_worker_gets_nothing():
 def test_the_same_tool_is_allowed_for_one_worker_and_denied_for_another():
     """EV-67: the demonstration this whole feature exists for."""
     allowed = {row["tool"]: row for row in explain("supervisor")}
-    denied = {row["tool"]: row for row in explain("manufacturer")}
+    denied = {row["tool"]: row for row in explain("spec_check")}
     assert allowed["compute_shortage"]["allowed"] is True
     assert denied["compute_shortage"]["allowed"] is False
     assert denied["compute_shortage"]["layer"] == "worker"
-    assert "manufacturer.yaml" in denied["compute_shortage"]["reason"]
+    assert "spec_check.yaml" in denied["compute_shortage"]["reason"]
 
 
 def test_explain_separates_unavailable_from_unauthorised():
@@ -119,13 +119,13 @@ def test_explain_separates_unavailable_from_unauthorised():
 
 
 def test_explain_renders_every_registered_tool_not_just_the_reachable_ones():
-    text = render(explain("adjudicator"))
+    text = render(explain("evidence_check"))
     assert "list_projects" in text
     assert "deny" in text
 
 
-@pytest.mark.parametrize("worker", ["supervisor", "intake", "manufacturer",
-                                    "adjudicator", "report"])
+@pytest.mark.parametrize("worker", ["supervisor", "spec_check", "evidence_check",
+                                    "proposal"])
 def test_every_worker_has_an_explainable_posture(worker):
     rows = explain(worker)
     assert rows

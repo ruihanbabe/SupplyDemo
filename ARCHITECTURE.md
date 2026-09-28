@@ -21,12 +21,12 @@
    ┌──────────────────────────────────────────┐
    │  Graph 编排器（确定性 DAG，自研）          │   ← 同步：fan-out / fan-in
    │                                          │
-   │  缺口计算                                 │
+   │  缺口计算           (service)             │
    │      │ fan-out：元件 × 核验类型            │
-   │      ├── 内部库存/在途   (service, skill) │
+   │      ├── 候选内部可用量 (service, skill) │
    │      ├── 外部报价/供货   (service, MCP)   │
    │      └── 技术规格核验    (agent, LLM)     │
-   │      │ fan-in：证据完整性校验 (agent)      │
+   │      │ fan-in：每个元件一次 (agent)        │
    │      ▼                                   │
    │  方案生成 (agent + 确定性回填)             │
    └────────┬─────────────────────────────────┘
@@ -59,6 +59,7 @@
 | 权限层 | `src/permissions/` | 分层策略链求值与 `explain` | 下层只能收紧；服务端强制，不靠 prompt |
 | Model Gateway | `src/harness/models/` | 统一模型端口、能力协商、能力探测、上下文装配与 manifest、用量上报 | 能力缺失显式拒绝，不删约束降级；Context 必须可由权威状态重建并保存构建清单 |
 | Tool Registry | `src/tools/` | 工具注册、schema、按场景与权限注入、调用分派 | 模型只能调用被注入的工具；写权限由服务端强制 |
+| 知识库 | `src/knowledge/` | 硬件设计源（原理图、BOM、AML）的钉版本拉取、确定性解析与规范化；后续承载元件文档及其版本 | 原始层逐字保存、只读、按 SHA-256 校验；解析不用模型；源格式差异只在本模块的字段别名表里处理 |
 | 采购业务核 | `src/procurement_core/` | BOM 展开、候选规则、缺口、MOQ、金额、版本与哈希 | 算术与硬规则不交给模型；未知不用零代替 |
 | Evidence Ledger | `src/persistence/` | 证据、产物、引用与版本关系 | 只插入；取代用 `superseded_by` 回填；实质性结论必须可回指 |
 | Human Gate | `src/runtime/human_gate/` | 审批、驳回、要求修改、恢复 | 等待不是错误；审批绑定方案版本与内容哈希 |
@@ -71,7 +72,8 @@
 
 | Worker | 形态 | 工具集特征 | 模型档 |
 |---|---|---|---|
-| `internal` | service | 进程内 skill，只读内部库存/在途 | — |
+| `shortage` | service | 调用采购业务核：BOM 展开、扣减库存与在途、算缺口 | — |
+| `internal` | service | 进程内 skill：缺料元件所在用料行**其他候选型号**的内部库存与在途；只报告可用量，不判定等价 | — |
 | `sourcing` | service | MCP，只读外部报价/供货 | — |
 | `spec_check` | **agent** | datasheet 读取与规格比对，**无任何写权限、不可读内部库存** | 旗舰 |
 | `evidence_check` | **agent** | 只读证据账本，**不可出网** | 中档 |
@@ -134,6 +136,8 @@ Eval Harness → Model Gateway、Tool Registry、Evidence Ledger（只读或隔�
 **部分失败是本设计的核心，不是边角。**一个不处理部分失败的 fan-in，技术上等于没做并行。
 
 fan-out 的并发单位是 **元件 × 核验类型** 的二维展开：3 个缺料元件 × 3 类核验 = 9 个并发节点，落在 3 个 Worker 上。
+
+fan-in **按元件**：某个元件的三个分支到齐即对该元件执行 `evidence_check`，不等其他元件；`proposal` 等全部元件的 `evidence_check` 到齐后执行。
 
 | 情形 | fan-in 的处理 |
 |---|---|

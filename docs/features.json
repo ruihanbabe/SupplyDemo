@@ -8,7 +8,7 @@
     "_rule": "层级定义见 DECISIONS.md D14。不是每个 Feature 都需要四层；不需要的层在 evidence 中写 'not_applicable: <理由>'，不得留空蒙混。③④ 被阻塞时记 blocked，不得跳过后宣称完成。"
   },
   "_context_refs_note": "context_refs 是该 Feature 的最小上下文投影，Codex 按 DEVELOPMENT.md「每 Feature 的上下文投影」定点读取，禁止通读整份文件。decisions=DECISIONS.md 的 Dxx 锚点；architecture_sections=ARCHITECTURE.md 的 ## 标题；requirements_sections=docs/product/requirements.md 的编号章节；rules=docs/product/requirements.md 的 FR/BR 编号；specs=docs/spec/ 下的文件与章节；cases=docs/product/acceptance-cases.md 的 EV 编号。",
-  "_slice": "第一期纵向切片见 docs/product/requirements.md §7：Glasgow_revC3 + 3 个缺料元件 + 「交期 > 8 周」一条规则 + CLI 入口。依赖顺序：F12 → F13 → F14 → F15（Graph 编排器，第一期主体）→ F24 → F18 → F16，F17 / F19 / F21 提供节点实现，F26 / F27 / F28 / F29 横切。F09 Web、F30 的真实 MCP 对端、F10 的本地部署后端属第二期。Q-01 / Q-03 / Q-04 / Q-05 未冻结不阻塞——sample / replay 数据足以把前三层验证在本地跑完。在用户批准前不修改任何既有 state/evidence。",
+  "_slice": "第一期纵向切片见 docs/product/requirements.md §7：PCB-Stimulator + 实算缺料元件 + 「交期 > 8 周」一条规则 + CLI 入口。依赖顺序：F12 → F13 → F14 → F15（Graph 编排器，第一期主体）→ F24 → F18 → F16，F17 / F19 / F21 提供节点实现，F26 / F27 / F28 / F29 横切。F09 Web、F30 的真实 MCP 对端、F10 的本地部署后端属第二期。Q-01 / Q-03 / Q-04 / Q-05 未冻结不阻塞——sample / replay 数据足以把前三层验证在本地跑完。在用户批准前不修改任何既有 state/evidence。",
   "features": [
     {
       "id": "F01",

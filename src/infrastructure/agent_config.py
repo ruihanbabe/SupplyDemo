@@ -26,7 +26,9 @@ DEFAULTS_FILE = "_defaults.yaml"
 #: Workers that reach a model, per DECISIONS.md D02. The three deterministic services
 #: (internal, sourcing, action) are absent by design: they are pure computation and
 #: orchestration, and must never call an LLM.
-LLM_WORKERS = ("supervisor", "intake", "manufacturer", "adjudicator", "report")
+LLM_WORKERS = ("supervisor", "spec_check", "evidence_check", "proposal")
+#: Workers that never reach a model but still call tools, so still hold permissions.
+SERVICE_WORKERS = ("shortage", "internal", "sourcing", "action")
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,23 @@ def load_agent_config(worker: str, config_dir: Path | None = None) -> AgentConfi
         timeout_seconds=float(merged.get("timeout_seconds", 60)),
         permissions=tuple(merged.get("permissions") or ()),
     )
+
+
+@cache
+def load_worker_permissions(worker: str, config_dir: Path | None = None) -> frozenset[str]:
+    """What a worker may call, read on its own so a service worker needs no model."""
+    if worker not in LLM_WORKERS + SERVICE_WORKERS:
+        raise ValueError(f"Unknown worker {worker!r}")
+    path = (config_dir or AGENT_CONFIG_DIR) / f"{worker}.yaml"
+    if not path.exists():
+        # No file, no grants: a worker nobody configured holds nothing.
+        return frozenset()
+    declared = _read_yaml(path)
+    if declared.get("worker") not in (None, worker):
+        raise ValueError(f"{worker}.yaml declares worker={declared['worker']!r}")
+    # Defaults are not merged: _defaults.yaml grants nothing, and inheriting a grant
+    # from a shared file would be a way to open a door nobody sees being opened.
+    return frozenset(declared.get("permissions") or ())
 
 
 def load_all_agent_configs(config_dir: Path | None = None) -> dict[str, AgentConfig]:

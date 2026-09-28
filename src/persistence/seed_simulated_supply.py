@@ -6,10 +6,11 @@ deterministic — a fixed seed and hand-pinned values for the slice components �
 same run twice produces the same database, which is what makes the numbers on screen
 reproducible in a demo and stable in a test.
 
-Five components are pinned by hand so that each of the four in-transit exclusion
-reasons and the allocation-competition path are all exercised by real data rather than
-by a unit test's fixture. The rest of the project's components get modest coverage so
-the shortage table stays readable: only the pinned ones come out short.
+Five single-candidate components are pinned by hand so that each of the four in-transit
+exclusion reasons and the allocation-competition path are exercised by real data rather
+than by a unit test's fixture. Two candidates of the multi-candidate line R2 are pinned
+as well: once a person picks one, the other's stock is what `internal` reports. The rest
+get comfortable coverage so only the pinned ones come out short.
 
 Run with: make seed-supply
 """
@@ -26,7 +27,7 @@ from infrastructure.database import database_url
 
 SEED = 20260922
 TENANT = "default"
-PROJECT = "Glasgow_revC3"
+PROJECT = "PCB-Stimulator"
 
 #: A stable id, so re-running replaces the same rows instead of piling up demands.
 COMPETING_DEMAND = UUID("00000000-0000-4000-8000-0000000c0de1")
@@ -34,18 +35,22 @@ COMPETING_DEMAND = UUID("00000000-0000-4000-8000-0000000c0de1")
 #: component_id -> (on_hand, quarantine, [(qty, confirmed, eta_offset_days, allocated)])
 #: eta_offset_days = None means the supplier gave no date at all.
 PINNED = {
-    # 73/板 · 50 套 = 3650 需求。库存加按期在途仍不够 → 真实缺口 850。
-    "part_16eb5ee0be0faa6d": (2000, 150, [(800, True, 30, None)]),
-    # 17/板 = 850。在途 400 但 ETA 晚于需求日 → after_need_by_date 被排除。
-    "part_7eafabef072d79ec": (300, 0, [(400, True, 120, None)]),
-    # 4/板 = 200。唯一一批在途未确认 → unconfirmed 被排除，全额缺口。
-    "part_19bbcd54c4c03cce": (0, 0, [(200, False, 20, None)]),
-    # 14/板 = 700。库存够，但 500 已被另一个需求占用 → 资源竞争。
-    "part_3b9355c297cd3387": (900, 0, [(300, True, 25, COMPETING_DEMAND)]),
-    # 8/板 = 400。在途没有到货日期 → eta_unknown，不得按乐观假设折算。
-    "part_9e327d14f3058d2a": (100, 0, [(500, True, None, None)]),
+    # J6 B2B-XH-A · 8/板 · 50 套 = 400。库存加按期在途仍不够 → 真实缺口 150。
+    "part_fafb3ac786767f64": (150, 20, [(100, True, 30, None)]),
+    # J10 SSW-116-02-G-S · 5/板 = 250。在途 300 但 ETA 晚于需求日 → after_need_by_date。
+    "part_b0bcdcfc0abc0a15": (50, 0, [(300, True, 120, None)]),
+    # L3 SSH-LX5091 · 4/板 = 200。唯一一批在途未确认 → unconfirmed，全额缺口。
+    "part_6702f27d2b4ba574": (0, 0, [(200, False, 20, None)]),
+    # J3 XHP-2 · 8/板 = 400。库存 600，但 300 已被另一个需求占用 → 资源竞争，缺口 100。
+    "part_813126b820f877cb": (600, 0, [(300, True, 25, COMPETING_DEMAND)]),
+    # L1 5219210F · 4/板 = 200。在途没有到货日期 → eta_unknown，不得按乐观假设折算。
+    "part_007bc9f269f1daf4": (50, 0, [(300, True, None, None)]),
+    # R2 多候选行 · 1/板 = 50。选 RS Pro 707-7647 则无货；Viking Tech 候选在库 500，
+    # 这是 internal 在人工选定后要报告的「替代候选可用量」。
+    "part_d43c367a402aa887": (0, 0, []),
+    "part_06ec62d95082cd3d": (500, 0, []),
 }
-ALLOCATED_TO_COMPETITOR = {"part_3b9355c297cd3387": 500}
+ALLOCATED_TO_COMPETITOR = {"part_813126b820f877cb": 300}
 
 
 def project_components(connection) -> list[str]:
@@ -87,7 +92,7 @@ def seed(connection) -> dict[str, int]:
         if component_id in PINNED:
             on_hand, quarantine, transits = PINNED[component_id]
         else:
-            # Comfortably covered: these lines exist to prove the计算 runs over the whole
+            # Comfortably covered: these lines exist to prove the calculation runs over the whole
             # BOM, not to produce more shortages to look at.
             on_hand, quarantine, transits = rng.randrange(4000, 12000), 0, []
         connection.execute(text("""

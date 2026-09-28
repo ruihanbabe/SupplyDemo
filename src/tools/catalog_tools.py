@@ -19,6 +19,7 @@ from contracts.llm import ToolSpec
 from permissions.policy import load_policy
 from procurement_core.demand import prepare_demand
 from procurement_core.shortage import calculate_shortages
+from tools.inventory_tools import INVENTORY_TOOLS
 from tools.registry import RegisteredTool, RetryPolicy, ToolOutcome, ToolRegistry
 from tools.sourcing_tools import SOURCING_TOOLS
 
@@ -94,11 +95,16 @@ def _bom_summary(arguments: dict[str, Any], context: ToolContext) -> ToolOutcome
                        else f"Showing {SAMPLE_LINES} of {len(lines)} lines")
 
 
+def _reason_codes(breakdown: dict[str, Any]) -> list[str]:
+    """The core's own reason codes, for callers that branch on them rather than read."""
+    codes = {row.get("excluded_reason") for row in breakdown.get("excluded_transit") or []}
+    codes |= {warning for warning in breakdown.get("warnings") or [] if warning in WARNING_WORDS}
+    return sorted(code for code in codes if code)
+
+
 def _why_short(breakdown: dict[str, Any]) -> str:
-    reasons = {EXCLUSION_WORDS.get(row.get("excluded_reason"), row.get("excluded_reason"))
-               for row in breakdown.get("excluded_transit") or []}
-    reasons |= {WARNING_WORDS[warning] for warning in breakdown.get("warnings") or []
-                if warning in WARNING_WORDS}
+    reasons = {EXCLUSION_WORDS.get(code, WARNING_WORDS.get(code, code))
+               for code in _reason_codes(breakdown)}
     words = sorted(reason for reason in reasons if reason)
     # Nothing was excluded and nothing was flagged: the stock on hand plus what arrives
     # in time simply does not cover the demand. Saying so beats an empty cell, which
@@ -152,17 +158,22 @@ def _compute_shortage(arguments: dict[str, Any], context: ToolContext) -> ToolOu
                    key=lambda snapshot: -snapshot["shortage_qty"])
     names = {row["component_id"]: row["mpn"] for row in repository.components(
         [snapshot["component_id"] for snapshot in short])}
-    rows = [{"mpn": names.get(snapshot["component_id"], snapshot["component_id"]),
+    rows = [{"component_id": snapshot["component_id"],
+             "mpn": names.get(snapshot["component_id"], snapshot["component_id"]),
              "required_qty": str(snapshot["required_qty"]),
              "allocatable_qty": str(snapshot["allocatable_qty"]),
              "shortage_qty": str(snapshot["shortage_qty"]),
-             "why": _why_short(snapshot["breakdown"])}
+             "why": _why_short(snapshot["breakdown"]),
+             "reason_codes": _reason_codes(snapshot["breakdown"])}
             for snapshot in short[:MAX_SHORTAGE_ROWS]]
     unresolved = [row for row in expansion["lines"] if row["unresolved_reason"] is not None]
     content = {"project_id": project_id, "production_qty": str(production_qty),
                "need_by_date": need_by.isoformat(), "run_id": str(run["run_id"]),
                "components_checked": len(result["snapshots"]),
                "unresolved_lines": len(unresolved),
+               "unresolved": [{"line_id": row["line_id"], "reason": row["unresolved_reason"]}
+                              for row in unresolved],
+               "shortage_count": len(short),
                "policy_versions": expansion["policy_versions"], "rows": rows}
     status = "ok" if not unresolved and len(short) <= MAX_SHORTAGE_ROWS else "partial"
     message = None
@@ -238,6 +249,6 @@ def build_registry(*, audit=None) -> ToolRegistry:
         scenarios=frozenset({"procurement"}),
         available=False,
         unavailable_reason="外部采购系统与其幂等能力尚未确定（Q-03）；在此之前不做任何外部写入"))
-    for tool in SOURCING_TOOLS:
+    for tool in SOURCING_TOOLS + INVENTORY_TOOLS:
         registry.register(tool)
     return registry

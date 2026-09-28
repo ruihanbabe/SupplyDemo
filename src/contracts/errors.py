@@ -34,3 +34,12 @@ FIXTURE_MISSING: Final = "fixture_missing"
 
 #: Retrying these can succeed; the rest cannot and must surface immediately.
 RETRYABLE: Final = frozenset({RATE_LIMITED, PROVIDER_ERROR, TIMEOUT, TRANSPORT_ERROR})
+
+#: Worker envelope failures. The envelope turns every one of these into an `error`
+#: result instead of letting it propagate: one branch crashing must not take the join
+#: down with it, and it must not look like a branch that found nothing either (D24).
+WRONG_WORKER: Final = "wrong_worker"
+UNKNOWN_PURPOSE: Final = "unknown_purpose"
+BUDGET_EXHAUSTED: Final = "budget_exhausted"
+WORKER_CRASHED: Final = "worker_crashed"
+CONTENT_TYPE_MISMATCH: Final = "content_type_mismatch"

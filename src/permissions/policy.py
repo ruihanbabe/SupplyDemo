@@ -96,9 +96,9 @@ class PermissionPolicy:
 
 @cache
 def _worker_permissions(worker: str) -> frozenset[str]:
-    from infrastructure.agent_config import load_agent_config
+    from infrastructure.agent_config import load_worker_permissions
 
-    return frozenset(load_agent_config(worker).permissions)
+    return load_worker_permissions(worker)
 
 
 def load_policy(worker: str | None, *, session: SessionPolicy | None = None,

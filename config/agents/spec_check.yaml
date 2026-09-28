@@ -1,4 +1,4 @@
-worker: manufacturer
+worker: spec_check
 model: glm-4-flash
 max_tokens: 4096
 # 参数式文档解码要读长上下文，是全系统最吃 token 的一档。

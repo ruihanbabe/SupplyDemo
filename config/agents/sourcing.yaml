@@ -1,0 +1,5 @@
+worker: sourcing
+# 确定性服务，不调用模型：本文件只声明权限，模型相关键不生效。
+# 只读外部报价；刻意不给 procurement.compute 与 documents.read。
+permissions:
+  - sourcing.read
