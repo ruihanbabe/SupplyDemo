@@ -5,7 +5,7 @@
 > 独占：当前完成度、当前证据、阻塞与下一步
 > 不收录：历史流水账、需求正文、设计理由；历史由 Git 保存
 
-更新时间：2026-09-22。
+更新时间：2026-09-28。
 
 ## 当前结论
 
@@ -29,15 +29,16 @@
 | MCP 子进程（自实现 stdio JSON-RPC）+ 环境变量白名单 | `src/tools/mcp_client.py`、`mcp_servers/supplier/server.py` | 已验证：子进程只收到白名单变量 |
 | **三家真实分销商接入**（Mouser / element14 / DigiKey），按家降级、按行标 provenance | `mcp_servers/supplier/adapters/` | **已验证：真实 API 三家全通**，字段按实测响应校准 |
 | 硬件设计原始层：3 个开源项目（HackRF One / Antmicro Thor / LibreSolar BMS-C1）KiCad 原理图钉提交拉取、原样入库（文件全文 + 图纸页 + 符号，原属性名不改） | `config/knowledge/sources.yaml`、`src/knowledge/`、`src/persistence/import_hardware_raw.py`、迁移 0004 | 已验证（2026-09-28）：30 个文件入库后逐字节哈希一致；2940 个符号全部经实例表解析出位号；重跑跳过；应用角色不可改写 |
+| 硬件料号表 `hw_part`：从原始层派生，每项目每个要采购的料号一行（料号、厂商、描述、单板用量、设计者替代料原文），同一料号多厂商直接报错 | `src/knowledge/parts.py`、`src/persistence/build_hardware_parts.py`、迁移 0005、`make build-parts` | 已验证（2026-09-28）：hackrf-one 68 / thor 115 / bms-c1 62 共 245 行，重跑一致；真库集成测试通过 |
 | 对话入口与流式呈现、服务端收口的工具调用 | `src/api/routers/chat.py`、`frontend/`、`src/tools/` | 冒烟通过，未按四层验收 |
 
 ## 当前验证证据
 
 | 范围 | 证据 |
 |---|---|
-| 静态契约 | 2026-09-22：`make compile` 通过；`make lint` All checks passed |
-| 离线测试 | 2026-09-22：`make test` 154 passed / 27 deselected |
-| 集成 | 2026-09-22：`make test-integration` 27 passed（真 PostgreSQL / Redis） |
+| 静态契约 | 2026-09-28：`make lint` All checks passed |
+| 离线测试 | 2026-09-28：`make test` 254 passed / 35 deselected |
+| 集成 | 2026-09-28：`make test-integration` 35 passed（真 PostgreSQL / Redis） |
 | 模型后端 | 2026-09-22：真实 GLM 端到端两轮工具对话；录制后断网重放逐字重现，零花费 |
 | 分销商 API | 2026-09-22：`make probe-suppliers` 对 IRFZ44NPBF 与 TC4420EPA 各跑通一次，三家全部返回真实库存/交期/阶梯价；对话页同样走真实数据 |
 

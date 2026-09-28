@@ -719,7 +719,7 @@ CREATE TABLE metric_definition (
 | 项 | 状态 |
 |---|---|
 | ⑥ 证据层分两期 | F12 已迁移字段型两张表；文档型三张表随 F17 迁移。迁移表数 22 → 24 |
-| ⑩ 硬件设计原始层 | 迁移 0004 建 4 张表（§13）。契约表数 35 → 39，迁移表数 24 → 28；加工层（统一字段）待定，不预建 |
+| ⑩ 硬件设计原始层与料号表 | 迁移 0004 建原始层 4 张表（§13），0005 建料号表 1 张（§14）。契约表数 35 → 40，迁移表数 24 → 29 |
 | ⑦ 预警层待重塑 | 形态重定后告警改以 `RiskEvent` 表达，本文 §9 仍是旧形态且未迁移；重塑随 F18 进行，届时表数会变 |
 | 契约 35 表 vs 迁移 22 表 | 有意分期：`0001` 冻结 ①～⑤ 层 22 表；⑥ 证据层（F12）、⑦ 预警层（F18）、⑧ 运行时层（F14/F15）、⑨ 语义层（F21）已写契约、迁移待建。`tests/test_schema.py` 对两个数字分别断言，任何一侧漂移都会失败 |
 | `llm_call.worker` 与新 Worker 名册 | 注释与 `ARCHITECTURE.md` Worker 名册一致：`supervisor / spec_check / evidence_check / proposal`；`internal`、`sourcing`、`action` 是确定性服务，不产生 llm_call |
@@ -786,4 +786,21 @@ CREATE TABLE hw_raw_symbol (
     CONSTRAINT ck_hw_raw_symbol_reference_source CHECK (reference_source IN ('instance', 'property'))
 );
 CREATE INDEX ix_hw_raw_symbol_properties ON hw_raw_symbol USING GIN (properties);
+```
+
+## 14. 硬件料号表（迁移 0005）
+
+从 §13 原始层派生的唯一一张加工表：每个项目、每个要采购的料号一行。只收在 BOM 内、有料号、要贴装的元件；替代料说明按设计者原文保存，不解析。表内容可由原始层完整重建，重建时按快照整体替换。
+
+```sql
+CREATE TABLE hw_part (
+    snapshot_id      UUID        NOT NULL REFERENCES hw_source_snapshot(snapshot_id),
+    mpn              TEXT        NOT NULL,
+    manufacturer     TEXT,
+    description      TEXT,
+    quantity         INTEGER     NOT NULL,           -- 单板用量
+    alternates       TEXT,                           -- 设计者替代料说明，原文
+    PRIMARY KEY (snapshot_id, mpn),
+    CONSTRAINT ck_hw_part_quantity CHECK (quantity > 0)
+);
 ```

@@ -59,3 +59,19 @@ def test_the_application_role_cannot_rewrite_the_raw_layer(migrated):
         conn.execute(text("UPDATE hw_raw_symbol SET reference = 'X'"))
     conn.execute(text("ROLLBACK TO SAVEPOINT as_app"))
     conn.execute(text("RESET ROLE"))
+
+
+def test_the_part_table_is_built_from_the_raw_layer_and_rebuilds_the_same(migrated):
+    from persistence.build_hardware_parts import build_all
+
+    conn, _, _ = migrated
+    for project_id in PROJECTS:
+        import_project(conn, project_id)
+    first = build_all(conn)
+    assert {r["project_id"]: r["parts"] for r in first} == {
+        "hackrf-one": 68, "jetson-agx-thor-baseboard": 115, "bms-c1": 62}
+    assert build_all(conn) == first
+    assert conn.scalar(text("SELECT count(*) FROM hw_part")) == 245
+    row = conn.execute(text("""SELECT manufacturer, quantity, alternates FROM hw_part
+                               WHERE mpn = 'CL05C220JB5NNNC'""")).one()
+    assert row == ("Samsung", 12, "Murata GRM1555C1H220JA01D")

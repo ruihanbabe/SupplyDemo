@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from knowledge.bom import NORMALIZED, build_bom, parse_alternates
 from knowledge.fetch import RAW, verify
 from knowledge.kicad import Placement, parse_sexpr, read_schematic
+from knowledge.parts import build_parts
 
 # ---------- S 表达式 ----------
 
@@ -68,53 +68,35 @@ def test_power_symbols_are_dropped_and_units_merge(tmp_path):
     assert (amp.reference, amp.units) == ("U1", (1, 2))
 
 
-# ---------- 替代说明 ----------
+# ---------- 料号表 ----------
 
-def test_any_equivalent_is_a_permission_not_a_part():
-    [alt] = parse_alternates("any equivalent")
-    assert (alt.kind, alt.mpn) == ("any_equivalent", None)
-
-
-def test_named_alternates_keep_their_manufacturer_and_bare_ones_do_not_guess():
-    alts = parse_alternates("Diodes Inc. BAT54LP-7, MAX2837ETM+")
-    assert [(a.manufacturer, a.mpn) for a in alts] == [("Diodes Inc.", "BAT54LP-7"),
-                                                       (None, "MAX2837ETM+")]
-
-
-def test_wildcards_are_patterns():
-    [alt] = parse_alternates("SIT1602B*-2*-33E-60.000000*")
-    assert alt.kind == "designer_pattern"
-
-
-# ---------- BOM 归并 ----------
-
-def placed(ref, value="10k", mpn="RC0402", dnp=False, lib="Device:R", in_bom=True, **props):
+def placed(ref, value="10k", mpn="RC0402", dnp=False, in_bom=True, **props):
     base = {"Manufacturer": "Yageo", "MPN": mpn} if mpn else {}
-    return Placement(reference=ref, sheet_path="/", sheet_file="a.kicad_sch", lib_id=lib,
+    return Placement(reference=ref, sheet_path="/", sheet_file="a.kicad_sch", lib_id="Device:R",
                      symbol_uuid=ref, value=value, footprint="R_0402", in_bom=in_bom,
                      on_board=True, dnp=dnp, properties={**base, **props})
 
 
-def test_same_part_groups_and_dnp_stays_a_separate_line():
-    bom = build_bom([placed("R1"), placed("R10"), placed("R2", dnp=True),
-                     placed("R3", value="DNP"), placed("R4", DNP="DNP")])
-    fitted, *dnp = bom
-    assert [p.reference for p in fitted.placements] == ["R1", "R10"]
-    assert fitted.dnp is False
-    assert len(dnp) == 1 and [p.reference for p in dnp[0].placements] == ["R2", "R3", "R4"]
+def test_one_row_per_part_number_with_its_quantity():
+    [part] = build_parts([placed("R1"), placed("R2"), placed("R3")])
+    assert (part.mpn, part.manufacturer, part.quantity) == ("RC0402", "Yageo", 3)
 
 
-def test_parts_without_a_number_are_told_apart_from_board_features():
-    bom = build_bom([placed("FID1", value="Fiducial", mpn=None, lib="Mechanical:Fiducial"),
-                     placed("P3", value="GND", mpn=None, lib="Conn:Header")])
-    assert {line.placements[0].reference: line.flags for line in bom} == {
-        "FID1": {"board_feature"}, "P3": {"mpn_missing"}}
+def test_unfitted_unnumbered_and_non_bom_parts_are_not_bought():
+    parts = build_parts([placed("R1", dnp=True), placed("R2", value="DNP"),
+                         placed("R3", DNP="DNP"), placed("FID1", mpn=None),
+                         placed("TP1", in_bom=False)])
+    assert parts == []
 
 
-def test_not_in_bom_parts_never_reach_the_bom_and_supplier_skus_ride_along():
-    bom = build_bom([placed("TP1", in_bom=False), placed("C1", LCSC="C296717")])
-    assert [line.placements[0].reference for line in bom] == ["C1"]
-    assert bom[0].suppliers == {"lcsc": "C296717"}
+def test_the_alternates_note_is_kept_verbatim():
+    [part] = build_parts([placed("C1", Substitution="Murata GRM1555C1H220JA01D")])
+    assert part.alternates == "Murata GRM1555C1H220JA01D"
+
+
+def test_one_part_number_with_two_makers_is_refused_not_guessed():
+    with pytest.raises(ValueError, match="RC0402"):
+        build_parts([placed("R1"), placed("R2", Manufacturer="Other")])
 
 
 # ---------- 真实数据（已钉死提交，离线可跑） ----------
@@ -132,25 +114,6 @@ def test_every_reference_resolved_through_an_instance_table(project_id):
     manifest = json.loads((RAW / project_id / "MANIFEST.json").read_text())
     placements = read_schematic(RAW / project_id / manifest["root_schematic"])
     assert placements and all(p.reference_source == "instance" for p in placements)
-
-
-def test_the_real_projects_produce_the_expected_tables():
-    meta = {pid: json.loads((NORMALIZED / pid / "meta.json").read_text()) for pid in PROJECTS}
-    assert (meta["hackrf-one"]["bom_items"], meta["hackrf-one"]["items_with_alternates"]) \
-        == (87, 38)
-    assert meta["jetson-agx-thor-baseboard"]["items_without_mpn"] == 0
-    assert meta["bms-c1"]["distinct_mpns"] == 62
-    aml = (NORMALIZED / "hackrf-one" / "aml.csv").read_text()
-    assert "Murata,GRM1555C1H220JA01D" in aml
-
-
-def test_normalized_output_is_reproducible(tmp_path):
-    from knowledge.bom import write_project
-
-    write_project("hackrf-one", out=tmp_path)
-    for name in ("bom.csv", "aml.csv", "placements.csv", "meta.json"):
-        assert (tmp_path / "hackrf-one" / name).read_bytes() == \
-            (NORMALIZED / "hackrf-one" / name).read_bytes(), name
 
 
 def test_raw_layer_is_read_only():

@@ -135,11 +135,6 @@ ATTRIBUTES = ("in_bom", "on_board", "dnp", "exclude_from_sim", "exclude_from_boa
               "fields_autoplaced", "mirror", "convert")
 
 
-def _yes(node: Node, name: str, default: bool) -> bool:
-    value = child_value(node, name)
-    return default if value is None else value == "yes"
-
-
 def _load(path: Path) -> _Sheet:
     tree = parse_sexpr(path.read_text(encoding="utf-8"))
     if tree[0] != "kicad_sch":
@@ -218,35 +213,39 @@ def raw_symbols(root_file: Path) -> list[RawSymbol]:
     return found
 
 
+def placements_from_raw(symbols: list[RawSymbol]) -> list[Placement]:
+    """One placement per reference: power symbols dropped, units of one part merged.
+
+    Works on `RawSymbol` so the same rules apply whether the symbols came from files or
+    were read back from the raw layer in the database.
+    """
+    found: dict[str, Placement] = {}
+    for raw in symbols:
+        reference = raw.reference or raw.properties.get("Reference", "?")
+        if raw.lib_id.startswith("power:") or reference.startswith("#"):
+            continue
+        unit = raw.unit if raw.unit is not None else 1
+        if reference in found:
+            # Another unit of a multi-unit part (op-amp A/B): same component.
+            prior = found[reference]
+            found[reference] = Placement(**{**prior.__dict__,
+                                            "units": tuple(sorted({*prior.units, unit}))})
+            continue
+        flag = raw.attributes.get
+        found[reference] = Placement(
+            reference=reference, sheet_path=raw.sheet_path, sheet_file=raw.file,
+            lib_id=raw.lib_id, symbol_uuid=raw.symbol_uuid,
+            value=raw.properties.get("Value", ""),
+            footprint=raw.properties.get("Footprint", ""),
+            in_bom=flag("in_bom", "yes") == "yes", on_board=flag("on_board", "yes") == "yes",
+            dnp=flag("dnp", "no") == "yes", properties=raw.properties,
+            reference_source=raw.reference_source, units=(unit,))
+    return sorted(found.values(), key=lambda p: _natural(p.reference))
+
+
 def read_schematic(root_file: Path) -> list[Placement]:
     """Every placed component in the hierarchy under `root_file`, one per reference."""
-    visits, legacy = walk(root_file)
-    found: dict[str, Placement] = {}
-    for visit in visits:
-        path = visit.file
-        sheet_path = "" if visit.sheet_path == "/" and legacy else visit.sheet_path
-        for symbol in visit.sheet.symbols:
-            lib_id = child_value(symbol, "lib_id", "")
-            reference, source = _reference(symbol, sheet_path, legacy)
-            if lib_id.startswith("power:") or reference.startswith("#"):
-                continue
-            unit = int(child_value(symbol, "unit", 1))
-            if reference in found:
-                # Another unit of a multi-unit part (op-amp A/B): same component.
-                prior = found[reference]
-                found[reference] = Placement(**{**prior.__dict__,
-                                                "units": tuple(sorted({*prior.units, unit}))})
-                continue
-            props = properties(symbol)
-            found[reference] = Placement(
-                reference=reference, sheet_path=sheet_path or "/",
-                sheet_file=path.relative_to(root_file.parent).as_posix(),
-                lib_id=lib_id, symbol_uuid=child_value(symbol, "uuid", ""),
-                value=props.get("Value", ""), footprint=props.get("Footprint", ""),
-                in_bom=_yes(symbol, "in_bom", True), on_board=_yes(symbol, "on_board", True),
-                dnp=_yes(symbol, "dnp", False), properties=props,
-                reference_source=source, units=(unit,))
-    return sorted(found.values(), key=lambda p: _natural(p.reference))
+    return placements_from_raw(raw_symbols(root_file))
 
 
 def _natural(reference: str) -> tuple[str, int, str]:

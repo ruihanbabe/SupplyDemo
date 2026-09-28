@@ -120,9 +120,9 @@ explain: ## 解释某个 worker 实际能调用哪些工具，以及每条允许
 fetch-hardware: ## 按 config/knowledge/sources.yaml 钉死的提交拉取 KiCad 原理图到只读原始层（公开 GitHub，无费用）
 	@PYTHONPATH=src $(VPY) -m knowledge.fetch
 
-.PHONY: normalize-hardware
-normalize-hardware: ## 解析原始层原理图，生成各项目的 BOM / AML / 位号表（纯确定性，零 token）
-	@PYTHONPATH=src $(VPY) -m knowledge.bom
+.PHONY: build-parts
+build-parts: ## 从硬件原始层生成料号表 hw_part：每项目每料号一行（纯确定性，零 token）
+	@PYTHONPATH=src $(VPY) -m persistence.build_hardware_parts
 
 .PHONY: import-hardware
 import-hardware: ## 把原始层原理图原样入库（硬件设计原始层，只插入；同一提交重跑跳过）
