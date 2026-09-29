@@ -6,9 +6,12 @@ each file came from and its SHA-256, so any later doubt about a parsed value can
 by pointing at the exact source byte range. Files are made read-only after writing, as with
 the existing domdata layer.
 
+Board documents listed under `docs` (the README) are kept verbatim beside the schematics as
+evidence for tools to read on demand; they are never pruned or turned into fields.
+
 Only public GitHub reads happen here — no credentials, no cost.
 
-Run with: make fetch-hardware
+Run with: make fetch-hardware (everything) or make fetch-docs (documents only)
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ import json
 import os
 import stat
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -67,15 +71,40 @@ def _get_blob(url: str, expected_sha: str, attempts: int = 5) -> bytes:
 def _wanted(project: dict[str, Any], path: str) -> bool:
     prefix = project["path"].rstrip("/")
     inside = not prefix or path.startswith(prefix + "/")
-    return (inside and path.endswith(KEEP)) or path == project["license_file"]
+    return ((inside and path.endswith(KEEP)) or path == project["license_file"]
+            or path in project.get("docs", ()))
+
+
+def _tree(repo: str, commit: str) -> list[dict[str, Any]]:
+    tree = _get_json(f"https://api.github.com/repos/{repo}/git/trees/{commit}?recursive=1")
+    if tree.get("truncated"):
+        raise RuntimeError(f"{repo}: tree listing truncated; the snapshot would be incomplete")
+    return tree["tree"]
+
+
+def _store(target: Path, repo: str, commit: str, path: str, blob: str) -> dict[str, Any]:
+    body = _get_blob(f"https://raw.githubusercontent.com/{repo}/{commit}/{path}", blob)
+    local = target / path
+    local.parent.mkdir(parents=True, exist_ok=True)
+    if local.exists():
+        os.chmod(local, stat.S_IWUSR | stat.S_IRUSR)
+    local.write_bytes(body)
+    os.chmod(local, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    return {"sha256": hashlib.sha256(body).hexdigest(), "git_blob": blob, "bytes": len(body)}
+
+
+def _write_manifest(target: Path, manifest: dict[str, Any]) -> None:
+    manifest_path = target / "MANIFEST.json"
+    if manifest_path.exists():
+        os.chmod(manifest_path, stat.S_IWUSR | stat.S_IRUSR)
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                             encoding="utf-8")
+    os.chmod(manifest_path, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
 
 
 def fetch_project(project: dict[str, Any], raw: Path = RAW) -> dict[str, Any]:
     repo, commit = project["repo"], project["commit"]
-    tree = _get_json(f"https://api.github.com/repos/{repo}/git/trees/{commit}?recursive=1")
-    if tree.get("truncated"):
-        raise RuntimeError(f"{repo}: tree listing truncated; the snapshot would be incomplete")
-    blobs = {item["path"]: item["sha"] for item in tree["tree"]
+    blobs = {item["path"]: item["sha"] for item in _tree(repo, commit)
              if item["type"] == "blob" and _wanted(project, item["path"])}
     paths = sorted(blobs)
     if project["license_file"] not in paths:
@@ -83,17 +112,7 @@ def fetch_project(project: dict[str, Any], raw: Path = RAW) -> dict[str, Any]:
 
     target = raw / project["project_id"]
     target.mkdir(parents=True, exist_ok=True)
-    files = {}
-    for path in paths:
-        body = _get_blob(f"https://raw.githubusercontent.com/{repo}/{commit}/{path}", blobs[path])
-        local = target / path
-        local.parent.mkdir(parents=True, exist_ok=True)
-        if local.exists():
-            os.chmod(local, stat.S_IWUSR | stat.S_IRUSR)
-        local.write_bytes(body)
-        os.chmod(local, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-        files[path] = {"sha256": hashlib.sha256(body).hexdigest(), "git_blob": blobs[path],
-                       "bytes": len(body)}
+    files = {path: _store(target, repo, commit, path, blobs[path]) for path in paths}
 
     root = f"{project['path'].rstrip('/')}/{project['root_schematic']}".lstrip("/")
     if root not in files:
@@ -103,13 +122,31 @@ def fetch_project(project: dict[str, Any], raw: Path = RAW) -> dict[str, Any]:
                 "license": project["license"], "license_file": project["license_file"],
                 "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
                 "files": files}
-    manifest_path = target / "MANIFEST.json"
-    if manifest_path.exists():
-        os.chmod(manifest_path, stat.S_IWUSR | stat.S_IRUSR)
-    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-                             encoding="utf-8")
-    os.chmod(manifest_path, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    _write_manifest(target, manifest)
     return manifest
+
+
+def fetch_docs(project: dict[str, Any], raw: Path = RAW) -> list[str]:
+    """Add the registered documents to an already-fetched project; schematics are untouched."""
+    docs = list(project.get("docs", ()))
+    if not docs:
+        return []
+    repo, commit = project["repo"], project["commit"]
+    blobs = {item["path"]: item["sha"] for item in _tree(repo, commit)
+             if item["type"] == "blob" and item["path"] in docs}
+    missing = sorted(set(docs) - set(blobs))
+    if missing:
+        raise RuntimeError(f"{repo}@{commit}: documents {missing} not found")
+    target = raw / project["project_id"]
+    manifest = json.loads((target / "MANIFEST.json").read_text(encoding="utf-8"))
+    if manifest["commit"] != commit:
+        raise RuntimeError(f"{project['project_id']}: MANIFEST is at {manifest['commit'][:10]}, "
+                           f"registry at {commit[:10]}; run make fetch-hardware first")
+    for path in docs:
+        manifest["files"][path] = _store(target, repo, commit, path, blobs[path])
+    manifest["files"] = dict(sorted(manifest["files"].items()))
+    _write_manifest(target, manifest)
+    return docs
 
 
 def verify(project_id: str, raw: Path = RAW) -> list[str]:
@@ -121,6 +158,10 @@ def verify(project_id: str, raw: Path = RAW) -> list[str]:
 
 
 def main() -> None:
+    if "--docs" in sys.argv[1:]:
+        for project in load_registry():
+            print(f"{project['project_id']}: docs {fetch_docs(project)}")
+        return
     # Imported here: prune imports this module for RAW and load_registry.
     from knowledge.prune import prune_project
 

@@ -8,10 +8,20 @@
   "license_file": "hardware/hackrf-one/LICENSE",
   "fetched_at": "2026-09-28T05:31:13+00:00",
   "files": {
+    "Readme.md": {
+      "sha256": "dd72fde6951b106f4db029707a84bd317e9a417fb8d3ac93738952f8b996558d",
+      "git_blob": "747ca054963199a7ced29a61366cfd56e080af4d",
+      "bytes": 2458
+    },
     "hardware/hackrf-one/LICENSE": {
       "sha256": "2ee68e63fd7f724c9d6a42a517bec9d451dca2234c9024882cc4faeaed95e499",
       "git_blob": "47cbf15e5fd99625f79546a3261b9f3f3e0d9111",
       "bytes": 8930
+    },
+    "hardware/hackrf-one/README": {
+      "sha256": "28db488a377158cc39954d2bf18bbf788fac03467462e1cb686faca2990048ae",
+      "git_blob": "2e7acfbf8435ccdd9a1fdf5713ff20ef2271b5ac",
+      "bytes": 748
     },
     "hardware/hackrf-one/baseband.kicad_sch": {
       "sha256": "455c7877375c41ec5d0d2b5c2e46c11e47ee645e891f96d568aaf1e92d4510a2",

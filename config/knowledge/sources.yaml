@@ -1,6 +1,7 @@
 # 硬件设计源的登记表：每个项目钉死到一个提交，原始文件据此拉取并逐字保存。
 # 新增项目或升级版本 = 改这里的 commit 并重跑 make fetch-hardware；不改代码。
-# 只拉原理图（.kicad_sch）、工程文件（.kicad_pro）与许可证，不拉 PCB 与固件。
+# 只拉原理图（.kicad_sch）、工程文件（.kicad_pro）、许可证与 docs 列出的文档，不拉 PCB 与固件。
+# docs：板级文档原文存档作证据，按需由工具读取，不做结构化（make fetch-docs 只拉这些）。
 
 projects:
   - project_id: hackrf-one
@@ -11,6 +12,7 @@ projects:
     root_schematic: hackrf-one.kicad_sch
     license: GPL-2.0
     license_file: hardware/hackrf-one/LICENSE
+    docs: [Readme.md, hardware/hackrf-one/README]
 
   - project_id: bms-c1
     name: Libre Solar BMS C1
@@ -20,3 +22,4 @@ projects:
     root_schematic: bms-c1.kicad_sch
     license: CERN-OHL-W-2.0
     license_file: LICENCE
+    docs: [README.md]

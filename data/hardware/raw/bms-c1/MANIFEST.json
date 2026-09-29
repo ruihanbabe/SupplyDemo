@@ -13,6 +13,11 @@
       "git_blob": "7c981754e29e51563b50b0553bb819415aa2c2c8",
       "bytes": 14540
     },
+    "README.md": {
+      "sha256": "608d1b19bada987a9ecb4a13c35be1dc7fea7545493b291e86539bddefe42344",
+      "git_blob": "06e81f7a0c1769cd8043e1b25e2b491a973cb3b9",
+      "bytes": 2397
+    },
     "kicad/bms-c1.kicad_pro": {
       "sha256": "f3185961541cdcb90f4c4f8e4746429177925503930332b341a8878c12b11e34",
       "git_blob": "853abf05fa96d8c91ae7712865deea56c95fbef6",

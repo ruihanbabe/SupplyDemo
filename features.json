@@ -22,9 +22,9 @@
       "necessity": "所有 Feature 的前提；hw_part 是唯一真实元件数据",
       "depends_on": [],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "done",
       "contract": "contracts/F01.md",
-      "note": ""
+      "note": "已验收（2026-09-29，提交 89fdb6e）"
     },
     {
       "id": "F02",
@@ -39,9 +39,9 @@
         "F01"
       ],
       "milestone": "M5",
-      "status": "in_progress",
+      "status": "done",
       "contract": "contracts/F02.md",
-      "note": "用户决定提前于 M5 开工；第 1 步原理图入库已验收（2026-09-29），第 2 步板级上下文待定方案"
+      "note": "用户决定提前于 M5 开工；已验收（2026-09-29）：bms-c1 原理图入库 + 两块板 README 原文存档"
     },
     {
       "id": "F03",
