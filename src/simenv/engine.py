@@ -221,19 +221,14 @@ def _check_orders(state: State, day: int, log: dict) -> None:
 # apply_write：把一条外部写入作用到状态
 # 功能：外部（经 F21 Procurement 执行器）对环境的唯一写入口；目前只有 submit_po。
 # 依赖：被 api.Environment.submit_purchase_order 与崩溃恢复重放调用；幂等索引存在 state.idempotency 里。
-# 完成：幂等（同键返回同单）、参数校验（拒绝时状态不变）、按分销商备货天数算计划发货日。
+# 完成：幂等（同键返回同单）、校验（validate_write，拒绝时状态不变）、按分销商备货天数算计划发货日。
 #       不校验审批令牌：G2 由 F12/F21 在执行器一侧强制（见 Contract）。
 # ---------------------------------------------------------------------------
 def apply_write(state: State, write: dict) -> dict:
-    if write.get("kind") != "submit_po":  # 目前只支持下采购单
-        raise WriteRejected(f"未知写入种类：{write.get('kind')!r}")  # 未知种类直接拒绝
-    key = write.get("idempotency_key")  # 幂等键
-    if not isinstance(key, str) or not key:  # 没有幂等键就无法防重复
-        raise WriteRejected("写入必须带非空的幂等键")  # 拒绝
-    if key in state.idempotency:  # 这个键已经下过单
-        return {"po_id": state.idempotency[key], "duplicate": True}  # 返回原单，不重复下单
-    p = write["payload"]  # 采购单内容
-    _validate_po(state, p)  # 先校验，不合法则抛错、状态不变
+    if is_duplicate(state, write):  # 这个幂等键已经下过单
+        return {"po_id": state.idempotency[write["idempotency_key"]], "duplicate": True}  # 返回原单
+    validate_write(state, write)  # 先校验，不合法则抛错、状态不变
+    key, p = write["idempotency_key"], write["payload"]  # 幂等键与采购单内容
     po = PurchaseOrder(  # 新建采购单
         id=state.next_id("PO"),  # 分配单号
         mpn=p["mpn"], qty=p["qty"], distributor=p["distributor"],  # 料号、数量、分销商
@@ -247,12 +242,31 @@ def apply_write(state: State, write: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# _validate_po：采购单写入校验
-# 功能：挡住明显不合法的写入：未知料号、非正数量、未知分销商、非法或非正单价。
-# 依赖：被 apply_write 调用。
+# is_duplicate：写入是否命中已有幂等键
+# 功能：让门面（api）在落写入日志之前就能识别重复写入，重复的不再记日志。
+# 依赖：state.idempotency；被 apply_write 与 api.Environment 调用。
+# 完成：键缺失或非字符串时返回 False，交给 validate_write 报错。
+# ---------------------------------------------------------------------------
+def is_duplicate(state: State, write: dict) -> bool:
+    key = write.get("idempotency_key")  # 取幂等键
+    return isinstance(key, str) and key in state.idempotency  # 已登记过即为重复
+
+
+# ---------------------------------------------------------------------------
+# validate_write：写入校验
+# 功能：挡住不合法的写入：未知种类、缺幂等键、未知料号、非正数量、未知分销商、非法或非正单价。
+# 依赖：被 apply_write 调用，也被 api.Environment 在落写入日志前调用（不合法的写入不进日志）。
 # 完成：料号必须出现在某块板的 BOM 里（本期环境只管这两块板的料）。
 # ---------------------------------------------------------------------------
-def _validate_po(state: State, p: dict) -> None:
+def validate_write(state: State, write: dict) -> None:
+    if write.get("kind") != "submit_po":  # 目前只支持下采购单
+        raise WriteRejected(f"未知写入种类：{write.get('kind')!r}")  # 未知种类直接拒绝
+    key = write.get("idempotency_key")  # 幂等键
+    if not isinstance(key, str) or not key:  # 没有幂等键就无法防重复
+        raise WriteRejected("写入必须带非空的幂等键")  # 拒绝
+    p = write.get("payload")  # 采购单内容
+    if not isinstance(p, dict):  # 内容必须是字典
+        raise WriteRejected("写入内容 payload 必须是对象")  # 拒绝
     known = {m for bom in state.boards.values() for m in bom}  # 所有板 BOM 里的料号
     if p.get("mpn") not in known:  # 料号不在任何 BOM 里
         raise WriteRejected(f"未知料号：{p.get('mpn')!r}")  # 拒绝
