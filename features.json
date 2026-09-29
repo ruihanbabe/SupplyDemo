@@ -22,8 +22,8 @@
       "necessity": "所有 Feature 的前提；hw_part 是唯一真实元件数据",
       "depends_on": [],
       "milestone": "M1",
-      "status": "not_started",
-      "contract": null,
+      "status": "in_progress",
+      "contract": "contracts/F01.md",
       "note": ""
     },
     {
@@ -130,7 +130,7 @@
       "milestone": "M1",
       "status": "not_started",
       "contract": null,
-      "note": "M1 先做环境与分销商 Server；旧适配器见 git 976bb17，仅作参考"
+      "note": "M1 先做环境与分销商 Server；旧适配器见 git 976bb17，仅作参考；缓存、配额与限流放 Redis（§5.1、§5.4）"
     },
     {
       "id": "F08",
@@ -146,7 +146,7 @@
       "milestone": "M1",
       "status": "not_started",
       "contract": null,
-      "note": ""
+      "note": "模型端点限流复用 F07 的 Redis 限流组件"
     },
     {
       "id": "F09",
@@ -272,7 +272,7 @@
       "milestone": "M3",
       "status": "not_started",
       "contract": null,
-      "note": ""
+      "note": "熔断状态放 Redis（§5.8）"
     },
     {
       "id": "F16",
