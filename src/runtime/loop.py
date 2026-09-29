@@ -4,6 +4,7 @@ ExecutorLoop.run() 驱动一个执行者（子 Agent 或编排者）：模型调
 给出最终输出、预算触顶、被要求停止或失败（spec §5.3）。
 - 预算：轮数上限、工具调用上限；触顶以 unfinished 结束并写明原因。
 - 循环检测：相同工具 + 相同参数连续第 2 次不再调用，回"已查过，结果是……"；再犯即强制结束（消融开关 loop_detection）。
+- F16 折叠：fold_after 轮之前的工具结果在每次调模型前折叠为带记录号的存根。
 - 挂点：after_round（每轮工具调用处理完后调用，返回要追加给模型的消息，编排者用它做批次汇合）；should_stop（编排者 end_segment）。
 - 格式失败（ModelFailure）以 failed 结束；传输失败（ModelUnavailable）向上抛（F15 重试熔断）。
 依赖：models.adapter、models.types、tools.proxy、session.log.canonical。被 runtime.dispatch（子 Agent）与 runtime.segment（编排者）使用。
@@ -16,6 +17,7 @@ from dataclasses import dataclass  # 结果数据类
 
 from pydantic import BaseModel  # 输出模型
 
+from context.fold import fold_old_results  # F16 旧工具结果折叠
 from models.adapter import ModelAdapter  # 模型适配层
 from models.types import Message, ModelFailure, ToolSpec  # 内部格式与失败
 from session.log import canonical  # 规范化 JSON（循环检测比较参数）
@@ -37,10 +39,12 @@ class LoopResult:
 
 class ExecutorLoop:
     # 功能：绑定模型适配层与工具代理层。依赖：F08、F07。完成：循环检测开关。
-    def __init__(self, adapter: ModelAdapter, proxy: ToolProxy, *, loop_detection: bool = True):
+    def __init__(self, adapter: ModelAdapter, proxy: ToolProxy, *, loop_detection: bool = True,
+                 fold_after: int | None = None):
         self.adapter = adapter  # 模型
         self.proxy = proxy  # 工具
         self.loop_detection = loop_detection  # 循环检测开关
+        self.fold_after = fold_after  # F16：几轮之前的工具结果折叠（None = 不折叠，消融 tool_result_folding）
 
     # -----------------------------------------------------------------------
     # run：跑一个执行者
@@ -56,9 +60,13 @@ class ExecutorLoop:
         specs = [ToolSpec(n, self.proxy.tools[n].description, self.proxy.tools[n].params)  # 工具定义
                  for n in tools]  # 只给本执行者的工具
         messages = [Message("system", system), Message("user", user)]  # 初始对话（从日志与 Artifact 现组装）
+        rounds_of: list[int] = [0, 0]  # 每条消息所属轮次（F16 折叠用）
+        tool_of: list[str | None] = [None, None]  # 每条工具消息对应的工具名
         used_calls, last_key, last_result, strikes = 0, None, None, 0  # 计数与循环检测状态
         text = ""  # 最后正文
         for round_ in range(1, max_rounds + 1):  # 轮数预算
+            if self.fold_after is not None:  # F16：折叠活跃段内过旧的工具结果
+                fold_old_results(messages, rounds_of, tool_of, round_, self.fold_after)  # 就地折叠
             try:  # 调模型
                 res = self.adapter.call(executor, messages, tools=specs, output=output,  # F08
                                         known_mpns=known_mpns, case_id=case_id, day=day, actor=actor)  # 身份
@@ -68,6 +76,8 @@ class ExecutorLoop:
             if not res.response.tool_calls:  # 没有工具调用：给出最终结果
                 return LoopResult("done", res.output, "完成", round_, used_calls, text)  # 完成
             messages.append(Message("assistant", text, tool_calls=res.response.tool_calls))  # 记助手消息
+            rounds_of.append(round_)  # 所属轮次
+            tool_of.append(None)  # 非工具消息
             for call in res.response.tool_calls:  # 逐个工具调用
                 key = (call.name, canonical(call.arguments))  # 循环检测键
                 if self.loop_detection and key == last_key:  # 与上一次完全相同
@@ -87,8 +97,13 @@ class ExecutorLoop:
                     content = json.dumps(result, ensure_ascii=False)  # 统一返回格式转文本
                     last_key, last_result = key, content  # 记住本次
                 messages.append(Message("tool", content, tool_call_id=call.id))  # 工具结果
+                rounds_of.append(round_)  # 所属轮次
+                tool_of.append(call.name)  # 工具名
             if after_round is not None:  # 挂点：批次汇合等
-                messages += after_round()  # 追加消息
+                extra = after_round()  # 追加消息
+                messages += extra  # 追加
+                rounds_of += [round_] * len(extra)  # 所属轮次
+                tool_of += [None] * len(extra)  # 非工具消息
             if should_stop is not None and should_stop():  # 挂点：被要求停止（end_segment）
                 return LoopResult("done", None, "执行者结束本段", round_, used_calls, text)  # 结束
         return LoopResult("unfinished", None, f"轮数预算触顶（{max_rounds} 轮）", max_rounds, used_calls, text)  # 触顶

@@ -11,6 +11,8 @@ ablation:
   source_conflict_warnings: true   # F07 多源矛盾（B2）：false 时不比对来源差异、不加警告
   loop_detection: true             # F09 循环检测：false 时相同调用照常执行，不反馈、不强制结束
   batch_join: true                 # F09 批次汇合：false 时每个任务完成都单独唤醒编排者一次
+  context_assembly: true           # F16 分区组装：false 时把本案全部 Artifact 原文与全部事件直接塞进上下文
+  tool_result_folding: true        # F16 旧工具结果折叠：false 时活跃段内工具结果全文保留
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:
@@ -18,3 +20,12 @@ runtime:
   orchestrator: {max_rounds_per_segment: 12}       # 编排者每个活跃段：触顶结束本段并记录原因
   case: {max_replans: 3, max_llm_calls: 80}        # 案子：触顶升级给人，以"已升级"关闭
   max_active_cases: 4                              # 同时活跃（已开始处置、未关闭）的案子数上限，超出排队
+
+# F16 上下文治理（spec §5.9 默认值）。token 为字符估算，真实联调后用 llm_call 的真实用量校准系数。
+context:
+  orchestrator_limit: 24000        # 编排者上下文上限（token）
+  subagent_limit: 16000            # 子 Agent 上下文上限（token）
+  fold_after_rounds: 3             # 活跃段内几轮之前的工具结果折叠为存根
+  cjk_chars_per_token: 1           # 中日韩字符：每 token 字符数
+  other_chars_per_token: 4         # 其他字符：每 token 字符数
+  summary_max_chars: 160           # 默认代码摘要的最大长度
