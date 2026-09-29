@@ -63,11 +63,13 @@ class ModelAdapter:
     # 完成：消融开关从 harness 配置传入（schema_repair / model_fallback / fabricated_mpn_check）。
     # -----------------------------------------------------------------------
     def __init__(self, config: dict, transports: dict, session: Session, *,
-                 limiter: Limiter | None = None, switches: dict[str, bool] | None = None):
+                 limiter: Limiter | None = None, switches: dict[str, bool] | None = None,
+                 meter=None):
         self.config = config  # 模型配置
         self.transports = transports  # 传输
         self.session = session  # 事件日志
         self.limiter = limiter or NoLimiter()  # 限流
+        self.meter = meter  # F17 计量（可选，不传即不计量）
         sw = switches or {}  # 消融开关
         self.repair = sw.get("schema_repair", True)  # 修复开关
         self.fallback = sw.get("model_fallback", True)  # 降级开关
@@ -128,10 +130,12 @@ class ModelAdapter:
             raw = self.transports[name].send(endpoint, body)  # 发送
             resp = parse_response(endpoint, raw)  # 解析
         except Exception as exc:  # 传输或解析失败（ModelUnavailable 等）
-            self.session.append("llm_call", day=day, actor=actor, case_id=case_id,  # 先记失败
-                                payload={**base, "error": {"type": type(exc).__name__,  # 错误类型
-                                                           "kind": getattr(exc, "kind", None),  # 细分
-                                                           "message": str(exc)}})  # 信息
+            failed = self.session.append("llm_call", day=day, actor=actor, case_id=case_id,  # 先记失败
+                                         payload={**base, "error": {"type": type(exc).__name__,  # 错误类型
+                                                                    "kind": getattr(exc, "kind", None),  # 细分
+                                                                    "message": str(exc)}})  # 信息
+            self._meter(failed["seq"], name, endpoint, 0, 0, start, repair, fallback,  # 计量失败调用
+                        getattr(exc, "kind", None) or "upstream", case_id, day)  # 错误类型
             raise  # 交给上层（F15 重试熔断）
         ms = int((time.monotonic() - start) * 1000)  # 耗时（不进事件）
         event = self.session.append("llm_call", day=day, actor=actor, case_id=case_id,  # 记录
@@ -139,7 +143,18 @@ class ModelAdapter:
                                              "gen_ai.response.finish_reasons": [resp.finish_reason],  # 结束原因
                                              "gen_ai.usage.input_tokens": resp.input_tokens,  # 输入 token
                                              "gen_ai.usage.output_tokens": resp.output_tokens})  # 输出 token
+        self._meter(event["seq"], name, endpoint, resp.input_tokens, resp.output_tokens, start,  # 计量
+                    repair, fallback, None, case_id, day)  # 成功调用
         return resp, event["seq"], ms  # 响应、事件序号、耗时
+
+    def _meter(self, seq, name, endpoint, tin, tout, start, repair, fallback, error, case_id, day) -> None:
+        """有 meter 时记一行 LLM 计量（F17）。"""
+        if self.meter is not None:  # 可选
+            self.meter.record_llm(run_id=self.session.run_id, event_seq=seq, case_id=case_id, day=day,  # 身份
+                                  endpoint=name, model=endpoint["model"], input_tokens=tin,  # 端点与 token
+                                  output_tokens=tout, latency_ms=int((time.monotonic() - start) * 1000),  # 耗时
+                                  repair=repair, fallback=fallback,  # 修复与降级
+                                  error_type="rate_limited" if error == "rate_limited" else error)  # 错误
 
     def _record_verdict(self, seq: int, errors: list[str], *, case_id, day, actor) -> None:
         """记下对某次 llm_call 的校验结论（通过或逐条错误），caused_by 指向该次调用。"""

@@ -44,6 +44,7 @@ class KV(Protocol):
     def set(self, key: str, value: str, ttl_s: int) -> None: ...  # 写缓存（真实秒 TTL）
     def take_quota(self, key: str, limit: int, ttl_s: int) -> bool: ...  # 日配额扣 1，超限 False
     def take_token(self, key: str, rate_per_s: float, burst: float) -> bool: ...  # 令牌桶取 1，没有 False
+    def set_quota(self, key: str, value: int, ttl_s: int) -> None: ...  # 重建日配额计数（F17）
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +72,9 @@ class RedisKV:
 
     def take_token(self, key, rate_per_s, burst):
         return self._bucket(keys=[self.prefix + key], args=[rate_per_s, burst]) == 1  # 原子取令牌
+
+    def set_quota(self, key, value, ttl_s):
+        self.r.set(self.prefix + key, value, ex=ttl_s)  # 直接写计数（F17 从计量重建）
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +109,10 @@ class MemoryKV:
                 return False  # 拒绝
             self.counters[key] = (count + 1, expires if count else self.clock() + ttl_s)  # +1，首次设过期
             return True  # 放行
+
+    def set_quota(self, key, value, ttl_s):
+        with self.lock:  # 原子
+            self.counters[key] = (value, self.clock() + ttl_s)  # 直接写计数（F17 从计量重建）
 
     def take_token(self, key, rate_per_s, burst):
         with self.lock:  # 原子

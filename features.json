@@ -304,9 +304,9 @@
         "F08"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F17.md",
-      "note": "Contract 已写（2026-09-30），按用户授权直接实现"
+      "note": "完成（2026-09-30）：make check 69 过、test-integration 9 过；待用户验收"
     },
     {
       "id": "F18",
