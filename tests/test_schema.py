@@ -5,7 +5,7 @@ from sqlalchemy import inspect, text
 from alembic import command
 from infrastructure.database import database_url
 
-BASELINE = {"hw_part", "alembic_version"}
+BASELINE = {"hw_part", "alembic_version", "env_snapshot", "env_write"}  # F03 加了环境两张表
 
 
 def test_environment_url_overrides_dotenv(monkeypatch):
@@ -27,7 +27,7 @@ def test_baseline_has_only_hw_part_and_survives_repeat_and_downgrade(migrated):
     conn, config, schema = migrated
     assert set(inspect(conn).get_table_names(schema=schema)) == BASELINE
     command.upgrade(config, "head")
-    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0001"
+    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0002"  # F03 起为 0002
     command.downgrade(config, "base")
     assert inspect(conn).get_table_names(schema=schema) == ["alembic_version"]
     command.upgrade(config, "head")
@@ -41,3 +41,13 @@ def test_app_role_can_only_read_hw_part(migrated):
                             ("DELETE", False), ("TRUNCATE", False)):
         assert conn.scalar(text("SELECT has_table_privilege('supplyagent_app', :t, :a)"),
                            {"t": f'"{schema}".hw_part', "a": action}) is allowed
+
+
+@pytest.mark.integration
+def test_app_role_has_no_privilege_on_env_tables(migrated):
+    # F03：环境两张表不授予应用角色任何权限（Agent 侧权限归 F11）。
+    conn, _, schema = migrated
+    for table in ("env_snapshot", "env_write"):
+        for action in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+            assert conn.scalar(text("SELECT has_table_privilege('supplyagent_app', :t, :a)"),
+                               {"t": f'"{schema}".{table}', "a": action}) is False
