@@ -7,12 +7,11 @@ VENV        := .venv
 VPY         := $(VENV)/bin/python
 VPIP        := $(VENV)/bin/pip
 COMPOSE     := docker compose
-API_PORT    ?= 8000
 SRC         := src
 
 .DEFAULT_GOAL := help
-.PHONY: help setup status check compile lint test run health \
-        services-up services-status services-smoke services-down model-smoke freeze migrate test-integration
+.PHONY: help setup status check compile lint test \
+        services-up services-status services-smoke services-down freeze migrate test-integration
 
 help: ## 列出所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -67,21 +66,9 @@ test-integration: ## ③ 集成故障注入：连本地真实 PostgreSQL / Redis
 	$(COMPOSE) ps --status running --quiet postgres >/dev/null 2>&1 || { echo ">> 服务未启动，先跑 make services-up"; exit 1; }; \
 	$(VPY) -m pytest -q -m integration tests
 
-migrate: ## 把 docs/spec/data-model.md 的目标 schema 迁到本地数据库
+migrate: ## 把 alembic 迁移（基线只有 hw_part）升级到本地数据库
 	@test -d alembic || { echo ">> alembic/ 未初始化，随 F01 一并建立"; exit 1; }
 	@$(VENV)/bin/alembic upgrade head
-
-# ---------- 应用 ----------
-
-run: ## 启动 API（127.0.0.1:8000，仅本地绑定）
-	@$(VENV)/bin/uvicorn api.main:app --app-dir src --host 127.0.0.1 --port $(API_PORT)
-
-health: ## 应用就绪探针：要求 status=ok 才算通过
-	@curl -fsS --max-time 5 http://127.0.0.1:$(API_PORT)/health \
-	  | $(VPY) -c "import json,sys; d=json.load(sys.stdin); \
-	    sys.exit(0) if d.get('status')=='ok' else sys.exit('health 返回非 ok: '+json.dumps(d))" \
-	  && echo ">> health 通过" \
-	  || { echo ">> health 失败：服务未启动或未就绪（先在另一个终端跑 make run）"; exit 1; }
 
 # ---------- 服务：对应 D14 的 ③ 层前置 ----------
 
@@ -99,22 +86,7 @@ services-smoke: ## 连真实 Redis / PostgreSQL 做连通性冒烟
 services-down: ## 停服务（保留数据卷）
 	@$(COMPOSE) down
 
-# ---------- 需授权 ----------
-
-model-smoke: ## 调用真实模型，执行前必须获得用户明确授权并确认费用
-	@echo ">> 该目标会产生真实费用，未获授权不得执行；实现随 Infrastructure 层落地"; exit 1
-
-.PHONY: import-data
-import-data: ## F02：事务性导入 normalized 静态数据，重跑幂等
-	@PYTHONPATH=src $(VPY) -m persistence.import_normalized
-
-.PHONY: probe-suppliers
-probe-suppliers: ## ④ 授权端到端：对真实分销商 API 跑一次只读查询（会消耗配额）
-	@PYTHONPATH=src $(VPY) -m tools.probe_suppliers --mpn $(or $(MPN),IRFZ44NPBF)
-
-.PHONY: explain
-explain: ## 解释某个 worker 实际能调用哪些工具，以及每条允许/拒绝来自哪一层
-	@PYTHONPATH=src $(VPY) -m permissions.explain --worker $(WORKER) $(ARGS)
+# ---------- 硬件数据 ----------
 
 .PHONY: fetch-hardware
 fetch-hardware: ## 按 config/knowledge/sources.yaml 钉死的提交拉取 KiCad 原理图到只读原始层，并裁到只剩电子元件（公开 GitHub，无费用）
@@ -127,11 +99,3 @@ prune-hardware: ## 从本地原始层原理图删除非电子元件（连接器�
 .PHONY: build-parts
 build-parts: ## 从原始层 KiCad 文件生成料号表 hw_part（先做 MANIFEST 校验）：每项目每料号每厂商一行（纯确定性，零 token）
 	@PYTHONPATH=src $(VPY) -m persistence.build_hardware_parts
-
-.PHONY: seed-rules
-seed-rules: ## 写入口径类 business_rule（单板用量、身份接受策略），版本化且重跑幂等
-	@PYTHONPATH=src $(VPY) -m persistence.seed_business_rules
-
-.PHONY: seed-supply
-seed-supply: ## 生成模拟库存/在途/占用（固定随机种子，全部标 is_simulated），重跑幂等
-	@PYTHONPATH=src $(VPY) -m persistence.seed_simulated_supply

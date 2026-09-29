@@ -13,7 +13,7 @@
 
 ## 2. 下一步
 1. §5 已全部定稿（总览复审完成，P7 关闭；§0–§4 中与 §5 冲突的表述已修正）。
-2. 下一步：写 F01 工程底座的 Feature Contract，用户确认后开工（M1 骨架见 spec §11）。
+2. F01 工程底座：Contract 已确认（`contracts/F01.md`），已实现，等运行证据与用户验收。
 3. **每个 Feature 的 Contract 经用户确认前不开工；spec 已定策略不删不降级，砍减只指推迟。**
 
 ## 3. 协作节奏（重要）
@@ -24,7 +24,8 @@
 - 用户说"都同意"但表示没看完时，不算细审，写入时在 §13 登记待复审。
 
 ## 4. 已知问题
-- 无。（上级目录的旧治理文档已于 2026-09-29 挪到 `~/Downloads/_old_supplyagent_0909/`；仓库自己的 `AGENTS.md` 按 spec §0.5 等开工前再写。）
+- `compose.yaml`、`CODING_RULES.md`、`requirement.txt` 仍引用已删除的旧文档（`DECISIONS.md` D14、`docs/spec/data-model.md` 等），`Makefile` 注释里也有 D14；F01 按 Contract 不动，另行处理。
+- 沙箱会拦截对 `.env` 的读取，pytest 启动时会碰到它，所以跑测试需在沙箱外执行。
 
 ## 5. 新会话开场可以这样说
 "读 HANDOFF.md 和记忆，从 spec §5.8 异常处理与恢复开始，按新节奏一个子系统一个子系统来。"
