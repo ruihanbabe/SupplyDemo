@@ -1,0 +1,34 @@
+# 模拟环境默认参数（F03，spec §4.1、G7：业务参数来自配置，不硬编码）。
+# 改这里即可改变生成的工厂；同一参数 + 同一种子 ⇒ 同一初始状态（spec §0.2 可复现）。
+# 所有区间都是闭区间 [下限, 上限]，由种子随机取值。
+
+horizon_days: 84              # 模拟总天数：12 周（spec §4.1）
+lines: [L1, L2]               # 1 个工厂 2 条产线（spec §4.1）
+
+# 分销商物流参数：提交后备货 ship_days 天发货，发货后运输 transit_days 天到厂。都须 ≥ 1。
+distributors:
+  digikey:   {ship_days: 1, transit_days: 3}
+  mouser:    {ship_days: 1, transit_days: 4}
+  element14: {ship_days: 2, transit_days: 5}
+
+# 每块板的订单生成规则；键必须是 config/knowledge/sources.yaml 里的 project_id。
+boards:
+  hackrf-one: {orders: [3, 4], qty: [50, 200], qty_step: 10}
+  bms-c1:     {orders: [3, 4], qty: [100, 300], qty_step: 10}
+
+orders:
+  due_day: [14, 80]           # 订单到期日范围（第几天）
+
+work_orders:
+  batch_max: 200              # 单张工单最多生产台数，超出则拆成多张
+  duration_days: [2, 4]       # 工期（天），须 ≥ 1
+  lead_days: 3                # 计划完工日比订单到期日提前的缓冲天数
+
+initial_stock:
+  short_fraction: 0.08        # 初始在库撑不到全程的料号比例；其余料号在库覆盖全程需求
+  cover_days: [15, 60]        # 这些短缺料号的在库只够覆盖"计划开工日 ≤ 该天"的工单需求
+
+in_transit:
+  fraction: 0.5               # 短缺料号中已有初始在途补货的比例
+  eta_day: [3, 25]            # 初始在途运单的预计到货日
+  cover_extra_days: 30        # 在途数量覆盖在库之后再往后多少天的工单需求
