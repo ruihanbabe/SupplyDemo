@@ -103,3 +103,10 @@ prune-hardware: ## 从本地原始层原理图删除非电子元件（连接器�
 .PHONY: build-parts
 build-parts: ## 从原始层 KiCad 文件生成料号表 hw_part（先做 MANIFEST 校验）：每项目每料号每厂商一行（纯确定性，零 token）
 	@PYTHONPATH=src $(VPY) -m persistence.build_hardware_parts
+
+# ---------- 模拟环境（F03） ----------
+
+.PHONY: sim-run
+sim-run: ## 不接 Agent 按种子跑满模拟环境，打印逐日事件与结果指标（纯内存，零 token）；用法 make sim-run SEED=42
+	@test -n "$(SEED)" || { echo ">> 需要种子：make sim-run SEED=42"; exit 1; }
+	@PYTHONPATH=src $(VPY) -m simenv.cli --seed $(SEED)

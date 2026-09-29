@@ -57,9 +57,9 @@
         "F01"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F03.md",
-      "note": "Contract 已写（2026-09-29），按用户授权直接实现"
+      "note": "五小步完成（2026-09-29）：make check 48 过、test-integration 6 过、sim-run SEED=42 两次逐字相同；待用户验收"
     },
     {
       "id": "F04",
