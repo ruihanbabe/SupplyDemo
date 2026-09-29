@@ -6,7 +6,8 @@ from alembic import command
 from infrastructure.database import database_url
 
 BASELINE = {"hw_part", "alembic_version", "env_snapshot", "env_write",  # F03 加了环境两张表
-            "session_event", "artifact", "artifact_dep"}  # F06 加了 Session 三张表
+            "session_event", "artifact", "artifact_dep",  # F06 加了 Session 三张表
+            "tool_record"}  # F07 加了留档表
 
 
 def test_environment_url_overrides_dotenv(monkeypatch):
@@ -28,7 +29,7 @@ def test_baseline_has_only_hw_part_and_survives_repeat_and_downgrade(migrated):
     conn, config, schema = migrated
     assert set(inspect(conn).get_table_names(schema=schema)) == BASELINE
     command.upgrade(config, "head")
-    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0003"  # F06 起为 0003
+    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0004"  # F07 起为 0004
     command.downgrade(config, "base")
     assert inspect(conn).get_table_names(schema=schema) == ["alembic_version"]
     command.upgrade(config, "head")

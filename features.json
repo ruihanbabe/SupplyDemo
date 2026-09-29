@@ -128,9 +128,9 @@
         "F06"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F07.md",
-      "note": "Contract 已写（2026-09-30），按用户授权直接实现；参数 Server 推迟到 M2，MCP 标准传输待装 mcp 包"
+      "note": "完成（2026-09-30）：make check 67 过、test-integration 8 过（Redis 并发令牌桶不超发、Pg 留档往返）；分销商只有固定样例后端；参数 Server 推迟 M2；MCP 标准传输待装 mcp 包；待用户验收"
     },
     {
       "id": "F08",
