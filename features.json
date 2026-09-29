@@ -1,0 +1,544 @@
+{
+  "version": 1,
+  "updated": "2026-09-29",
+  "notes": "划分原则、里程碑顺序与砍减（=推迟）规则见 spec.md §11；spec 已定策略一律要做，时间不够时从 M5 末尾往前推迟，状态记为 deferred。",
+  "status_values": [
+    "not_started",
+    "contract_draft",
+    "in_progress",
+    "awaiting_acceptance",
+    "done",
+    "deferred"
+  ],
+  "features": [
+    {
+      "id": "F01",
+      "name": "工程底座：src/ 包结构、迁移清理（删 v0.1 旧表）、Makefile 目标对齐、hw_part 管线恢复",
+      "type": "最小",
+      "spec": [
+        "§1.3",
+        "§5.1"
+      ],
+      "necessity": "所有 Feature 的前提；hw_part 是唯一真实元件数据",
+      "depends_on": [],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F02",
+      "name": "第二块板入库（原理图 + 板级上下文）",
+      "type": "最小",
+      "spec": [
+        "§1.1",
+        "§1.7"
+      ],
+      "necessity": "§1.1 定了两块板；跨板迁移与 Eval 留出集防泄漏",
+      "depends_on": [
+        "F01"
+      ],
+      "milestone": "M5",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F03",
+      "name": "环境内核：订单、计划/工单、库存、采购单、运单；按天时钟；类 ERP 查询与写接口；种子复现；每日快照与分叉；结果指标",
+      "type": "最小",
+      "spec": [
+        "§4.1",
+        "§4.2",
+        "§4.6"
+      ],
+      "necessity": "Agent 操作的唯一业务状态来源，也是 Eval 场；没有它就没有可处置的异常",
+      "depends_on": [
+        "F01"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F04",
+      "name": "情景与异常：A1–A9 由机制产生、B1–B3 叠加注入；情景 YAML；期望标注；两个基线与情景筛选",
+      "type": "最小",
+      "spec": [
+        "§1.5",
+        "§4.3",
+        "§4.4",
+        "§4.6"
+      ],
+      "necessity": "§4.4 的异常是 Harness 全部压力来源；基线用于剔除无效情景和对比",
+      "depends_on": [
+        "F03"
+      ],
+      "milestone": "M3",
+      "status": "not_started",
+      "contract": null,
+      "note": "M1 先做 A1（物流延误）"
+    },
+    {
+      "id": "F05",
+      "name": "模拟人工：H1–H5 规则应答",
+      "type": "最小",
+      "spec": [
+        "§4.5"
+      ],
+      "necessity": "无人值守跑跨天审批；Eval 必需",
+      "depends_on": [
+        "F03"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F06",
+      "name": "Session 事件日志与 Artifact：只追加日志 + 哈希链、Artifact 版本与依赖、失效传播、案子状态投影",
+      "type": "深度②",
+      "spec": [
+        "§5.1",
+        "§5.5"
+      ],
+      "necessity": "A2/A3/A5/A7 都靠失效传播；崩溃恢复和回放的基础",
+      "depends_on": [
+        "F01"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F07",
+      "name": "工具代理层与 MCP Server：管道、统一返回、两个时钟的缓存、配额、留档、注入挂点、返回校验、多源矛盾警告；环境/分销商/参数/留档/编排控制 Server",
+      "type": "深度②",
+      "spec": [
+        "§5.4",
+        "G1",
+        "G5"
+      ],
+      "necessity": "G1 强制；B2/B3 在这里处理；留档是回放与 Eval 的前提",
+      "depends_on": [
+        "F03",
+        "F06"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": "M1 先做环境与分销商 Server；旧适配器见 git 976bb17，仅作参考"
+    },
+    {
+      "id": "F08",
+      "name": "模型适配层：GLM/Qwen 统一格式、Schema 校验 + 修复 1 次、降级、编造料号拒绝、完整输入输出记录",
+      "type": "最小",
+      "spec": [
+        "§5.3"
+      ],
+      "necessity": "弱模型可靠性的第一道防线；完整 I/O 是全回放的前提",
+      "depends_on": [
+        "F06"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F09",
+      "name": "Runtime：活跃段重建、并行派发与汇合、三层预算、循环检测、模拟时钟调度循环、并发上限",
+      "type": "深度②",
+      "spec": [
+        "§5.3"
+      ],
+      "necessity": "跨天挂起、多案并发、可控成本都在这里",
+      "depends_on": [
+        "F06",
+        "F07",
+        "F08"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": "M1 做薄版，后续里程碑补全"
+    },
+    {
+      "id": "F10",
+      "name": "事件接入与案子管理：统一事件与实体键、订阅唤醒、按影响开案、同源合并、软声明冲突、关闭条件、Monitor",
+      "type": "深度②",
+      "spec": [
+        "§5.2",
+        "§3.3"
+      ],
+      "necessity": "A1/A4/A8/A9 的落点；没有它只能单案演示",
+      "depends_on": [
+        "F06",
+        "F09",
+        "F21"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": "M1 做薄版，后续里程碑补全"
+    },
+    {
+      "id": "F11",
+      "name": "权限 L1/L2：工具风险分级 R0/R1/R2、能力令牌与衰减、代表链、数据库只读角色、出站白名单、凭证隔离与脱敏",
+      "type": "深度",
+      "spec": [
+        "§5.5",
+        "§3.4"
+      ],
+      "necessity": "G1、G8（A6 靠没有这个工具）、B1 兜底",
+      "depends_on": [
+        "F07"
+      ],
+      "milestone": "M2",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F12",
+      "name": "证据门控与审批令牌：§2.4 前提检查、HMAC 令牌绑定草稿哈希、提交前重校验",
+      "type": "深度",
+      "spec": [
+        "§2.4",
+        "§5.5",
+        "G2"
+      ],
+      "necessity": "A2 的核心机制；G2 强制",
+      "depends_on": [
+        "F06",
+        "F21"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": "M1 做换供应商路径所需的门控，替代料门控随 M2 补全"
+    },
+    {
+      "id": "F13",
+      "name": "字段级污点追踪与汇点检查",
+      "type": "深度",
+      "spec": [
+        "§5.5"
+      ],
+      "necessity": "B1 的结构性防线（§5.5 已定字段级）",
+      "depends_on": [
+        "F06",
+        "F11"
+      ],
+      "milestone": "M2",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F14",
+      "name": "反馈与升级：反馈卡片、重规划分级、预期与偏差比对、代码强制升级、升级工具",
+      "type": "深度②",
+      "spec": [
+        "§5.7"
+      ],
+      "necessity": "A1 延迟后果靠偏差反馈发现；避免模型自行判断何时重规划",
+      "depends_on": [
+        "F06",
+        "F09",
+        "F10"
+      ],
+      "milestone": "M3",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F15",
+      "name": "异常处理与恢复：重试退避、熔断 5 分钟、部分成功、意图/完成两步写 + 幂等键、重放恢复",
+      "type": "深度②",
+      "spec": [
+        "§5.8"
+      ],
+      "necessity": "深度点②的主体；不重复下单",
+      "depends_on": [
+        "F07",
+        "F09",
+        "F21"
+      ],
+      "milestone": "M3",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F16",
+      "name": "上下文组装：分区、代码摘要、旧结果折叠、上限裁剪、外部内容引用块",
+      "type": "深度③",
+      "spec": [
+        "§5.9"
+      ],
+      "necessity": "深度点③的主体；弱模型 24K/16K 上限下必须有",
+      "depends_on": [
+        "F06",
+        "F09"
+      ],
+      "milestone": "M4",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F17",
+      "name": "可观测计量：LLM/工具计量、上下文快照存储、案子汇总、配额数据",
+      "type": "最小",
+      "spec": [
+        "§5.11"
+      ],
+      "necessity": "调试与 P8 所需真实数据的来源",
+      "depends_on": [
+        "F07",
+        "F08"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F18",
+      "name": "测试注入、回放与分叉：三处挂点、三种回放模式、唤醒边界分叉、运行清单",
+      "type": "深度①",
+      "spec": [
+        "§5.12"
+      ],
+      "necessity": "可复现是 §0.2 成功标准；回归门禁依赖全回放",
+      "depends_on": [
+        "F03",
+        "F07",
+        "F08",
+        "F09"
+      ],
+      "milestone": "M3",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F19",
+      "name": "datasheet 知识库 A：白名单下载、Docling 解析、页表、全文检索 + 同义词、目录、版本哈希、引用校验器",
+      "type": "最小",
+      "spec": [
+        "§6.1",
+        "§6.2",
+        "§2.4"
+      ],
+      "necessity": "Verifier 与 S3 的证据来源；G4 引用校验；A5",
+      "depends_on": [
+        "F06",
+        "F07"
+      ],
+      "milestone": "M2",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F20",
+      "name": "知识资产与知识库 B：术语表、比对清单与替代规则、Skills、板级上下文 YAML；KB B 种子导入、别名、H1/H3 写入、失效与撤销、按实体键注入",
+      "type": "最小",
+      "spec": [
+        "§6",
+        "§6.3",
+        "§5.10",
+        "§3.5"
+      ],
+      "necessity": "替代判断的真值来源与注入内容；G3",
+      "depends_on": [
+        "F01",
+        "F06"
+      ],
+      "milestone": "M2",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F21",
+      "name": "确定性业务组件：影响分析、Sourcing（需求列表、部分结果）、Policy（YAML）、等级汇总器、Procurement 执行器",
+      "type": "最小",
+      "spec": [
+        "§3.3",
+        "G7",
+        "G8"
+      ],
+      "necessity": "数字与写操作全由代码产生是整个设计的底线",
+      "depends_on": [
+        "F03",
+        "F06",
+        "F07"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F22",
+      "name": "编排者：路由与节点集合、任务图、计划校验、固定模板兜底、两级目标修订（H4）、重规划",
+      "type": "深度",
+      "spec": [
+        "§2.1",
+        "§2.2",
+        "§2.3",
+        "§2.5",
+        "§2.6",
+        "§2.7"
+      ],
+      "necessity": "动态编排 + 证据门控是项目核心；固定模板同时是 Eval 对照组",
+      "depends_on": [
+        "F09",
+        "F12",
+        "F21"
+      ],
+      "milestone": "M1",
+      "status": "not_started",
+      "contract": null,
+      "note": "M1 做薄版，后续里程碑补全"
+    },
+    {
+      "id": "F23",
+      "name": "子 Agent 与 LLM 函数：画像、按来源的替代检索、隔离的 Verifier、Resolver 三层、Explainer",
+      "type": "深度",
+      "spec": [
+        "§3.2",
+        "§3.5"
+      ],
+      "necessity": "缺料替代采购这条对策的全部判断",
+      "depends_on": [
+        "F19",
+        "F20",
+        "F22"
+      ],
+      "milestone": "M2",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F24",
+      "name": "S3 互换问答路径：只读节点集合、引用校验后的结论输出",
+      "type": "最小",
+      "spec": [
+        "§1.4",
+        "§2.6"
+      ],
+      "necessity": "§1.4 定的两类请求之一；复用 F19/F23",
+      "depends_on": [
+        "F19",
+        "F22",
+        "F23"
+      ],
+      "milestone": "M4",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F25",
+      "name": "Web 人工节点：配置化登录与角色、H1–H5 页面、用户发起请求、审批页（含预演）",
+      "type": "最小",
+      "spec": [
+        "§1.2",
+        "§2.8",
+        "§5.5"
+      ],
+      "necessity": "真人参与与演示的唯一入口；预演是 §5.5 已定机制",
+      "depends_on": [
+        "F06",
+        "F12",
+        "F20"
+      ],
+      "milestone": "M4",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F26",
+      "name": "Web 案子时间线与配额面板",
+      "type": "最小",
+      "spec": [
+        "§5.11"
+      ],
+      "necessity": "调试与演示（§5.11 已定自研时间线）",
+      "depends_on": [
+        "F06",
+        "F17"
+      ],
+      "milestone": "M4",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F27",
+      "name": "Eval 最小框架：结果/过程/花费三层代码评分、实验运行器（种子 × 配置 × 重复）、置信区间、回归门禁脚本",
+      "type": "深度①",
+      "spec": [
+        "§7",
+        "§0.2"
+      ],
+      "necessity": "三个深度点都要靠它出数据；策略按 P8 后定，框架先有",
+      "depends_on": [
+        "F04",
+        "F17",
+        "F18"
+      ],
+      "milestone": "M5",
+      "status": "not_started",
+      "contract": null,
+      "note": "开工前先定 P8"
+    },
+    {
+      "id": "F28",
+      "name": "对照配置与消融开关：单 Agent、细拆多 Agent、§3.6 各开关",
+      "type": "深度①",
+      "spec": [
+        "§3.6",
+        "§0.3"
+      ],
+      "necessity": "证明组件有用（§0.3、§3.6 已定）；实验怎么跑等 P8",
+      "depends_on": [
+        "F22",
+        "F23",
+        "F27"
+      ],
+      "milestone": "M5",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    },
+    {
+      "id": "F29",
+      "name": "交付：compose 一键启动全套、录好的演示回放",
+      "type": "最小",
+      "spec": [
+        "§11"
+      ],
+      "necessity": "作品可展示、可复现",
+      "depends_on": [
+        "F18",
+        "F25",
+        "F26"
+      ],
+      "milestone": "M5",
+      "status": "not_started",
+      "contract": null,
+      "note": ""
+    }
+  ]
+}
