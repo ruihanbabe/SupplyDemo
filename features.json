@@ -144,9 +144,9 @@
         "F06"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F08.md",
-      "note": "Contract 已写（2026-09-30），按用户授权直接实现"
+      "note": "完成（2026-09-30）：make check 59 过，全部 mock，无真实调用；quirks 取值待真实联调（需授权）核实；待用户验收"
     },
     {
       "id": "F09",

@@ -4,3 +4,6 @@
 
 ablation:
   invalidation_propagation: true   # F06 失效传播：false 时外部数据变化/过期不产生任何失效
+  schema_repair: true              # F08 输出修复：false 时校验不过不回给模型修复，直接算格式失败
+  model_fallback: true             # F08 模型降级：false 时主模型格式失败即失败，不换备用模型
+  fabricated_mpn_check: true       # F08 编造料号拒绝：false 时不检查输出里的料号是否在已知集合
