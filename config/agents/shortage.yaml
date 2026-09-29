@@ -1,5 +1,0 @@
-worker: shortage
-# 确定性服务，不调用模型：本文件只声明权限。
-# 只做缺口计算；刻意不给 sourcing.read——外部报价是 sourcing 的事。
-permissions:
-  - procurement.compute

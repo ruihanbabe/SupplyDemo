@@ -125,12 +125,8 @@ prune-hardware: ## 从本地原始层原理图删除非电子元件（连接器�
 	@PYTHONPATH=src $(VPY) -m knowledge.prune
 
 .PHONY: build-parts
-build-parts: ## 从硬件原始层生成料号表 hw_part：每项目每料号一行（纯确定性，零 token）
+build-parts: ## 从原始层 KiCad 文件生成料号表 hw_part（先做 MANIFEST 校验）：每项目每料号每厂商一行（纯确定性，零 token）
 	@PYTHONPATH=src $(VPY) -m persistence.build_hardware_parts
-
-.PHONY: import-hardware
-import-hardware: ## 把原始层原理图原样入库（硬件设计原始层，只插入；同一提交重跑跳过）
-	@PYTHONPATH=src $(VPY) -m persistence.import_hardware_raw
 
 .PHONY: seed-rules
 seed-rules: ## 写入口径类 business_rule（单板用量、身份接受策略），版本化且重跑幂等

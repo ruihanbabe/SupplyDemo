@@ -1,6 +1,0 @@
-worker: internal
-# 确定性服务，不调用模型：本文件只声明权限。
-# 查 BOM 候选与内部库存；刻意不给 sourcing.read 与 procurement.compute。
-permissions:
-  - catalog.read
-  - inventory.read

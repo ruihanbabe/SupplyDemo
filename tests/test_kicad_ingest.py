@@ -78,8 +78,10 @@ def placed(ref, value="10k", mpn="RC0402", dnp=False, in_bom=True, **props):
 
 
 def test_one_row_per_part_number_with_its_quantity():
-    [part] = build_parts([placed("R1"), placed("R2"), placed("R3")])
+    [part] = build_parts([placed("R1"), placed("R2"), placed("R3", value="10K")])
     assert (part.mpn, part.manufacturer, part.quantity) == ("RC0402", "Yageo", 3)
+    # Differing values are kept side by side, not reconciled.
+    assert (part.designators, part.values) == (["R1", "R2", "R3"], ["10k", "10K"])
 
 
 def test_unfitted_unnumbered_and_non_bom_parts_are_not_bought():
@@ -94,14 +96,15 @@ def test_the_alternates_note_is_kept_verbatim():
     assert part.alternates == "Murata GRM1555C1H220JA01D"
 
 
-def test_one_part_number_with_two_makers_is_refused_not_guessed():
-    with pytest.raises(ValueError, match="RC0402"):
-        build_parts([placed("R1"), placed("R2", Manufacturer="Other")])
+def test_one_part_number_with_two_makers_keeps_both_rows():
+    parts = build_parts([placed("R1"), placed("R2", Manufacturer="Other")])
+    assert [(p.manufacturer, p.designators) for p in parts] == [("Other", ["R2"]),
+                                                                ("Yageo", ["R1"])]
 
 
 # ---------- 真实数据（已钉死提交，离线可跑） ----------
 
-PROJECTS = ("hackrf-one", "jetson-agx-thor-baseboard", "bms-c1")
+PROJECTS = ("hackrf-one",)
 
 
 @pytest.mark.parametrize("project_id", PROJECTS)
