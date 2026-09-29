@@ -18,7 +18,7 @@ HARNESS_CONFIG = ROOT / "config" / "harness.yaml"  # 默认配置文件
 # 功能：读 Harness 配置。依赖：PyYAML；被各组件在构造时调用。完成：校验 ablation 段存在且全为布尔值。
 def load_harness_config(path: Path = HARNESS_CONFIG) -> dict:
     config = yaml.safe_load(Path(path).read_text(encoding="utf-8"))  # 读 YAML
-    switches = config.get("ablation") if isinstance(config, dict) else None  # 取消融段
+    switches = config.get("ablation") if isinstance(config, dict) else None  # 取消融段（其他段由各组件自行读取）
     if not isinstance(switches, dict) or not all(isinstance(v, bool) for v in switches.values()):  # 格式检查
         raise ValueError("config/harness.yaml 缺少 ablation 段或其中有非布尔值")  # 报错
     return config  # 返回整份配置

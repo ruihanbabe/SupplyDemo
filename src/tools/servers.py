@@ -15,6 +15,7 @@ from __future__ import annotations  # 类型注解延迟求值
 import hashlib  # 固定样例的确定性哈希
 import re  # 解析原文格式
 from collections.abc import Callable  # 函数类型
+from typing import Literal  # 枚举取值
 
 from pydantic import BaseModel, Field  # 参数模型
 
@@ -263,7 +264,8 @@ class AskUserArgs(BaseModel):
 
 
 class EndSegmentArgs(BaseModel):
-    """结束本活跃段。"""
+    """结束本活跃段；wait_for 决定案子进入哪种等待（F09 增加）。"""
+    wait_for: Literal["human", "arrival", "external"]  # 等人工 / 等到货 / 等外部
     reason: str  # 理由
 
 

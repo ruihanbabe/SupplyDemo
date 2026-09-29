@@ -162,9 +162,9 @@
         "F08"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F09.md",
-      "note": "Contract 已写（2026-09-30），按用户授权直接实现；批内与案子间顺序执行（默认值，待验收确认）"
+      "note": "M1 薄版完成（2026-09-30）：make check 77 过；批内与案子间顺序执行（Contract 默认值，待确认）；待用户验收"
     },
     {
       "id": "F10",

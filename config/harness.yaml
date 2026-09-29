@@ -9,3 +9,12 @@ ablation:
   fabricated_mpn_check: true       # F08 编造料号拒绝：false 时不检查输出里的料号是否在已知集合
   tool_return_validation: true     # F07 返回校验（B3）：false 时不补"未知"、不加警告，原样交给模型
   source_conflict_warnings: true   # F07 多源矛盾（B2）：false 时不比对来源差异、不加警告
+  loop_detection: true             # F09 循环检测：false 时相同调用照常执行，不反馈、不强制结束
+  batch_join: true                 # F09 批次汇合：false 时每个任务完成都单独唤醒编排者一次
+
+# F09 Runtime 硬预算与并发（spec §5.3 默认值）。
+runtime:
+  subagent: {max_rounds: 10, max_tool_calls: 12}   # 子 Agent：触顶交回"未完成"Artifact
+  orchestrator: {max_rounds_per_segment: 12}       # 编排者每个活跃段：触顶结束本段并记录原因
+  case: {max_replans: 3, max_llm_calls: 80}        # 案子：触顶升级给人，以"已升级"关闭
+  max_active_cases: 4                              # 同时活跃（已开始处置、未关闭）的案子数上限，超出排队

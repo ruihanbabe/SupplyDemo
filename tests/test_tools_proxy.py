@@ -185,7 +185,7 @@ def test_environment_and_control_servers(env0):
     assert inv["data"][0] == env0.get_inventory(MPN) and inv["source"]["provider"] == "sim"  # 与环境一致
     miss = proxy.call("env_orders", {"order_id": "O-999"}, executor="orch", actor="o", day=0)  # 查不到
     assert miss["error"]["type"] == "not_found"  # 转换
-    ctl = proxy.call("end_segment", {"reason": "等审批"}, executor="orch", actor="o", day=0)  # 控制工具
+    ctl = proxy.call("end_segment", {"wait_for": "human", "reason": "等审批"}, executor="orch", actor="o", day=0)  # 控制工具
     assert ctl["error"]["type"] == "upstream_error" and "尚未具备" in ctl["error"]["message"]  # 明确报尚未具备
 
 
