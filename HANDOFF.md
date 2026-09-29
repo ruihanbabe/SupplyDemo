@@ -9,7 +9,14 @@
 - **已完成并验收**：
   - F01 工程底座（`89fdb6e`）：`src/` 只有 `knowledge`、`persistence`、`infrastructure`；alembic 新基线 `0001` 只建 `hw_part` + 只读角色 `supplyagent_app`；`make check` / `test-integration` 全绿。
   - F02 第二块板（`a32d145`、`5af7f36`）：bms-c1 原理图入库（55 料号 / 154 贴装位；hackrf 62 / 297）；两块板 README 原文只读存档（`make fetch-docs`），板级上下文**不预先结构化**，按需经文档工具读取，抽取格式留到细化知识库时定（spec §1.3、§6 已回写）。
-- **待验收**：F03 环境内核（Contract `contracts/F03.md`，提交 `39e5a0c`…step⑤）：`src/simenv/`，迁移 `0002_env`，`make sim-run SEED=42`；验收证据见 Contract 表格。实现时改定一处：快照在"日开盘"存（Contract 风险一节已写明）。
+- **待验收**（2026-09-30 自动推进，Contract 在 `contracts/`，状态见 `features.json`；全部 mock，无真实外部调用）：
+  - F03 环境内核 `src/simenv/`（迁移 0002，`make sim-run SEED=42`）；快照改在"日开盘"存。
+  - F06 Session 事件日志与 Artifact `src/session/`（0003）。
+  - F08 模型适配层 `src/models/`（端点差异 quirks 为待真实联调核实的假设）。
+  - F07 工具代理层 `src/tools/`（0004）：分销商只有固定样例后端；参数 Server 推迟 M2；MCP 标准传输需装 `mcp` 包（新依赖，待同意）。
+  - F17 计量 `src/observability/`（0005）。
+  - F09 Runtime 薄版 `src/runtime/`：**批内与案子间顺序执行、不用线程**（为保证可复现与全回放哈希链，Contract 默认值待确认）。
+  - 消融开关与 Runtime 预算集中在 `config/harness.yaml`。
 
 ## 2. 下一步：F03 起自动推进 Harness（用户 2026-09-29 定）
 1. **F03 环境内核**（已完成，待验收）：架构采用方案 A——纯 Python 内存领域模型按天推进（注入 → 到货 → 开工领料/缺料停线 → 订单到期）；Postgres 只存 `env_snapshot`（每日整状态 JSONB + 哈希）与 `env_write`（外部写入只追加日志 + 幂等键）；崩溃恢复 = 载入最近快照 + 重放当日写入；分叉 / 预演 = 载入快照。分五小步：① 领域模型 + 日推进（纯内存、离线测试）② 按种子生成两块板的计划/订单/初始库存 ③ 查询与写入接口 ④ 快照、分叉、写入日志与崩溃恢复（一次迁移）⑤ 结果指标。
