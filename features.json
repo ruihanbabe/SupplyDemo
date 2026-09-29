@@ -128,9 +128,9 @@
         "F06"
       ],
       "milestone": "M1",
-      "status": "not_started",
-      "contract": null,
-      "note": "M1 先做环境与分销商 Server；旧适配器见 git 976bb17，仅作参考；缓存、配额与限流放 Redis（§5.1、§5.4）"
+      "status": "in_progress",
+      "contract": "contracts/F07.md",
+      "note": "Contract 已写（2026-09-30），按用户授权直接实现；参数 Server 推迟到 M2，MCP 标准传输待装 mcp 包"
     },
     {
       "id": "F08",
