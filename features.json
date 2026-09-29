@@ -57,9 +57,9 @@
         "F01"
       ],
       "milestone": "M1",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
+      "status": "in_progress",
+      "contract": "contracts/F03.md",
+      "note": "Contract 已写（2026-09-29），按用户授权直接实现"
     },
     {
       "id": "F04",
