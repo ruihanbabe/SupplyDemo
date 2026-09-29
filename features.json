@@ -144,9 +144,9 @@
         "F06"
       ],
       "milestone": "M1",
-      "status": "not_started",
-      "contract": null,
-      "note": "模型端点限流复用 F07 的 Redis 限流组件"
+      "status": "in_progress",
+      "contract": "contracts/F08.md",
+      "note": "Contract 已写（2026-09-30），按用户授权直接实现"
     },
     {
       "id": "F09",
