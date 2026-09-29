@@ -109,9 +109,9 @@
         "F01"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F06.md",
-      "note": "Contract 已写（2026-09-29），按用户授权直接实现"
+      "note": "完成（2026-09-29）：make check 53 过、test-integration 7 过（Pg 与内存逐条哈希一致）；待用户验收"
     },
     {
       "id": "F07",

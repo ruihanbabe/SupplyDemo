@@ -1,0 +1,6 @@
+# Harness 配置（G7：业务与机制参数来自配置，不硬编码）。
+# ablation：各 Harness 组件的消融开关（spec §0.3、§3.6）；true = 组件生效，false = 关掉它重跑 Eval（F28 读取）。
+# 每个 Feature 只在这里加自己的键；键名即组件名，注释写明关掉后的行为。
+
+ablation:
+  invalidation_propagation: true   # F06 失效传播：false 时外部数据变化/过期不产生任何失效
