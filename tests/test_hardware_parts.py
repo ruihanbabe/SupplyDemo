@@ -17,9 +17,10 @@ pytestmark = pytest.mark.integration
 def test_the_part_table_is_built_from_the_files_and_rebuilds_the_same(migrated):
     conn, _, _ = migrated
     first = build_all(conn)
-    assert first == [{"project_id": "hackrf-one", "parts": 62}]
+    assert first == [{"project_id": "hackrf-one", "parts": 62},
+                     {"project_id": "bms-c1", "parts": 55}]
     assert build_all(conn) == first
-    assert conn.scalar(text("SELECT count(*) FROM hw_part")) == 62
+    assert conn.scalar(text("SELECT count(*) FROM hw_part")) == 62 + 55
     row = conn.execute(text("""SELECT manufacturer, quantity, "values", footprints, alternates
                                FROM hw_part WHERE mpn = 'CL05C220JB5NNNC'""")).one()
     assert row[:2] == ("Samsung", 12) and row[4] == "Murata GRM1555C1H220JA01D"

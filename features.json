@@ -39,9 +39,9 @@
         "F01"
       ],
       "milestone": "M5",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
+      "status": "in_progress",
+      "contract": "contracts/F02.md",
+      "note": "用户决定提前于 M5 开工；第 1 步原理图入库已验收（2026-09-29），第 2 步板级上下文待定方案"
     },
     {
       "id": "F03",

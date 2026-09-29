@@ -11,3 +11,12 @@ projects:
     root_schematic: hackrf-one.kicad_sch
     license: GPL-2.0
     license_file: hardware/hackrf-one/LICENSE
+
+  - project_id: bms-c1
+    name: Libre Solar BMS C1
+    repo: LibreSolar/bms-c1
+    commit: 0ca09706f49906bdc73f6ccf99635de349d47474
+    path: kicad
+    root_schematic: bms-c1.kicad_sch
+    license: CERN-OHL-W-2.0
+    license_file: LICENCE

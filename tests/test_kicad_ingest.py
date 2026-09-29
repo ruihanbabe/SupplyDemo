@@ -104,7 +104,7 @@ def test_one_part_number_with_two_makers_keeps_both_rows():
 
 # ---------- 真实数据（已钉死提交，离线可跑） ----------
 
-PROJECTS = ("hackrf-one",)
+PROJECTS = ("hackrf-one", "bms-c1")
 
 
 @pytest.mark.parametrize("project_id", PROJECTS)
@@ -119,7 +119,8 @@ def test_every_reference_resolved_through_an_instance_table(project_id):
     assert placements and all(p.reference_source == "instance" for p in placements)
 
 
-def test_raw_layer_is_read_only():
-    for path in (RAW / "hackrf-one").rglob("*"):
+@pytest.mark.parametrize("project_id", PROJECTS)
+def test_raw_layer_is_read_only(project_id):
+    for path in (RAW / project_id).rglob("*"):
         if path.is_file():
             assert not path.stat().st_mode & 0o222, path
