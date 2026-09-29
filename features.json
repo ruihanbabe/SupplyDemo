@@ -287,9 +287,9 @@
         "F09"
       ],
       "milestone": "M4",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
+      "status": "in_progress",
+      "contract": "contracts/F16.md",
+      "note": "Contract 已写（2026-09-30），依赖已满足提前于 M4 做，按用户授权直接实现"
     },
     {
       "id": "F17",
