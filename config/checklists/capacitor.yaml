@@ -1,0 +1,13 @@
+# 陶瓷电容品类比对清单（mock 业务策略，spec §1.3）。
+category: capacitor
+items:
+  - {id: capacitance, name: 容值,           severity: critical}
+  - {id: voltage,     name: 额定电压 ≥ 原料, severity: critical}
+  - {id: dielectric,  name: 介质（C0G/X7R…）, severity: critical}
+  - {id: package,     name: 封装尺寸,       severity: critical}
+  - {id: tolerance,   name: 容差 ≤ 原料,    severity: major}
+rules:
+  - {when: {severity: critical, result: not_satisfied}, grade: C}
+  - {when: {severity: critical, result: insufficient},  grade: B}
+  - {when: {severity: major,    result: not_satisfied}, grade: B}
+default_grade: A

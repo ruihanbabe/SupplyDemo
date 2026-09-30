@@ -1,7 +1,8 @@
 """文件摘要（F09 · 派发与汇合）
 
 编排者通过控制工具 dispatch_task 派任务；同一轮的派发组成一批，整批结束才把汇总交回编排者一次（spec §5.3）。
-- ExecutorSpec：执行者注册项。LLM 子 Agent（系统提示、工具、输出模型、预算）或代码组件（纯函数，F21 注册）。
+- ExecutorSpec：执行者注册项。LLM 子 Agent（系统提示、工具、输出模型、预算）或代码组件（纯函数，F21 注册；
+  可返回 CodeResult 附带外部数据依赖；dispatch_task 的 params 作为结构化参数传给代码组件）。
 - Dispatcher：登记待办（task_dispatched 事件）→ run_pending() 按派发顺序逐个运行（见 F09 Contract 默认值：不用真实线程，保证可复现）
   → 每个任务产出一个 Artifact（成功内容或"未完成"+原因，依赖输入 Artifact）并写 task_finished → 批次结束写 batch_joined。
   消融开关 batch_join 关闭时每次只运行一个任务，编排者每完成一个任务就被唤醒一次。
@@ -36,6 +37,15 @@ class ExecutorSpec:
 
 
 @dataclass
+class CodeResult:
+    """代码组件的返回：内容 + 额外依赖（外部数据引用，如报价留档与有效期，F21）。"""
+    content: dict  # Artifact 内容
+    deps: list[dict] = field(default_factory=list)  # 额外依赖（格式同 Session.produce 的 deps）
+    status: str = "done"  # done / unfinished（如无可行报价仍算 done，由内容表达）
+    reason: str = "完成"  # 原因
+
+
+@dataclass
 class Task:
     """一个已派发、待运行的任务。"""
     task_id: str  # 任务号
@@ -44,6 +54,7 @@ class Task:
     inputs: list[str]  # 输入 Artifact 引用
     reason: str  # 理由
     seq: int  # task_dispatched 事件序号
+    params: dict = field(default_factory=dict)  # 给代码组件的结构化参数
 
 
 class Dispatcher:
@@ -57,7 +68,7 @@ class Dispatcher:
 
     # 功能：登记一个任务（控制工具 dispatch_task 的实现）。完成：未知执行者、坏引用直接报错给编排者（不登记）。
     def dispatch(self, *, case_id: str, day: int, actor: str, executor: str, task: str,
-                 inputs: list[str], reason: str) -> dict:
+                 inputs: list[str], reason: str, params: dict | None = None) -> dict:
         if executor not in self.registry:  # 未注册
             return {"accepted": False, "error": f"没有执行者 {executor!r}，可用：{', '.join(sorted(self.registry))}"}
         bad = [r for r in inputs if not REF.match(r) or self.session.artifact_view(  # 引用必须存在
@@ -68,8 +79,8 @@ class Dispatcher:
         task_id = f"{case_id}-T{n}"  # 任务号
         ev = self.session.append("task_dispatched", day=day, actor=actor, case_id=case_id,  # 派发事件
                                  payload={"task_id": task_id, "executor": executor, "task": task,  # 内容
-                                          "inputs": inputs, "reason": reason})  # 输入与理由
-        self.pending.append(Task(task_id, executor, task, inputs, reason, ev["seq"]))  # 待运行
+                                          "inputs": inputs, "reason": reason, "params": params or {}})  # 输入、理由、参数
+        self.pending.append(Task(task_id, executor, task, inputs, reason, ev["seq"], params or {}))  # 待运行
         return {"accepted": True, "task_id": task_id}  # 接受
 
     # 功能：运行待办。依赖：_run_one。完成：batch_join 开时跑完全部并写 batch_joined，关时只跑一个；返回给编排者的消息。
@@ -91,8 +102,13 @@ class Dispatcher:
         spec = self.registry[t.executor]  # 执行者
         actor = f"{t.executor}@{case_id}"  # Runtime 标注的身份
         inputs = [self.session.artifact_view(REF.match(r)["id"], int(REF.match(r)["ver"])) for r in t.inputs]  # 输入
+        extra_deps: list[dict] = []  # 代码组件给出的额外依赖
         if spec.code is not None:  # 代码组件
-            content, status, reason = spec.code(t.task, inputs, {"case_id": case_id, "day": day}), "done", "完成"
+            out = spec.code(t.task, inputs, {"case_id": case_id, "day": day, "params": t.params})  # 调用
+            if isinstance(out, CodeResult):  # 带依赖与状态
+                content, status, reason, extra_deps = out.content, out.status, out.reason, out.deps  # 拆开
+            else:  # 纯内容
+                content, status, reason = out, "done", "完成"  # 默认完成
         else:  # LLM 子 Agent
             brief = "\n".join(f"- {a['artifact_id']}@v{a['version']}（{a['kind']}，{a['status']}）："  # 输入摘要
                               + json.dumps(a["content"], ensure_ascii=False) for a in inputs)  # 内容
@@ -106,7 +122,8 @@ class Dispatcher:
                        else {"text": res.text}) if status == "done" else {"status": status, "reason": reason}  # 未完成
         art = self.session.produce(f"{spec.kind}:{t.task_id}", spec.kind, content, day=day, actor=actor,  # 产出
                                    case_id=case_id, caused_by=t.seq,  # 因果：派发事件
-                                   deps=[{"artifact": a["artifact_id"], "version": a["version"]} for a in inputs],  # 依赖
+                                   deps=[{"artifact": a["artifact_id"], "version": a["version"]} for a in inputs]  # 依赖
+                                   + extra_deps,  # 代码组件的外部数据依赖
                                    meta={"status": status})  # 状态元数据
         ref = f"{art['artifact_id']}@v{art['version']}"  # 引用
         self.session.append("task_finished", day=day, actor="runtime", case_id=case_id,  # 完成事件

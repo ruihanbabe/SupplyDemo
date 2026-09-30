@@ -243,6 +243,7 @@ class DispatchArgs(BaseModel):
     task: str  # 任务说明
     inputs: list[str] = Field(default_factory=list)  # 输入 Artifact 引用（ID@v版本）
     reason: str  # 一句理由（写进计划，spec §5.9）
+    params: dict = Field(default_factory=dict)  # 给代码组件的结构化参数（F21，如需求列表、影响范围）
 
 
 class GoalRevisionArgs(BaseModel):

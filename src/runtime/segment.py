@@ -77,7 +77,8 @@ class SegmentRunner:
         if name == "dispatch_task":  # 派任务
             return self.dispatcher.dispatch(case_id=ctx.case_id, day=ctx.day, actor=actor,  # 登记
                                             executor=args.executor, task=args.task,  # 执行者与说明
-                                            inputs=args.inputs, reason=args.reason)  # 输入与理由
+                                            inputs=args.inputs, reason=args.reason,  # 输入与理由
+                                            params=args.params)  # 代码组件参数
         if name == "end_segment":  # 结束本段
             if self.dispatcher.pending:  # 还有待运行任务
                 return {"accepted": False, "error": "还有已派发未运行的任务，不能结束本段"}  # 拒绝

@@ -382,9 +382,9 @@
         "F07"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F21.md",
-      "note": "Contract 已写（2026-09-30），按用户授权直接实现"
+      "note": "完成（2026-09-30）：make check 90 过、test-integration 9 过；门控为最小门控，F12 接入同一挂点；待用户验收"
     },
     {
       "id": "F22",
