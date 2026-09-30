@@ -405,8 +405,8 @@
         "F21"
       ],
       "milestone": "M1",
-      "status": "not_started",
-      "contract": null,
+      "status": "in_progress",
+      "contract": "contracts/F22.md",
       "note": "M1 做薄版，后续里程碑补全"
     },
     {
