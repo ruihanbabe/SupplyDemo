@@ -8,7 +8,8 @@ from infrastructure.database import database_url
 BASELINE = {"hw_part", "alembic_version", "env_snapshot", "env_write",  # F03 加了环境两张表
             "session_event", "artifact", "artifact_dep",  # F06 加了 Session 三张表
             "tool_record", "metering",  # F07 留档表、F17 计量表
-            "datasheet_version", "datasheet_page"}  # F19 datasheet 版本表与页表
+            "datasheet_version", "datasheet_page",  # F19 datasheet 版本表与页表
+            "kb_entry", "kb_status"}  # F20 知识库 B
 
 
 def test_environment_url_overrides_dotenv(monkeypatch):
@@ -30,7 +31,7 @@ def test_baseline_has_only_hw_part_and_survives_repeat_and_downgrade(migrated):
     conn, config, schema = migrated
     assert set(inspect(conn).get_table_names(schema=schema)) == BASELINE
     command.upgrade(config, "head")
-    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0007"  # F19 起为 0007
+    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0008"  # F20 起为 0008
     command.downgrade(config, "base")
     assert inspect(conn).get_table_names(schema=schema) == ["alembic_version"]
     command.upgrade(config, "head")

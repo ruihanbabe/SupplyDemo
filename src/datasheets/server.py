@@ -6,6 +6,7 @@ spec §5.4 datasheet Server 的四个工具（全部 R0、按料号作用域 sco
 - datasheet_search(mpn, query, version?)：关键词 + 同义词找页码与片段（spec §6.1）。
 - datasheet_read_page(mpn, page, version?)：读某一页原文（外部内容，G6；交给模型前由 F13 做疑似指令检测）。
 version 缺省为最新版本；引用时写"料号 v版本前 12 位 第 N 页"。
+F20：同义词可换成术语表（Glossary.synonyms()）；板级文档以 board:<板> 为键共用这四个工具（Composite 来源 / 解析器）。
 load_datasheets_config()：读 config/datasheets.yaml。
 依赖：datasheets.store / fetch、tools.server、pydantic、PyYAML。被装配代理层的代码（F22/F23、测试）使用。
 """
@@ -56,8 +57,9 @@ class PageArgs(BaseModel):
 
 # 功能：构造 datasheet Server。依赖：存储、入库器、配置、同义词开关。完成：没入库的料读目录 / 检索 / 读页返回"查不到"并提示先 find。
 def datasheet_server(store: DatasheetStore, ingestor: Ingestor, *, config: dict | None = None,
-                     use_synonyms: bool = True) -> Server:
+                     use_synonyms: bool = True, synonyms: list[list[str]] | None = None) -> Server:
     cfg = config or load_datasheets_config()  # 配置
+    groups = synonyms if synonyms is not None else cfg["synonyms"]  # F20：传入术语表同义词则替换种子
 
     def version_of(mpn: str, version: str | None) -> str:  # 解析版本
         if version is not None:  # 指定了
@@ -84,7 +86,7 @@ def datasheet_server(store: DatasheetStore, ingestor: Ingestor, *, config: dict 
 
     def find_pages(a: SearchArgs, ctx):  # 检索
         v = version_of(a.mpn, a.version)  # 版本
-        hits = search(store, a.mpn, v, a.query, synonyms=cfg["synonyms"], use_synonyms=use_synonyms,  # 检索
+        hits = search(store, a.mpn, v, a.query, synonyms=groups, use_synonyms=use_synonyms,  # 检索
                       limit=cfg["search"]["limit"], snippet_chars=cfg["search"]["snippet_chars"])  # 限制
         return [{"page": h["page"], "snippet": h["snippet"], "version": v} for h in hits]  # 页码与片段
 

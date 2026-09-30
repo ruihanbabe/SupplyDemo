@@ -1,7 +1,7 @@
 """文件摘要（F16 · 编排者上下文分区组装）
 
 OrchestratorContext 是 F09 SegmentRunner 的 context_builder：每次唤醒从事件日志与 Artifact 现组装（spec §5.9），
-分区依次为 [系统] [案子卡片] [计划] [有效] [已失效] [历史] [新反馈]；摘要全由代码生成。
+分区依次为 [系统] [案子卡片] [计划] [记忆]（F20，接入记忆注入时才有，最多 5 条）[有效] [已失效] [历史] [新反馈]；摘要全由代码生成。
 超限（编排者 24K）按固定顺序裁剪：已失效压成一行 → 从最早开始裁掉历史；系统、案子卡片、新反馈永不裁剪。
 每次组装写一条 context_assembled 事件（各分区 token 估算、裁剪动作、是否仍超限）。
 消融开关 context_assembly 关闭时退化为"本案全部 Artifact 原文 + 全部事件"直接塞入，不摘要、不裁剪。
@@ -34,8 +34,10 @@ def _card(event: dict) -> str:
 class OrchestratorContext:
     # 功能：见文件摘要。依赖：context 配置段、消融开关、Skill 文本、编排者工具名。
     # 完成：可直接作为 SegmentRunner 的 context_builder（签名 (session, case_id, reason) → (system, user)）。
-    def __init__(self, cfg: dict, *, enabled: bool = True, skill: str = "", tools: list[str] = ()):
+    def __init__(self, cfg: dict, *, enabled: bool = True, skill: str = "", tools: list[str] = (),
+                 memory=None):
         self.cfg = cfg  # context 配置段
+        self.memory = memory  # F20：记忆注入 (session, case_id) → 行列表（None = 无记忆分区）
         self.enabled = enabled  # 消融开关
         self.skill = skill  # 编排者 Skill 文本（F20/F22 提供）
         self.tools = list(tools)  # 工具名
@@ -70,13 +72,23 @@ class OrchestratorContext:
         opened = next(e for e in events if e["type"] == "case_opened")["payload"]  # 开案内容
         state = session.case_state(case_id)  # 状态
         targets = {}  # 目标 → 状态
-        for t in opened.get("targets", []):  # 开案时的目标
-            targets[t] = "待处理"  # 初始
-        for e in events:  # 目标状态更新（F10/F22 写 target_status）
-            if e["type"] == "target_status":  # 更新
-                targets[e["payload"]["target"]] = e["payload"]["status"]  # 覆盖
+        for t in opened.get("targets", []):  # 开案时的目标（F10 Monitor 开案为 {mpn, gap, first_short_day}）
+            name = (f"{t['mpn']}（缺 {t['gap']} 颗，第 {t['first_short_day']} 天起）" if isinstance(t, dict)  # 缺料目标
+                    else t)  # 文本目标
+            targets[t["mpn"] if isinstance(t, dict) else t] = [name, "待处理"]  # 初始
+        for e in events:  # 目标状态更新（F10 并入 / 消除，F22 写 target_status）
+            p = e["payload"]  # 内容
+            if e["type"] == "case_target_added":  # 并入
+                for t in p["targets"]:  # 每个新目标
+                    targets[t["mpn"]] = [f"{t['mpn']}（缺 {t['gap']} 颗，第 {t['first_short_day']} 天起）", "待处理"]
+            elif e["type"] == "target_resolved" and p["mpn"] in targets:  # 缺口消除
+                targets[p["mpn"]][1] = "缺口已消除"  # 更新
+            elif e["type"] == "target_status" and p["target"] in targets:  # 编排者写的状态
+                targets[p["target"]][1] = p["status"]  # 覆盖
+            elif e["type"] == "target_status":  # 新目标
+                targets[p["target"]] = [p["target"], p["status"]]  # 记下
         card = (f"[案子卡片]\n目标：{opened.get('goal', '（未写）')}\n状态：{state['state']}"  # 目标与状态
-                + "".join(f"\n- {t}：{s}" for t, s in targets.items()))  # 各目标
+                + "".join(f"\n- {n}：{s}" for n, s in targets.values()))  # 各目标
         status = session.artifact_status()  # Artifact 状态
         arts = [a for a in session.store.artifacts(session.run_id) if a["case_id"] == case_id]  # 本案 Artifact
         plans = [a for a in arts if a["kind"] == "Plan" and status[(a["artifact_id"], a["version"])] == ART_VALID]  # 计划
@@ -99,7 +111,9 @@ class OrchestratorContext:
                     and e["seq"] not in carded]  # 有卡片的原始信号不重复出现
         if not any(e["type"] == "case_woken" for e in events if e["seq"] > last):  # 没有唤醒事件时
             feedback.insert(0, f"【唤醒】{reason}")  # 至少写明本次唤醒原因
+        memory = self.memory(session, case_id) if self.memory is not None else None  # F20 记忆（代码按实体键匹配）
         return {"card": card, "plan": plan,  # 固定顺序
+                **({"memory": "[记忆]\n" + ("\n".join(memory) or "无")} if memory is not None else {}),  # F20 记忆
                 "valid": "[有效]\n" + ("\n".join(valid) or "无"),  # 有效
                 "invalid": "[已失效]\n" + ("\n".join(invalid) or "无"),  # 已失效
                 "history": "[历史]\n" + ("\n".join(history) or "无"),  # 历史

@@ -13,9 +13,10 @@ sinks:
   policy_scoring:
     fields: [distributor, stock, unit_price_usd, eta_day]
     forbidden: [untrusted]
-  # 长期记忆写入：只接受带该人工节点确认记录的条目；不可信文本只能以引用块结构 {quote, source} 存放。
+  # 长期记忆写入：只接受带这些人工节点确认记录的条目（替代关系 H1 工程师、料号别名 H3 采购员，spec §5.10）；
+  # 不可信文本只能以引用块结构 {quote, source} 存放。
   memory:
-    confirmation_node: H1
+    confirmation_nodes: [H1, H3]
 
 # 疑似指令文本检测（B1 兜底）：交给模型的工具返回里命中任一正则（不分大小写）即加警告并记事件，不改数据。
 injection_patterns:

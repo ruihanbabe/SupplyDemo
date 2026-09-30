@@ -1,0 +1,23 @@
+# 电容术语表（mock 业务知识）。
+category: capacitor
+terms:
+  - {term: capacitance, synonyms: [容值, 电容量], note: 标称容值}
+  - {term: tolerance, synonyms: [容差, 精度], note: 容值允许偏差，如 ±5%（J）、±10%（K）}
+  - {term: rated voltage, synonyms: [额定电压, voltage rating, WV], note: 须不低于原料}
+  - {term: dielectric, synonyms: [介质, 材质], note: C0G/NP0、X5R、X7R 等，决定温度与偏压特性}
+  - {term: C0G, synonyms: [NP0, NPO, CG], note: I 类介质，容值稳定，射频与定时电路常用}
+  - {term: X7R, synonyms: [X7R 介质], note: II 类介质，-55~125°C ±15%}
+  - {term: X5R, synonyms: [X5R 介质], note: II 类介质，-55~85°C ±15%}
+  - {term: temperature coefficient, synonyms: [温度系数, TCC], note: 容值随温度变化}
+  - {term: DC bias, synonyms: [直流偏压特性, 偏压降容], note: II 类介质在直流偏压下容值下降}
+  - {term: ESR, synonyms: [等效串联电阻], note: 高频去耦与电源纹波相关}
+  - {term: ESL, synonyms: [等效串联电感], note: 高频去耦相关}
+  - {term: SRF, synonyms: [自谐振频率, self-resonant frequency], note: 射频电路中须高于工作频率}
+  - {term: Q factor, synonyms: [品质因数, Q 值], note: 射频电容损耗指标}
+  - {term: case size, synonyms: [尺寸, "0402", "0603", 1005 metric], note: 封装尺寸须一致}
+  - {term: height, synonyms: [高度, thickness, 厚度], note: 元件厚度，影响装配与屏蔽罩}
+  - {term: MLCC, synonyms: [多层陶瓷电容, ceramic capacitor], note: 多层片式陶瓷电容}
+  - {term: AEC-Q200, synonyms: [车规], note: 被动元件车规认证}
+  - {term: termination, synonyms: [端电极, soft termination], note: 端电极结构，影响抗弯裂}
+  - {term: operating temperature, synonyms: [工作温度, temperature range], note: 须覆盖产品温度等级}
+  - {term: decoupling, synonyms: [去耦, bypass, 旁路], note: 电源去耦用途，容值与 ESR 要求较宽松}

@@ -24,6 +24,8 @@ ablation:
   auto_retry: true                 # F15 自动重试：false 时限流 / 超时 / 上游错误直接交回执行者
   circuit_breaker: true            # F15 熔断：false 时不计失败、不熔断
   datasheet_synonyms: true         # F19 datasheet 检索同义词扩展：false 时只按原词检索（对比召回）
+  memory_injection: true           # F20 记忆注入：false 时上下文不注入知识库 B 条目
+  glossary_injection: true         # F20 术语注入：false 时节点启动不注入术语说明
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:

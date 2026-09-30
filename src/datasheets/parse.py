@@ -22,7 +22,7 @@ class BadDocument(ValueError):
     """文档结构不对（页码不连续、目录指向不存在的页等）。"""
 
 
-def _check(doc: dict) -> dict:
+def check_document(doc: dict) -> dict:
     """结构校验：页码从 1 连续；目录页码都存在。"""
     pages = [p["page"] for p in doc["pages"]]  # 页码
     if pages != list(range(1, len(pages) + 1)):  # 不连续
@@ -39,7 +39,7 @@ class FixtureParser:
     def parse(self, data: bytes, content_type: str) -> dict:
         if content_type != FIXTURE_TYPE:  # 不是样例
             raise BadDocument(f"FixtureParser 只解析样例，收到 {content_type}")  # 报错
-        return _check(json.loads(data.decode("utf-8")))  # 解析并校验
+        return check_document(json.loads(data.decode("utf-8")))  # 解析并校验
 
 
 class DoclingParser:

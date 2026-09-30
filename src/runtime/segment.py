@@ -4,6 +4,7 @@
   状态迁移（开启 → 规划中 → 执行中；等待 → 执行中）→ 从日志与 Artifact 现组装编排者上下文（M1 最小构建器，F16 替换）→
   编排者循环（每轮后运行本轮派发的任务批次并一次交回）→ end_segment(wait_for) 或预算触顶 / 失败 → 案子进入等待。
   进程内不保存半截对话；段中崩溃则整段重跑。
+  F20：propose_memory 交给知识库 B 生成提议并通知 H1 / H3（未接入时明确拒绝）。
   F14：escalate_to_human 走代码升级路径（关闭案子、通知采购员）并结束本段；段结束时案子已关闭则不再迁入等待。
   F12：report_to_planner 先过上报计划员门控（须附本案有效 ImpactReport，理由里的数字须出自它），不通过写 gate_rejected。
   F11：每段开始由 Authority 给编排者签根令牌（模式取开案内容 mode，缺省按权限配置；发起者 = 开案事件的执行者与序号）。
@@ -66,12 +67,14 @@ class SegmentRunner:
     # 完成：编排者工具清单由调用方给（F11 以后按能力令牌收窄）。
     def __init__(self, session: Session, loop: ExecutorLoop, dispatcher: Dispatcher, *, budgets: dict,
                  orchestrator_tools: list[str] | None, authority: Authority, escalation: Escalation | None = None,
+                 knowledge=None,
                  context_builder: Callable[[Session, str, str], tuple[str, str]] = minimal_context):
         self.session, self.loop, self.dispatcher = session, loop, dispatcher  # 依赖
         self.budgets = budgets  # runtime 配置段
         self.tools = orchestrator_tools  # 编排者工具（None = 令牌可见的全部；实际再 ∩ L1 可见，F11）
         self.authority = authority  # F11 令牌签发者
         self.escalation = escalation or Escalation(session)  # F14 升级（工具用 escalate，不受强制升级开关影响）
+        self.knowledge = knowledge  # F20 知识库 B（propose_memory；None = 未接入）
         self.context_builder = context_builder  # 上下文构建器
         self.stop: dict | None = None  # 本段是否已 end_segment（{wait_for, reason}）
 
@@ -94,6 +97,11 @@ class SegmentRunner:
                 return {"accepted": False, "error": "还有已派发未运行的任务，不能结束本段"}  # 拒绝
             self.stop = {"wait_for": args.wait_for, "reason": args.reason}  # 标记停止
             return {"accepted": True}  # 接受
+        if name == "propose_memory":  # F20 提议长期记忆（人工确认后才落库）
+            if self.knowledge is None:  # 未接入
+                return {"accepted": False, "error": "知识库尚未接入"}  # 明确拒绝
+            return self.knowledge.propose(self.session, case_id=ctx.case_id, day=ctx.day, actor=actor,  # 提议
+                                          **args.model_dump())  # 参数
         if name == "escalate_to_human":  # F14 主动升级
             self.escalation.escalate(ctx.case_id, "orchestrator", args.reason, day=ctx.day, actor=actor)  # 关闭并通知
             self.stop = {"wait_for": "human", "reason": f"已升级给人：{args.reason}"}  # 结束本段

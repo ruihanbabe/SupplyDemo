@@ -1,0 +1,23 @@
+# LED 术语表（mock 业务知识）。
+category: led
+terms:
+  - {term: forward voltage, synonyms: [正向电压, VF], note: 影响限流电阻选择}
+  - {term: forward current, synonyms: [正向电流, IF], note: 工作电流}
+  - {term: luminous intensity, synonyms: [发光强度, 亮度, mcd], note: 亮度指标}
+  - {term: dominant wavelength, synonyms: [主波长, λd], note: 决定颜色}
+  - {term: peak wavelength, synonyms: [峰值波长, λp], note: 光谱峰值}
+  - {term: viewing angle, synonyms: [视角, 发光角度], note: 半强度角}
+  - {term: color, synonyms: [颜色, 发光颜色], note: 红、绿、黄、蓝、白等}
+  - {term: reverse voltage, synonyms: [反向电压, VR], note: 可承受的反向电压}
+  - {term: package, synonyms: [封装, "0603", "0805", PLCC], note: 封装与极性标识须一致}
+  - {term: polarity, synonyms: [极性, cathode mark, 阴极标识], note: 贴装方向}
+  - {term: binning, synonyms: [分档, bin], note: 亮度与颜色分档，影响一致性}
+  - {term: power dissipation, synonyms: [功耗], note: 最大耗散功率}
+  - {term: operating temperature, synonyms: [工作温度, temperature range], note: 须覆盖产品温度等级}
+  - {term: lens, synonyms: [透镜, water clear, diffused, 雾状], note: 透明或散射}
+  - {term: side view, synonyms: [侧发光, right angle], note: 发光方向}
+  - {term: top view, synonyms: [顶发光], note: 发光方向}
+  - {term: ESD, synonyms: [静电防护, HBM], note: 静电敏感度}
+  - {term: MSL, synonyms: [湿敏等级, moisture sensitivity level], note: 回流前的烘烤要求}
+  - {term: current limiting resistor, synonyms: [限流电阻], note: 替换后 VF 不同可能需改阻值}
+  - {term: indicator, synonyms: [指示灯, status LED], note: 指示用途，对亮度一致性要求较低}

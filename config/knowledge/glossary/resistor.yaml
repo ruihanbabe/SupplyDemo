@@ -1,0 +1,23 @@
+# 电阻术语表（mock 业务知识；含采样电阻）。
+category: resistor
+terms:
+  - {term: resistance, synonyms: [阻值, 电阻值], note: 标称阻值}
+  - {term: tolerance, synonyms: [精度, 容差], note: 阻值允许偏差，如 ±1%（F）、±5%（J）}
+  - {term: power rating, synonyms: [额定功率, 功率], note: 须不低于原料}
+  - {term: TCR, synonyms: [温度系数, temperature coefficient], note: 阻值随温度变化，ppm/°C}
+  - {term: current sense, synonyms: [电流采样, 采样电阻, shunt], note: 低阻值电流检测}
+  - {term: Kelvin connection, synonyms: [开尔文连接, 四线, 4-terminal], note: 采样电阻四端连接，封装须一致}
+  - {term: case size, synonyms: [尺寸, "0402", "0603", "2512"], note: 封装尺寸须一致}
+  - {term: thick film, synonyms: [厚膜], note: 常规通用电阻工艺}
+  - {term: thin film, synonyms: [薄膜], note: 高精度、低噪声工艺}
+  - {term: metal element, synonyms: [金属箔, metal strip, 合金电阻], note: 大电流采样常用}
+  - {term: rated voltage, synonyms: [额定电压, working voltage, 最大工作电压], note: 高阻值时限制}
+  - {term: pulse withstand, synonyms: [脉冲耐受, surge], note: 浪涌能力}
+  - {term: operating temperature, synonyms: [工作温度, temperature range], note: 须覆盖产品温度等级}
+  - {term: derating, synonyms: [降额, power derating], note: 高温下功率降额曲线}
+  - {term: inductance, synonyms: [寄生电感, low inductance], note: 高频或快速采样时影响精度}
+  - {term: AEC-Q200, synonyms: [车规], note: 被动元件车规认证}
+  - {term: zero ohm, synonyms: [零欧, jumper, 跳线], note: 零欧电阻作跳线}
+  - {term: E-series, synonyms: [E24, E96, 标准阻值系列], note: 标准阻值序列}
+  - {term: anti-sulfur, synonyms: [抗硫化], note: 含硫环境下的可靠性}
+  - {term: thermal resistance, synonyms: [热阻], note: 散热能力，影响温升}

@@ -114,8 +114,8 @@ def expand(query: str, synonyms: list[list[str]], enabled: bool = True) -> list[
 
 
 def _pattern(term: str) -> str:
-    """词边界上的匹配（不跨进别的词：IL 不会命中 applications）。"""
-    return rf"(?<![\w]){re.escape(term)}(?![\w])"  # 正则
+    """英文词边界上的匹配（IL 不会命中 applications；中文前后不设边界，因为中文词之间没有空格）。"""
+    return rf"(?<![A-Za-z0-9_]){re.escape(term)}(?![A-Za-z0-9_])"  # 正则
 
 
 def _count(term: str, body: str) -> int:

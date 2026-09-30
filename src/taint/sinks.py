@@ -3,7 +3,7 @@
 TaintSinks 按 config/taint.yaml 检查数据能否流入某个汇点（spec §5.5 汇点表），返回拒绝原因列表（空 = 通过）：
 - po_content(labels)：采购单字段（料号、数量、供应商、单价）只能取可信 / 外部结构化 / 已校验。
 - policy_inputs(quote_artifact)：Policy 打分读入的报价字段不得为不可信。
-- memory_entry(entry, taint)：长期记忆只接受带 H1 确认记录的条目；不可信文本必须是引用块结构 {quote, source}。
+- memory_entry(entry, taint)：长期记忆只接受带 H1 / H3 确认记录的条目（F20 起按配置列表）；不可信文本必须是引用块结构 {quote, source}。
 - outbound(url, label, policy)：从不可信内容读出的网址须过 F11 出站白名单（可信来源的网址同样过白名单，只是原因不同）。
 消融开关 taint_tracking 关闭时所有汇点都放行（照常打标，便于 Eval 对比拦截率）。
 InjectionDetector：按配置正则在文本里找疑似指令（B1 兜底），只报告、不改数据。
@@ -66,11 +66,11 @@ class TaintSinks:
         """长期记忆条目：须有指定人工节点的确认记录；不可信的文本字段须为引用块结构。"""
         if not self.enabled:  # 消融
             return []  # 放行
-        node = self.config["sinks"]["memory"]["confirmation_node"]  # 确认节点
+        nodes = self.config["sinks"]["memory"]["confirmation_nodes"]  # 可接受的确认节点
         reasons = []  # 原因
         conf = entry.get("confirmation") or {}  # 确认记录
-        if conf.get("node") != node or not conf.get("by") or not conf.get("event_seq"):  # 缺确认
-            reasons.append(f"长期记忆只接受带 {node} 人工确认记录（node、by、event_seq）的条目")  # 原因
+        if conf.get("node") not in nodes or not conf.get("by") or not conf.get("event_seq"):  # 缺确认
+            reasons.append(f"长期记忆只接受带 {'/'.join(nodes)} 人工确认记录（node、by、event_seq）的条目")  # 原因
         for k, v in entry.items():  # 每个字段
             if k != "confirmation" and label_of(taint, k) == UNTRUSTED and isinstance(v, str):  # 裸露的不可信文本
                 reasons.append(f"字段 {k} 为不可信文本，只能以引用块 {{quote, source}} 存放")  # 原因

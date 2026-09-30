@@ -7,6 +7,7 @@ CaseRouter 是 F09 Scheduler 的 router 挂点（调用签名：env_day 事件 �
    根因已有未关闭案子则写 case_target_added 并入；消融 same_source_merge 关闭时每颗料单独开案 →
 ④ 关闭检查：目标料号的缺口消失写 target_resolved；全部目标消除且本案提交的采购单都已到货才以 resolved 关闭 →
 ⑤ 写 routing_done（记下已处理到的事件号，重启后从这里继续）。
+F20：传入知识库 B 时，每日用新事件同步记忆失效标记（datasheet 改版 → 待重验，EOL → 标记）。
 F14：传入 FeedbackLoop 时，① 之后先做偏差比对与强制升级检查，② 中再为新信号生成反馈卡片，"必须重规划"级加入唤醒。
 - subscriptions(case_id)：订阅集 = 开案实体键 ∪ 目标料号 ∪ 本案 po_submitted 的实体键 ∪ 本案 Artifact 外部依赖里的料号。
 - targets(case_id)：目标及其状态（open / resolved），从 case_opened / case_target_added / target_resolved 投影。
@@ -38,9 +39,10 @@ def load_cases_config(path: Path = CASES_CONFIG) -> dict:
 class CaseRouter:
     # 功能：见文件摘要。依赖：事件日志、当前环境取值函数、配置、消融开关 same_source_merge。
     def __init__(self, session: Session, get_env: Callable[[], Environment], *, config: dict | None = None,
-                 merge: bool = True, feedback=None):
+                 merge: bool = True, feedback=None, knowledge=None):
         self.session, self.get_env = session, get_env  # 依赖
         self.feedback = feedback  # F14 反馈循环（FeedbackLoop；None = 不生成卡片、不查偏差与升级）
+        self.knowledge = knowledge  # F20 知识库 B（每日同步失效标记；None = 不同步）
         self.config = config or load_cases_config()  # 配置
         self.merge = merge  # 同源合并开关
 
@@ -92,6 +94,8 @@ class CaseRouter:
         if self.feedback is not None:  # F14：偏差比对与强制升级
             self.feedback.before_routing(short_now, day)  # 写偏差 / 升级关闭
         new = [e for e in self.session.store.events(self.session.run_id, cursor) if e["type"] not in OWN]  # ② 新事件
+        if self.knowledge is not None:  # F20：datasheet 改版 / EOL → 记忆待重验
+            self.knowledge.sync(new)  # 同步
         wakes: dict[str, str] = {}  # 案子 → 原因
         live = [c["case_id"] for c in self.session.cases() if c["state"] != CASE_CLOSED]  # 未关闭案子
         subs = {c: self.subscriptions(c) for c in live}  # 订阅集
