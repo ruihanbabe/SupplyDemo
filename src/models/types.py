@@ -3,7 +3,8 @@
 Agent 循环只面对这里定义的内部格式（spec §5.3 模型适配层）：
 - Message / ToolSpec / ToolCall / ModelResponse：消息、工具定义、工具调用、模型响应。
 - Mpn：料号字段类型标记；输出模型里用它声明的字段会被"编造料号"检查（spec §5.3）。
-- 异常：ModelUnavailable（传输层：超时、限流、上游错误，重试熔断归 F15）、ModelFailure（格式失败且降级也失败）。
+- 异常：ModelUnavailable（传输层：超时、限流、上游错误，重试熔断归 F15）、EndpointUnavailable（F15 重试后仍失败 / 熔断中）、
+  ModelFailure（格式失败且降级也失败）。
 依赖：pydantic。被 providers、adapter 以及后续 Runtime（F09）、子 Agent（F23）使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
@@ -60,6 +61,10 @@ class ModelUnavailable(RuntimeError):
     def __init__(self, kind: str, message: str):
         super().__init__(message)  # 基类消息
         self.kind = kind  # 失败类型
+
+
+class EndpointUnavailable(ModelUnavailable):
+    """F15：重试后仍失败或熔断中的端点（spec §5.8：交回调用它的执行者，不升级）。执行者循环捕获它。"""
 
 
 class ModelFailure(RuntimeError):

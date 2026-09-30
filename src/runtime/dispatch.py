@@ -8,6 +8,7 @@
   消融开关 batch_join 关闭时每次只运行一个任务，编排者每完成一个任务就被唤醒一次。
 - F11：派发时由 Authority 从派发者令牌签发衰减后的子令牌（工具 = 父 ∩ 子角色 ∩ 注册工具，作用域 ⊆ 父），越界即拒绝派发；
   task_dispatched 事件 meta 记子令牌的代表链；LLM 子 Agent 凭子令牌跑循环，代码组件经 ctx["token"] 拿到子令牌调代理层。
+- F15：同一执行者同一任务说明此前未完成时标 redispatch_of，案子预算把重派计为一次重规划。
 - F13：每个产出的 Artifact 在 meta.taint 写字段标签：LLM 子 Agent 的产出一律不可信；代码组件用 CodeResult.taint 声明，
   没声明按不可信（来源不明）；标签不进给编排者的汇总文本。
 依赖：runtime.loop.ExecutorLoop、session.log.Session、permissions.tokens、taint.labels、pydantic。被 runtime.segment 使用；F21/F23 注册执行者。
@@ -93,12 +94,19 @@ class Dispatcher:
                                              tools=spec.tools if spec.code is None else None, scope=scope)  # 工具与作用域
         except AttenuationError as exc:  # 越界
             return {"accepted": False, "error": f"派发被拒：{exc}"}  # 报错给编排者
-        n = len(self.session.events(case_id=case_id, type="task_dispatched")) + 1  # 案子内任务序号
+        dispatched = self.session.events(case_id=case_id, type="task_dispatched")  # 本案已派发
+        n = len(dispatched) + 1  # 案子内任务序号
+        unfinished = {e["payload"]["task_id"] for e in self.session.events(case_id=case_id, type="task_finished")
+                      if e["payload"]["status"] != "done"}  # 未完成 / 失败的任务
+        again = next((e["payload"]["task_id"] for e in reversed(dispatched)  # F15：同一执行者同一任务此前未完成
+                      if e["payload"]["executor"] == executor and e["payload"]["task"] == task
+                      and e["payload"]["task_id"] in unfinished), None)  # 重派
         task_id = f"{case_id}-T{n}"  # 任务号
         ev = self.session.append("task_dispatched", day=day, actor=actor, case_id=case_id,  # 派发事件
                                  payload={"task_id": task_id, "executor": executor, "task": task,  # 内容
                                           "inputs": inputs, "reason": reason, "params": params or {},  # 输入、理由、参数
-                                          "scope": sorted(child.scope) if child.scope is not None else None},  # 作用域
+                                          "scope": sorted(child.scope) if child.scope is not None else None,  # 作用域
+                                          **({"redispatch_of": again} if again else {})},  # F15 重派（计一次重规划）
                                  meta=child.chain())  # F11 代表链
         self.pending.append(Task(task_id, executor, task, inputs, reason, ev["seq"], params or {}, child))  # 待运行
         return {"accepted": True, "task_id": task_id}  # 接受

@@ -10,6 +10,7 @@
 - control_server：编排控制工具（F14 起六个，含 escalate_to_human）的参数模型，调用转交给注册的处理函数（语义归 F09/F22）。
 - F11 风险级：环境、分销商、留档、派任务、问用户、结束本段为 R0；提出目标修订、上报计划员为 R1。
   distributor_server 可带独占凭证（真实后端用），查报价受料号作用域约束（scoped）；dispatch_task 增加可选 scope。
+- F15：单家分销商超时 / 上游错误只记进 CallContext.failed（部分成功），全部失败才整体抛错交代理层重试。
 依赖：tools.server、models.types（Mpn）、simenv.api、pydantic。被 ToolProxy 装配使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
@@ -201,13 +202,29 @@ def distributor_server(backend=None, credentials=None) -> Server:
     backend = backend or FixtureDistributorBackend()  # 后端
 
     def quotes(args: QuoteArgs, ctx: CallContext):  # 处理函数
-        rows = []  # 结果
+        rows, why = [], {}  # 结果；单家失败的信息（全部失败时拼进错误，经代理层脱敏）
         for mpn in args.mpns:  # 每颗料
             for d in args.distributors:  # 每家
                 if d in ctx.unavailable:  # 配额不可用
                     continue  # 部分成功：跳过
-                row = normalize_quote(d, backend.raw_quote(mpn, d), args.qty)  # 取原文并归一化
-                rows.append({"mpn": mpn, **row})  # 收下
+                if d in ctx.failed:  # 本次已失败的来源（F15：不再对它发请求）
+                    continue  # 跳过
+                try:  # 单家调用
+                    raw = backend.raw_quote(mpn, d)  # 取原文
+                except TimeoutError as exc:  # 该家超时
+                    ctx.failed[d], why[d] = "timeout", str(exc)  # 记下（部分成功）
+                    continue  # 下一家
+                except ConnectionError as exc:  # 该家上游错误
+                    ctx.failed[d], why[d] = "upstream_error", str(exc)  # 记下
+                    continue  # 下一家
+                rows.append({"mpn": mpn, **normalize_quote(d, raw, args.qty)})  # 归一化后收下
+        asked = [d for d in args.distributors if d not in ctx.unavailable]  # 实际请求的来源
+        if asked and all(d in ctx.failed for d in asked):  # 全部失败：整体上游错误（代理层重试）
+            kinds = set(ctx.failed.values())  # 失败类型
+            detail = "；".join(f"{d}: {why[d]}" for d in asked)  # 各家原因
+            if kinds == {"timeout"}:  # 全是超时
+                raise TimeoutError(f"分销商全部超时：{detail}")  # 超时
+            raise ConnectionError(f"分销商全部失败：{detail}")  # 上游错误
         return rows  # 列表
 
     return Server("distributor", [ToolDef(

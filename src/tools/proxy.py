@@ -8,8 +8,11 @@ ToolProxy.call() 是执行者调用任何工具的唯一入口（G1），按固�
 另有 read_record()：留档 Server 的实现，按记录号与游标翻页，不产生上游调用（F11：只能读本案子的记录）。
 F11：执行者、身份、案子一律从令牌取（不信调用方传参）；每条 tool_call 事件 meta 记代表链与风险级；
 留档、事件、错误信息写出前统一脱敏（凭证原值、敏感键、URL 参数）。
+F15：③–⑥ 在重试循环里（限流 / 超时 / 上游错误最多重试 2 次、指数退避）；熔断中的来源不发请求、按部分成功处理，
+全部熔断返回可重试的上游错误；重试后仍失败计入熔断；单家失败（CallContext.failed）部分成功并计入该家熔断。
 F13：交付给模型前做疑似指令检测（B1 兜底），命中加警告并在事件记 injection_suspected，不改数据（开关 taint_tracking）。
-依赖：tools.server / result / kv / quota / archive、session.log.Session、permissions.guard / redaction、taint.sinks、PyYAML。
+依赖：tools.server / result / kv / quota / archive、session.log.Session、permissions.guard / redaction、taint.sinks、
+resilience.policy（可选）、PyYAML。
 被 F09 Runtime（执行者调用工具）、F21 确定性组件（查环境与报价）使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
@@ -57,8 +60,9 @@ class ToolProxy:
                  archive: Archive, config: dict, guard: PermissionGuard,
                  overlays: list[Overlay] = (), faults: list[Fault] = (),
                  switches: dict[str, bool] | None = None, meter=None, redactor: Redactor | None = None,
-                 detector: InjectionDetector | None = None):
+                 detector: InjectionDetector | None = None, resilience=None):
         self.meter = meter  # F17 计量（可选，不传即不计量）
+        self.resilience = resilience  # F15 重试与熔断（resilience.policy.Resilience；None = 不重试不熔断）
         self.tools: dict[str, ToolDef] = {}  # 工具名 → 定义
         self.redact = redactor or Redactor(guard.config["secrets"]["sensitive_keys"])  # F11 脱敏器
         for server in servers:  # 每个 Server
@@ -109,13 +113,48 @@ class ToolProxy:
         if name == "read_record":  # 留档 Server：只读留档，不走上游管道
             return self.read_record(params.cursor, token=token, day=day, _info=info)  # 读留档
         keys = tool.entity_keys(params)  # 实体键
-        for fault in self.faults:  # ③ 测试注入（§5.12）
-            kind = fault(name, args, day)  # 是否注入错误
-            if kind:  # 注入
-                info["injected_fault"] = kind  # 标明测试注入
-                return self._finish(error_result(kind, f"测试注入：{kind}"), info, keys, actor, day, case_id, caused_by)
         tconf = self.config["tools"].get(tool.config_key or "", {})  # 该工具的两个时钟配置
         ckey = f"cache:{name}:{sha256(canonical(params.model_dump(mode='json')))}"  # 缓存键
+        providers = tool.providers(params)  # 涉及的提供方
+        res = self.resilience  # F15 重试与熔断（None = 未接入）
+        open_ = {p for p in providers if res is not None and res.is_open(p)}  # 熔断中的来源
+        if open_:  # 有熔断
+            info["circuit_open"] = sorted(open_)  # 记进事件
+        if providers and open_ == set(providers):  # 全部熔断：不发请求
+            return self._finish(error_result("upstream_error", f"来源熔断中，暂不可用、可稍后重试：{', '.join(sorted(open_))}"),
+                                info, keys, actor, day, case_id, caused_by)  # 可重试错误
+        delays = res.delays() if res is not None else []  # 各次重试前的等待
+        attempt = 0  # 尝试次数
+        while True:  # F15 重试循环（③ 测试注入 ④ 缓存 ⑤ 配额 ⑥ 调用都在循环内）
+            attempt += 1  # 计数
+            info["attempts"] = attempt  # 记进事件
+            out = self._attempt(tool, params, args, token, day, providers, open_, tconf, ckey, fresh, info,
+                                keys, actor, case_id, caused_by)  # 一次尝试
+            if isinstance(out, dict):  # 已得到最终结果（成功、缓存命中或不可重试的失败）
+                return out  # 返回
+            kind, msg = out  # 可重试类错误
+            if res is not None and res.retryable(kind) and attempt <= len(delays):  # 还能重试
+                res.sleep(delays[attempt - 1])  # 真实时间指数退避
+                continue  # 再试
+            if res is not None and kind in res.config["retry"]["retryable"]:  # 重试后仍失败：计入熔断
+                info["circuit_tripped"] = sorted(p for p in providers if p not in open_ and res.record_failure(p))
+            return self._finish(error_result(kind, msg), info, keys, actor, day, case_id, caused_by)  # 交回执行者
+
+    # -----------------------------------------------------------------------
+    # _attempt：一次尝试（管道 ③–⑧）
+    # 功能：测试注入 → 查缓存 → 配额 → 调用处理函数 → 返回校验 → 交付。
+    # 依赖：faults、kv、quota、tool.handler、resilience（成功清零 / 单家失败计入熔断）、_deliver、_finish。
+    # 完成：返回最终结果 dict；或 (错误类型, 信息) 交给 call() 决定是否重试。不可重试的错误（查不到、格式异常）直接给 dict。
+    # -----------------------------------------------------------------------
+    def _attempt(self, tool, params, args, token, day, providers, open_, tconf, ckey, fresh, info,
+                 keys, actor, case_id, caused_by):
+        for fault in self.faults:  # ③ 测试注入（§5.12）
+            kind = fault(tool.name, args, day)  # 是否注入错误
+            if kind:  # 注入
+                info["injected_fault"] = kind  # 标明测试注入
+                if self.resilience is not None and kind in self.resilience.config["retry"]["retryable"]:  # 可重试类
+                    return kind, f"测试注入：{kind}"  # 交给重试循环
+                return self._finish(error_result(kind, f"测试注入：{kind}"), info, keys, actor, day, case_id, caused_by)
         cached = self.kv.get(ckey) if tconf.get("cache_ttl_s") and not fresh else None  # ④ 查缓存（fresh 跳过）
         if cached is not None:  # 命中
             hit = json.loads(cached)  # {raw, data, warnings, fetched_day, record_id}
@@ -123,16 +162,16 @@ class ToolProxy:
             return self._deliver(tool, params, hit["raw"], hit["data"], hit["warnings"], hit["fetched_day"],  # 交付
                                  info, keys, actor, day, case_id, caused_by, from_cache_of=hit["record_id"])
         info["cache_hit"] = False  # 未命中
-        unavailable = set()  # ⑤ 配额
-        providers = tool.providers(params)  # 涉及的提供方
-        for p in providers:  # 逐个检查
-            if self.quota.try_acquire(p) is not None:  # 不放行
-                unavailable.add(p)  # 记下
-        if unavailable and unavailable == set(providers):  # 全部不可用
-            return self._finish(error_result("rate_limited", f"来源暂不可用（配额 / 限流）：{', '.join(sorted(unavailable))}"),
-                                info, keys, actor, day, case_id, caused_by)  # 返回限流
-        info["_quota_used"] = [p for p in providers if p not in unavailable]  # 实际扣了配额的
-        ctx = CallContext(day=day, case_id=case_id, executor=executor, unavailable=unavailable, token=token)  # 上下文
+        limited = set()  # ⑤ 配额 / 限流不放行的来源
+        for p in providers:  # 逐个检查（熔断中的不扣配额）
+            if p not in open_ and self.quota.try_acquire(p) is not None:  # 不放行
+                limited.add(p)  # 记下
+        unavailable = set(open_) | limited  # 本次不可用
+        if providers and unavailable == set(providers):  # 全部不可用
+            return "rate_limited", f"来源暂不可用（配额 / 限流）：{', '.join(sorted(limited))}"  # 可重试
+        info["_quota_used"] = info.get("_quota_used", []) + [p for p in providers if p not in unavailable]  # 实际扣了配额的
+        ctx = CallContext(day=day, case_id=token.case_id, executor=token.executor, unavailable=unavailable,  # 上下文
+                          token=token)  # 调用者令牌
         try:  # ⑥ 调用
             raw = tool.handler(params, ctx)  # 原始数据
         except NotFound as exc:  # 查不到
@@ -140,11 +179,19 @@ class ToolProxy:
         except BadFormat as exc:  # 整体无法解析
             return self._finish(error_result("bad_format", str(exc)), info, keys, actor, day, case_id, caused_by)
         except TimeoutError as exc:  # 超时
-            return self._finish(error_result("timeout", str(exc)), info, keys, actor, day, case_id, caused_by)
+            return "timeout", str(exc)  # 可重试
         except ConnectionError as exc:  # 上游错误
-            return self._finish(error_result("upstream_error", str(exc)), info, keys, actor, day, case_id, caused_by)
+            return "upstream_error", str(exc)  # 可重试
+        if self.resilience is not None:  # F15：成功清零、单家失败计入熔断
+            for p in providers:  # 每个来源
+                if p in ctx.failed:  # 单家失败（部分成功，不整体重试）
+                    self.resilience.record_failure(p)  # 计入该家熔断
+                elif p not in unavailable:  # 本次成功
+                    self.resilience.record_success(p)  # 清零
         raw = self.redact(raw)  # F11：上游原始返回先脱敏，缓存、留档、交给模型的都不含凭证
-        warnings = [f"来源 {p} 本次不可用（配额 / 限流），结果不含该来源" for p in sorted(unavailable)]  # 部分成功
+        warnings = [f"来源 {p} 熔断中，结果不含该来源" for p in sorted(open_)]  # F15 熔断
+        warnings += [f"来源 {p} 本次不可用（配额 / 限流），结果不含该来源" for p in sorted(limited)]  # 部分成功
+        warnings += [f"来源 {p} 本次调用失败（{k}），结果不含该来源" for p, k in sorted(ctx.failed.items())]  # 单家失败
         data = raw  # 默认原样
         if tool.validate is not None and self.validate_returns:  # ⑦ 返回校验（B3）
             try:  # 校验
@@ -152,7 +199,7 @@ class ToolProxy:
             except BadFormat as exc:  # 整体无法解析
                 return self._finish(error_result("bad_format", str(exc)), info, keys, actor, day, case_id, caused_by)
             warnings += found  # 合并警告
-        if tconf.get("cache_ttl_s") and not unavailable:  # ⑧ 写缓存（部分成功不缓存）
+        if tconf.get("cache_ttl_s") and not unavailable and not ctx.failed:  # ⑧ 写缓存（部分成功不缓存）
             info["_cache_key"] = ckey  # 留档后再写缓存（需要记录号）
         return self._deliver(tool, params, raw, data, warnings, day, info, keys, actor, day, case_id, caused_by)
 

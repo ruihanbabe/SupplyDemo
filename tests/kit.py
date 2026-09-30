@@ -122,7 +122,8 @@ def count(session, type, case_id="K7"):
 # 依赖：F07/F09/F11/F21/F10；gate 为可选的门控工厂 (proxy, claims) → 门控（F12 传 EvidenceGate），缺省为 F21 最小门控；
 #       unlimited 去掉配额与限流（令牌桶按真实时间，连续调用会被限流）。
 # 完成：返回命名空间 {s, env, proxy, run, ex}；run(执行者, 输入, 参数) 派一个任务、立即汇合，返回 (引用, Artifact)。
-def code_pipeline(*, gate=None, sinks=None, overlays=(), switches=None, unlimited=False, claims=None, case_id="K7"):
+def code_pipeline(*, gate=None, sinks=None, overlays=(), switches=None, unlimited=False, claims=None, case_id="K7",
+                  providers=None):
     from types import SimpleNamespace  # 命名空间
 
     from business.components import code_executors  # 代码执行者
@@ -133,6 +134,7 @@ def code_pipeline(*, gate=None, sinks=None, overlays=(), switches=None, unlimite
     cfg, kv = load_tools_config(), MemoryKV()  # 工具配置与 KV
     if unlimited:  # 测试不受真实时间令牌桶影响（一次测试里连续几十次调用）
         cfg["providers"] = {k: {"daily_limit": None, "rate_per_s": None, "burst": None} for k in cfg["providers"]}
+    cfg["providers"].update(providers or {})  # 覆盖个别提供方（如某家配额为 0，测部分成功）
     proxy = ToolProxy([distributor_server()], s, kv=kv, quota=QuotaGuard(kv, cfg["providers"]),  # 代理层
                       archive=MemoryArchive(), config=cfg, guard=guard(), overlays=overlays,  # 权限与注入
                       switches=switches)  # 开关

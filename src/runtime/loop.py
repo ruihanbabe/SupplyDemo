@@ -6,7 +6,8 @@ ExecutorLoop.run() 驱动一个执行者（子 Agent 或编排者）：模型调
 - 循环检测：相同工具 + 相同参数连续第 2 次不再调用，回"已查过，结果是……"；再犯即强制结束（消融开关 loop_detection）。
 - F16 折叠：fold_after 轮之前的工具结果在每次调模型前折叠为带记录号的存根。
 - 挂点：after_round（每轮工具调用处理完后调用，返回要追加给模型的消息，编排者用它做批次汇合）；should_stop（编排者 end_segment）。
-- 格式失败（ModelFailure）以 failed 结束；传输失败（ModelUnavailable）向上抛（F15 重试熔断）。
+- 格式失败（ModelFailure）以 failed 结束；F15：端点重试后仍不可用 / 熔断中（EndpointUnavailable）以 unfinished 结束并写明原因
+  （子 Agent 交回"未完成"、编排者结束本段）；其他传输失败（ModelUnavailable，如未接入重试组件）向上抛。
 - F11：执行者、身份、案子都取自 Runtime 持有的能力令牌；给模型的工具表 = 请求的工具 ∩ 令牌 L1 可见工具；
   被拒（无权限 / 工具不存在）累计达 config/permissions.yaml max_denied_attempts 即强制结束（受 loop_detection 开关）。
 依赖：models.adapter、models.types、tools.proxy、session.log.canonical、permissions（令牌经代理层校验）。被 runtime.dispatch（子 Agent）与 runtime.segment（编排者）使用。
@@ -21,7 +22,7 @@ from pydantic import BaseModel  # 输出模型
 
 from context.fold import fold_old_results  # F16 旧工具结果折叠
 from models.adapter import ModelAdapter  # 模型适配层
-from models.types import Message, ModelFailure, ToolSpec  # 内部格式与失败
+from models.types import EndpointUnavailable, Message, ModelFailure, ToolSpec  # 内部格式与失败
 from session.log import canonical  # 规范化 JSON（循环检测比较参数）
 from tools.proxy import ToolProxy  # 工具代理层
 
@@ -79,6 +80,8 @@ class ExecutorLoop:
                                         known_mpns=known_mpns, case_id=case_id, day=day, actor=actor)  # 身份
             except ModelFailure as exc:  # 格式失败且降级也失败
                 return LoopResult("failed", None, f"模型输出格式失败：{exc}", round_, used_calls)  # 普通失败
+            except EndpointUnavailable as exc:  # F15：重试后仍不可用或熔断中
+                return LoopResult("unfinished", None, f"模型端点不可用（{exc.kind}）：{exc}", round_, used_calls)  # 交回
             text = res.response.text  # 正文
             if not res.response.tool_calls:  # 没有工具调用：给出最终结果
                 return LoopResult("done", res.output, "完成", round_, used_calls, text)  # 完成

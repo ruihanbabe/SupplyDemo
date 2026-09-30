@@ -9,6 +9,8 @@ F12 用证据门控 + 审批令牌 + 提交前重校验替换同一挂点。拒�
 F13：建草稿前过"采购单内容"汇点——料号、数量、供应商、单价在被引用 Decision 中的标签必须是可信 / 外部结构化 / 已校验，
 否则写 gate_rejected 拒绝；草稿各字段继承这些标签（meta.taint）。
 F12：门控挂点换成 gate.evidence.EvidenceGate（证据、审批令牌、提交前重校验）；建草稿时把料号传给门控；
+F15：提交是两步写——po_submit_intent（幂等键）→ 写环境 → po_submitted；环境拒绝写入记 po_submit_failed 并按门控拒绝反馈；
+recover_pending_writes() 在进程重启后补齐"有意图、无完成"的写入（环境按幂等键去重，不会重复下单）。
 送审时附预演 preview_submission()：在环境状态副本上执行这次提交，给出提交前 / 后的缺料颗数、预计停线与延期天数。
 procurement_server()：三个写工具（参数只收 Artifact 引用），风险级 R1 建草稿、R1 送审、R2 提交；
 仅编排者在 S1 模式下可见（F11 按风险级与 config/permissions.yaml 强制）。
@@ -128,7 +130,7 @@ class ProcurementExecutor:
                                      "preview": preview}, caused_by=ev["seq"])  # 审批页附预演
         return {"ok": True, "approval_seq": ev["seq"]}  # 返回
 
-    # 功能：提交（R2）。完成：幂等键防重复下单；环境拒绝（WriteRejected）按门控拒绝反馈。
+    # 功能：提交（R2）。完成：幂等键防重复下单；F15 两步写（意图 → 环境 → 完成），环境拒绝（WriteRejected）按门控拒绝反馈。
     def submit(self, *, case_id: str, day: int, draft_ref: str) -> dict:
         draft = self._view(draft_ref)  # 草稿
         reasons = self._check("submit", case_id, day, draft, "PODraft")  # 门控（F12：令牌 + 重校验）
@@ -136,12 +138,45 @@ class ProcurementExecutor:
             return {"ok": False, "reasons": reasons}  # 返回
         c = draft["content"]  # 草稿内容
         key = f"{case_id}:{draft['artifact_id']}@v{draft['version']}:{draft['content_hash'][:16]}"  # 幂等键
-        result = self.get_env().submit_purchase_order(mpn=c["mpn"], qty=c["qty"], distributor=c["distributor"],
-                                                      unit_price=c["unit_price"], idempotency_key=key)  # 写环境
-        self.session.append("po_submitted", day=day, actor=f"procurement@{case_id}", case_id=case_id,  # 提交事件
-                            payload={"draft": draft_ref, "idempotency_key": key, **result},  # 采购单号与是否重复
-                            entity_keys={"mpn": [c["mpn"]], "po": [result["po_id"]], "distributor": [c["distributor"]]})
+        intent = self.session.append("po_submit_intent", day=day, actor=f"procurement@{case_id}",  # F15 ① 意图
+                                     case_id=case_id, payload={"draft": draft_ref, "idempotency_key": key,  # 草稿与幂等键
+                                                               "order": {k: c[k] for k in ("mpn", "qty", "distributor",
+                                                                                           "unit_price")}})  # 写入内容
+        return self._complete(intent, day=day)  # ② 写环境 ③ 完成
+
+    # 功能：两步写的后半（F15）：按意图写环境（环境按幂等键去重）→ 写完成事件；环境拒绝写入记失败并按门控拒绝反馈。
+    # 完成：提交与重放恢复共用；recovered 标明是重放补做的。
+    def _complete(self, intent: dict, *, day: int, recovered: bool = False) -> dict:
+        p, case_id = intent["payload"], intent["case_id"]  # 意图内容与案子
+        o = p["order"]  # 采购单内容
+        try:  # ② 写环境
+            result = self.get_env().submit_purchase_order(mpn=o["mpn"], qty=o["qty"], distributor=o["distributor"],
+                                                          unit_price=o["unit_price"],
+                                                          idempotency_key=p["idempotency_key"])  # 按幂等键去重
+        except WriteRejected as exc:  # 环境拒绝
+            self.session.append("po_submit_failed", day=day, actor=f"procurement@{case_id}", case_id=case_id,  # 失败完成
+                                payload={"draft": p["draft"], "idempotency_key": p["idempotency_key"],
+                                         "reason": str(exc)}, caused_by=intent["seq"])  # 原因
+            reasons = [f"环境拒绝写入：{exc}"]  # 反馈原因
+            self._reject("submit", case_id, day, self._view(p["draft"]), reasons, mpn=o["mpn"])  # 门控拒绝反馈
+            return {"ok": False, "reasons": reasons}  # 返回
+        self.session.append("po_submitted", day=day, actor=f"procurement@{case_id}", case_id=case_id,  # ③ 完成
+                            payload={"draft": p["draft"], "idempotency_key": p["idempotency_key"], **result,  # 采购单
+                                     **({"recovered": True} if recovered else {})},  # 重放补做
+                            entity_keys={"mpn": [o["mpn"]], "po": [result["po_id"]], "distributor": [o["distributor"]]},
+                            caused_by=intent["seq"])  # 因果：意图
         return {"ok": True, **result}  # 返回
+
+    # 功能：崩溃后恢复（F15，spec §5.8）：有意图、无完成（po_submitted / po_submit_failed）的写入，按幂等键重发——
+    #       环境里已存在就返回原单（补记完成），不存在就重做。返回补做的结果列表。
+    def recover_pending_writes(self, *, day: int) -> list[dict]:
+        done = {e["payload"]["idempotency_key"] for e in self.session.events()  # 已完成的幂等键
+                if e["type"] in ("po_submitted", "po_submit_failed")}  # 成功或失败都算完成
+        pending = {}  # 幂等键 → 最后一条意图
+        for e in self.session.events(type="po_submit_intent"):  # 全部意图
+            if e["payload"]["idempotency_key"] not in done:  # 没完成
+                pending[e["payload"]["idempotency_key"]] = e  # 记下
+        return [self._complete(e, day=day, recovered=True) for e in pending.values()]  # 逐个补做
 
 
 # ---------------------------------------------------------------------------

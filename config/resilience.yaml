@@ -1,0 +1,13 @@
+# 异常处理与恢复（F15，spec §5.8；G7：重试与熔断参数放配置）。
+
+version: 1
+
+retry:
+  max_retries: 2                 # 限流 / 超时 / 上游错误最多自动重试次数
+  backoff_base_s: 0.5            # 第 1 次重试前等待（真实秒）
+  backoff_factor: 2              # 之后每次乘以该倍数（指数退避）
+  retryable: [rate_limited, timeout, upstream_error]
+
+breaker:
+  threshold: 3                   # 同一上游连续失败（重试后仍失败）次数达到即熔断
+  open_s: 300                    # 熔断时长（真实秒，5 分钟）

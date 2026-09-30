@@ -21,6 +21,8 @@ ablation:
   feedback_cards: true             # F14 反馈卡片：false 时不生成卡片，新反馈分区回到原始事件
   deviation_feedback: true         # F14 预期与偏差：false 时不比对预期（A1 对照）
   forced_escalation: true          # F14 代码强制升级：false 时只保留预算触顶
+  auto_retry: true                 # F15 自动重试：false 时限流 / 超时 / 上游错误直接交回执行者
+  circuit_breaker: true            # F15 熔断：false 时不计失败、不熔断
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:

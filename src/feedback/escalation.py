@@ -6,7 +6,8 @@ Escalation.check(case_id, day) 依次检查（消融开关 forced_escalation 关
 - no_stock：该案最新有效决策里某料无选择，且各来源都因"现货不足"类原因被过滤（三家都无货）；
 - all_fail_grade：某原料的全部有效验证报告都是 C 级（候选全不可用）；
 - source_conflict：出现未化解的关键参数来源冲突事件（B2）；
-- injection：本案工具返回里检测到疑似指令（B1），另写 maintainer_flag 标记给维护者。
+- injection：本案工具返回里检测到疑似指令（B1），另写 maintainer_flag 标记给维护者；
+- post_submit_invalidation（F15 补偿）：已提交采购单所依据的草稿之后失效（如替代料验证失效）→ 不自动撤单，升级给人。
 escalate(case_id, rule, reason, day, evidence)：写 escalated（规则、原因、证据引用）→ 给采购员 human_request（代码摘要；
 Explainer 摘要归 F23）→ 以 escalated 关闭案子。
 依赖：session.log、feedback.cards（配置）。被 feedback.loop（每日）与 runtime.segment（escalate_to_human 工具）使用。
@@ -50,8 +51,8 @@ class Escalation:
         """按规则检查，命中即升级；返回是否升级。"""
         if not self.enabled:  # 消融
             return False  # 不查
-        for rule in (self._rejected_after_replans, self._no_stock, self._all_fail_grade,  # 规则顺序固定
-                     self._source_conflict, self._injection):  # 同上
+        for rule in (self._post_submit_invalidation, self._rejected_after_replans, self._no_stock,  # 规则顺序固定
+                     self._all_fail_grade, self._source_conflict, self._injection):  # 同上
             hit = rule(case_id)  # (规则名, 原因, 证据) 或 None
             if hit is not None:  # 命中
                 if hit[0] == "injection":  # B1：同时标记给维护者
@@ -59,6 +60,16 @@ class Escalation:
                                         payload={"reason": hit[1], "evidence": hit[2]})  # 维护者标记
                 return self.escalate(case_id, hit[0], hit[1], day=day, evidence=hit[2])  # 升级
         return False  # 未命中
+
+    def _post_submit_invalidation(self, case_id: str):
+        """已提交的采购单所依据的草稿失效（补偿：不撤单，升级给人）。"""
+        status = self.session.artifact_status()  # 状态表
+        for e in self.session.events(case_id=case_id, type="po_submitted"):  # 已提交
+            aid, _, ver = e["payload"]["draft"].rpartition("@v")  # 草稿引用
+            if status.get((aid, int(ver))) == "invalid":  # 草稿已失效
+                why = f"{e['payload']['po_id']} 已提交，但所依据的 {e['payload']['draft']} 失效，不自动撤单"  # 原因
+                return ("post_submit_invalidation", why, [e["payload"]["draft"], f"event#{e['seq']}"])  # 证据
+        return None  # 未命中
 
     def _rejected_after_replans(self, case_id: str):
         """同一料号：第一次拒绝与最近一次拒绝之间重规划次数达到阈值。"""

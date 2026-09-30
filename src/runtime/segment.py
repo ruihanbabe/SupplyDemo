@@ -160,8 +160,10 @@ class SegmentRunner:
         llm = len(self.session.events(case_id=case_id, type="llm_call"))  # LLM 调用数
         plans = sum(1 for e in self.session.events(case_id=case_id, type=EV_CASE_TRANSITION)  # 规划次数
                     if e["payload"]["to"] == CASE_PLANNING)  # 进入规划
-        if plans - 1 > c["max_replans"]:  # 重规划超限
-            return f"重规划 {plans - 1} 次，超过上限 {c['max_replans']}"  # 原因
+        redo = sum(1 for e in self.session.events(case_id=case_id, type="task_dispatched")  # F15：重派计重规划
+                   if e["payload"].get("redispatch_of"))  # 重派次数
+        if plans - 1 + redo > c["max_replans"]:  # 重规划超限
+            return f"重规划 {plans - 1 + redo} 次（含重派 {redo} 次），超过上限 {c['max_replans']}"  # 原因
         if llm >= c["max_llm_calls"]:  # LLM 调用超限
             return f"LLM 调用 {llm} 次，达到上限 {c['max_llm_calls']}"  # 原因
         return None  # 未触顶

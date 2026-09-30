@@ -25,7 +25,7 @@ class NotFound(LookupError):
 
 
 # 功能：处理函数收到的上下文。依赖：无。完成：模拟日、案子、执行者、配额不可用的提供方（部分成功用）；
-#       F11：调用者令牌（控制工具据此给子任务签发衰减后的令牌，模型拿不到它）。
+#       F11：调用者令牌（控制工具据此给子任务签发衰减后的令牌，模型拿不到它）；F15：单家失败的来源。
 @dataclass
 class CallContext:
     day: int  # 当前模拟日
@@ -33,6 +33,7 @@ class CallContext:
     executor: str  # 执行者角色
     unavailable: set[str] = field(default_factory=set)  # 本次因配额 / 限流不可用的提供方
     token: object = None  # F11：调用者的能力令牌（permissions.tokens.CapabilityToken）
+    failed: dict = field(default_factory=dict)  # F15：本次单家失败的来源 → 错误类型（处理函数填，代理层据此部分成功与熔断）
 
 
 # 功能：一个工具的完整声明。依赖：pydantic 参数模型。

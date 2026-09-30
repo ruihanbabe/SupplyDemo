@@ -6,7 +6,9 @@ ModelAdapter.call() 是 Agent 循环调用模型的唯一入口（spec §5.3）�
 每次尝试（含失败）都写一条 Session 事件 llm_call，含完整请求与响应（gen_ai.* 字段，§5.11），不含凭证与真实耗时
 （耗时放在返回值里给 F17 计量，不进哈希链，保证全回放的哈希链可比对）。
 依赖：models.types、models.providers、session.log.Session、infrastructure.config（消融开关）。
-被 F09 Runtime、F22 编排者、F23 子 Agent 使用；F07 提供 Redis 限流实现，F15 在外层做重试与熔断，F18 用 llm_call 记录做全回放。
+被 F09 Runtime、F22 编排者、F23 子 Agent 使用；F07 提供 Redis 限流实现，F18 用 llm_call 记录做全回放。
+F15：传入 resilience 时，每次尝试的传输失败（限流、超时、上游）按配置重试并指数退避，仍失败计入该端点熔断并抛
+EndpointUnavailable；熔断中的端点不发请求直接抛 EndpointUnavailable('circuit_open')；凭证缺失（config）不重试、原样上抛。
 """
 from __future__ import annotations  # 类型注解延迟求值
 
@@ -23,7 +25,14 @@ from pydantic.errors import (  # Schema 生成失败
 )
 
 from models.providers import build_request, parse_response  # 端点适配
-from models.types import Message, ModelFailure, ModelResponse, ToolSpec  # 内部格式
+from models.types import (  # 内部格式
+    EndpointUnavailable,
+    Message,
+    ModelFailure,
+    ModelResponse,
+    ModelUnavailable,
+    ToolSpec,
+)
 from session.log import Session, canonical, sha256  # 事件日志与哈希工具
 
 FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)  # ```json ... ``` 围栏
@@ -64,12 +73,13 @@ class ModelAdapter:
     # -----------------------------------------------------------------------
     def __init__(self, config: dict, transports: dict, session: Session, *,
                  limiter: Limiter | None = None, switches: dict[str, bool] | None = None,
-                 meter=None):
+                 meter=None, resilience=None):
         self.config = config  # 模型配置
         self.transports = transports  # 传输
         self.session = session  # 事件日志
         self.limiter = limiter or NoLimiter()  # 限流
         self.meter = meter  # F17 计量（可选，不传即不计量）
+        self.resilience = resilience  # F15 重试与熔断（None = 传输失败原样上抛）
         sw = switches or {}  # 消融开关
         self.repair = sw.get("schema_repair", True)  # 修复开关
         self.fallback = sw.get("model_fallback", True)  # 降级开关
@@ -93,7 +103,7 @@ class ModelAdapter:
             convo = list(messages)  # 本模型的对话（修复消息只追加在这里）
             for round_ in (1, 2):  # 首轮 + 修复 1 次
                 attempts += 1  # 计数
-                resp, seq, ms = self._attempt(name, convo, tools, schema, case_id=case_id, day=day,  # 调一次
+                resp, seq, ms = self._resilient(name, convo, tools, schema, case_id=case_id, day=day,  # 调一次（F15）
                                               actor=actor, attempt=attempts, repair=round_ == 2,  # 是否修复轮
                                               fallback=position > 0, errors_in=errors if round_ == 2 else [])  # 是否降级
                 seqs.append(seq)  # 事件序号
@@ -109,6 +119,35 @@ class ModelAdapter:
                                  Message("user", REPAIR_PROMPT.format(  # 修复消息
                                      errors="\n".join(f"- {e}" for e in errors)))]  # 逐条错误
         raise ModelFailure(f"{executor}: 模型链 {chain} 全部格式失败", errors)  # 普通失败交回上层
+
+    # -----------------------------------------------------------------------
+    # _resilient：带重试与熔断的一次尝试（F15）
+    # 功能：熔断中直接抛 EndpointUnavailable；传输失败按配置重试 + 退避；仍失败计入熔断并抛 EndpointUnavailable。
+    # 依赖：resilience（未接入则直接调 _attempt）。
+    # 完成：每次真实发出的请求都各有一条 llm_call 事件（_attempt 写）；凭证缺失等非传输错误原样上抛。
+    # -----------------------------------------------------------------------
+    def _resilient(self, name: str, *args, **kwargs):
+        res = self.resilience  # 重试与熔断
+        if res is None:  # 未接入
+            return self._attempt(name, *args, **kwargs)  # 原样
+        if res.is_open(name):  # 熔断中：不发请求
+            raise EndpointUnavailable("circuit_open", f"模型端点 {name} 熔断中，暂不可用、可稍后重试")  # 交回执行者
+        delays = res.delays()  # 各次重试前的等待
+        for i in range(len(delays) + 1):  # 首次 + 重试
+            try:  # 一次尝试
+                out = self._attempt(name, *args, **kwargs)  # 调用
+            except ModelUnavailable as exc:  # 传输失败
+                kind = "upstream_error" if exc.kind == "upstream" else exc.kind  # 与工具错误类型对齐
+                if kind not in res.config["retry"]["retryable"]:  # 非传输类（如凭证缺失）
+                    raise  # 原样上抛
+                if res.retryable(kind) and i < len(delays):  # 还能重试
+                    res.sleep(delays[i])  # 指数退避
+                    continue  # 再试
+                res.record_failure(name)  # 计入熔断
+                raise EndpointUnavailable(exc.kind, f"模型端点 {name} 重试后仍失败：{exc}") from exc  # 交回执行者
+            res.record_success(name)  # 成功清零
+            return out  # 结果
+        raise AssertionError("不可达")  # 循环总会返回或抛出
 
     # -----------------------------------------------------------------------
     # _attempt：一次模型调用（一个端点、一轮）

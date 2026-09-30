@@ -270,7 +270,7 @@
         "F21"
       ],
       "milestone": "M3",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F15.md",
       "note": "熔断状态放 Redis（§5.8）"
     },
