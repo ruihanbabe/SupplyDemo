@@ -234,8 +234,8 @@
         "F11"
       ],
       "milestone": "M2",
-      "status": "not_started",
-      "contract": null,
+      "status": "in_progress",
+      "contract": "contracts/F13.md",
       "note": ""
     },
     {
