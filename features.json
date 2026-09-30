@@ -342,8 +342,8 @@
         "F07"
       ],
       "milestone": "M2",
-      "status": "not_started",
-      "contract": null,
+      "status": "in_progress",
+      "contract": "contracts/F19.md",
       "note": ""
     },
     {
