@@ -323,7 +323,7 @@
         "F09"
       ],
       "milestone": "M3",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F18.md",
       "note": ""
     },

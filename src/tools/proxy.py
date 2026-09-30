@@ -10,6 +10,7 @@ F11：执行者、身份、案子一律从令牌取（不信调用方传参）�
 留档、事件、错误信息写出前统一脱敏（凭证原值、敏感键、URL 参数）。
 F15：③–⑥ 在重试循环里（限流 / 超时 / 上游错误最多重试 2 次、指数退避）；熔断中的来源不发请求、按部分成功处理，
 全部熔断返回可重试的上游错误；重试后仍失败计入熔断；单家失败（CallContext.failed）部分成功并计入该家熔断。
+F18：传入 replay（数据回放源）时外部来源工具不调后端，按留档交付（_replayed）；分叉运行读留档可回落到源运行。
 F13：交付给模型前做疑似指令检测（B1 兜底），命中加警告并在事件记 injection_suspected，不改数据（开关 taint_tracking）。
 依赖：tools.server / result / kv / quota / archive、session.log.Session、permissions.guard / redaction、taint.sinks、
 resilience.policy（可选）、PyYAML。
@@ -60,9 +61,11 @@ class ToolProxy:
                  archive: Archive, config: dict, guard: PermissionGuard,
                  overlays: list[Overlay] = (), faults: list[Fault] = (),
                  switches: dict[str, bool] | None = None, meter=None, redactor: Redactor | None = None,
-                 detector: InjectionDetector | None = None, resilience=None):
+                 detector: InjectionDetector | None = None, resilience=None, replay=None):
         self.meter = meter  # F17 计量（可选，不传即不计量）
         self.resilience = resilience  # F15 重试与熔断（resilience.policy.Resilience；None = 不重试不熔断）
+        self.replay = replay  # F18 数据回放源（replay.modes.ArchiveReplay；None = 实时）
+        self.archive_runs: list[str] = []  # F18 分叉：读留档时依次再找的源运行号
         self.tools: dict[str, ToolDef] = {}  # 工具名 → 定义
         self.redact = redactor or Redactor(guard.config["secrets"]["sensitive_keys"])  # F11 脱敏器
         for server in servers:  # 每个 Server
@@ -113,6 +116,8 @@ class ToolProxy:
         if name == "read_record":  # 留档 Server：只读留档，不走上游管道
             return self.read_record(params.cursor, token=token, day=day, _info=info)  # 读留档
         keys = tool.entity_keys(params)  # 实体键
+        if self.replay is not None and tool.source == "external":  # F18 数据回放：外部数据取留档
+            return self._replayed(tool, params, args, info, keys, actor, day, case_id, caused_by)  # 不调后端
         tconf = self.config["tools"].get(tool.config_key or "", {})  # 该工具的两个时钟配置
         ckey = f"cache:{name}:{sha256(canonical(params.model_dump(mode='json')))}"  # 缓存键
         providers = tool.providers(params)  # 涉及的提供方
@@ -139,6 +144,26 @@ class ToolProxy:
             if res is not None and kind in res.config["retry"]["retryable"]:  # 重试后仍失败：计入熔断
                 info["circuit_tripped"] = sorted(p for p in providers if p not in open_ and res.record_failure(p))
             return self._finish(error_result(kind, msg), info, keys, actor, day, case_id, caused_by)  # 交回执行者
+
+    # -----------------------------------------------------------------------
+    # _replayed：数据回放（F18）
+    # 功能：外部工具按（工具, 参数）第 N 次调用取源运行的留档原始数据交付；簿记字段照抄原事件；原调用失败则按原错误类型失败。
+    # 依赖：replay.take（缺失抛 ReplayMissing，不回退真实调用）、_deliver、_finish。
+    # 完成：不扣配额、不熔断、不读写缓存；返回校验按当前代码重做；原警告去掉疑似指令警告（交付时会重新检测）。
+    # -----------------------------------------------------------------------
+    def _replayed(self, tool, params, args, info, keys, actor, day, case_id, caused_by) -> dict:
+        orig, rec = self.replay.take(tool.name, args)  # 原事件与留档
+        info.update({k: orig[k] for k in ("cache_hit", "from_record", "attempts", "circuit_open",  # 簿记字段
+                                          "circuit_tripped", "injected_fault") if k in orig})  # 照抄
+        if rec is None:  # 原调用失败
+            kind = orig["error_type"]  # 原错误类型
+            return self._finish(error_result(kind, f"回放：原运行这次调用失败（{kind}）"), info, keys, actor, day,
+                                case_id, caused_by)  # 重现失败
+        raw = rec["raw"]  # 原始数据
+        data = tool.validate(raw)[0] if tool.validate is not None and self.validate_returns else raw  # 返回校验
+        warnings = [w for w in rec["warnings"] if "疑似指令" not in w]  # 原警告（检测结果交付时重做）
+        return self._deliver(tool, params, raw, data, warnings, rec.get("fetched_day", rec["day"]), info, keys,  # 交付
+                             actor, day, case_id, caused_by, from_cache_of=rec.get("from_cache_of"))  # 缓存来源
 
     # -----------------------------------------------------------------------
     # _attempt：一次尝试（管道 ③–⑧）
@@ -259,6 +284,8 @@ class ToolProxy:
         record_id, _, offset = cursor.partition(":")  # 拆游标
         info = _info  # 事件内容（call 里已组装，含代表链）
         rec = self.archive.get(self.session.run_id, record_id)  # 取记录
+        for run in self.archive_runs:  # F18 分叉：本运行没有就到源运行找（分叉前的记录）
+            rec = rec or self.archive.get(run, record_id)  # 再找
         if rec is None or (offset and not offset.isdigit()):  # 不存在或游标坏
             return self._finish(error_result("not_found", f"留档记录不存在：{cursor}"), info, {}, actor, day,
                                 case_id, None)  # 返回错误

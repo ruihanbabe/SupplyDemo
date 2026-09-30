@@ -10,6 +10,7 @@ F13：建草稿前过"采购单内容"汇点——料号、数量、供应商、
 否则写 gate_rejected 拒绝；草稿各字段继承这些标签（meta.taint）。
 F12：门控挂点换成 gate.evidence.EvidenceGate（证据、审批令牌、提交前重校验）；建草稿时把料号传给门控；
 F15：提交是两步写——po_submit_intent（幂等键）→ 写环境 → po_submitted；环境拒绝写入记 po_submit_failed 并按门控拒绝反馈；
+F18：on_point 挂点在"意图之后、调用环境之前"（after_intent）调用，测试注入可在此杀进程；
 recover_pending_writes() 在进程重启后补齐"有意图、无完成"的写入（环境按幂等键去重，不会重复下单）。
 送审时附预演 preview_submission()：在环境状态副本上执行这次提交，给出提交前 / 后的缺料颗数、预计停线与延期天数。
 procurement_server()：三个写工具（参数只收 Artifact 引用），风险级 R1 建草稿、R1 送审、R2 提交；
@@ -57,9 +58,10 @@ def minimal_gate(action: str, *, session: Session, case_id: str, artifact: dict 
 class ProcurementExecutor:
     # 功能：见文件摘要。依赖：事件日志、当前环境（崩溃恢复后环境对象会换，所以用取值函数）、门控挂点、F13 汇点。
     def __init__(self, session: Session, get_env: Callable[[], Environment], gate: Gate = minimal_gate,
-                 sinks: TaintSinks | None = None):
+                 sinks: TaintSinks | None = None, on_point: Callable[..., None] | None = None):
         self.session, self.get_env, self.gate = session, get_env, gate  # 依赖
         self.sinks = sinks or TaintSinks()  # F13 汇点检查
+        self.on_point = on_point  # F18 Runtime 注入挂点（如 FaultPlan.kill_point；None = 不注入）
 
     def _view(self, ref: str) -> dict | None:
         """按引用取 Artifact（含状态）；格式不对返回 None。"""
@@ -142,6 +144,8 @@ class ProcurementExecutor:
                                      case_id=case_id, payload={"draft": draft_ref, "idempotency_key": key,  # 草稿与幂等键
                                                                "order": {k: c[k] for k in ("mpn", "qty", "distributor",
                                                                                            "unit_price")}})  # 写入内容
+        if self.on_point is not None:  # F18 注入挂点：意图之后、调用环境之前
+            self.on_point("after_intent", day=day, case_id=case_id, draft=draft_ref)  # 可能在这里"杀进程"
         return self._complete(intent, day=day)  # ② 写环境 ③ 完成
 
     # 功能：两步写的后半（F15）：按意图写环境（环境按幂等键去重）→ 写完成事件；环境拒绝写入记失败并按门控拒绝反馈。

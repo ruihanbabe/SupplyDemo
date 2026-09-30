@@ -77,12 +77,16 @@ def inv(i):
 
 # 功能：装配一套 Runtime。script 为模型应答顺序；budgets / switches 可覆盖。
 # 依赖：F03/F06/F07/F08/F09 全部组件。完成：返回 (session, segments, scheduler, env, transport)。
-def build(script, *, budgets=None, max_active=4, context=None, **switches):
+#       F18：session / env 可传入（分叉后的运行）；env_store 给了就新建带存储的环境（运行号 run）。
+def build(script, *, budgets=None, max_active=4, context=None, session=None, env=None, env_store=None,
+          **switches):
     config = load_harness_config()  # 配置
     sw = {**config["ablation"], "model_fallback": False, **switches}  # 不降级，脚本只走 GLM
     rt = {**config["runtime"], **(budgets or {})}  # 预算
-    session = Session(MemorySessionStore(), "run", clock=lambda: "t")  # 事件日志
-    env = Environment.create(load_params(), load_boms(), 42)  # 环境
+    session = session or Session(MemorySessionStore(), "run", clock=lambda: "t")  # 事件日志
+    if env is None:  # 没传环境
+        env = Environment.create(load_params(), load_boms(), 42, store=env_store,  # 新环境
+                                 run_id="run" if env_store is not None else None)  # 带存储时的运行号
     holder = {}  # 延迟绑定控制处理函数（SegmentRunner 依赖代理层，代理层依赖处理函数）
     kv = MemoryKV()  # KV
     tcfg = load_tools_config()  # 工具配置
