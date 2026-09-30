@@ -270,8 +270,8 @@
         "F21"
       ],
       "milestone": "M3",
-      "status": "not_started",
-      "contract": null,
+      "status": "in_progress",
+      "contract": "contracts/F15.md",
       "note": "熔断状态放 Redis（§5.8）"
     },
     {
