@@ -1,35 +1,39 @@
 # HANDOFF.md — SupplyAgent 交接
 
-> 更新：2026-09-29（第二版）｜ 取代同日早先版本
-> 用途：新会话不看旧对话也能接上。先读本文件和 `AGENTS.md`，再按"下一步"定点读 `spec.md`，不要通读全文。
+> 更新：2026-09-30 ｜ 取代 2026-09-29 第二版
+> 用途：新会话不看旧对话也能接上。先读本文件和 `AGENTS.md`，再按"下一步"定点读 `spec.md` 与对应 `contracts/Fxx.md`，不要通读全文。
 
 ## 1. 现在在哪
 - 权威文档：`spec.md`（v0.3，§0–§6、§11 已定稿；§7–§9 深度点实验策略待定 P8）。Feature 清单与状态在 `features.json`（29 个，M1–M5）；每个 Feature 的 Contract 在 `contracts/`。
-- 分支 `spec-v0.2-harness-reset`，已推送到 GitHub（`origin` = `ruihanbabe/SupplyDemo`），最新提交 `5af7f36`。
-- **已完成并验收**：
-  - F01 工程底座（`89fdb6e`）：`src/` 只有 `knowledge`、`persistence`、`infrastructure`；alembic 新基线 `0001` 只建 `hw_part` + 只读角色 `supplyagent_app`；`make check` / `test-integration` 全绿。
-  - F02 第二块板（`a32d145`、`5af7f36`）：bms-c1 原理图入库（55 料号 / 154 贴装位；hackrf 62 / 297）；两块板 README 原文只读存档（`make fetch-docs`），板级上下文**不预先结构化**，按需经文档工具读取，抽取格式留到细化知识库时定（spec §1.3、§6 已回写）。
-- **待验收**（2026-09-30 自动推进，Contract 在 `contracts/`，状态见 `features.json`；全部 mock，无真实外部调用）：
-  - F03 环境内核 `src/simenv/`（迁移 0002，`make sim-run SEED=42`）；快照改在"日开盘"存。
-  - F06 Session 事件日志与 Artifact `src/session/`（0003）。
-  - F08 模型适配层 `src/models/`（端点差异 quirks 为待真实联调核实的假设）。
-  - F07 工具代理层 `src/tools/`（0004）：分销商只有固定样例后端；参数 Server 推迟 M2；MCP 标准传输需装 `mcp` 包（新依赖，待同意）。
-  - F17 计量 `src/observability/`（0005）。
-  - F09 Runtime 薄版 `src/runtime/`：**批内与案子间顺序执行、不用线程**（为保证可复现与全回放哈希链，Contract 默认值待确认）。
-  - 消融开关与 Runtime 预算集中在 `config/harness.yaml`。
+- 分支 `spec-v0.2-harness-reset`，最新提交见 `git log`；**本轮提交尚未推送**（推送前问用户）。
+- 门禁现状：`make check` 90 过；`make services-up && make migrate && make test-integration` 9 过（迁移到 0005）。
+- **已完成并验收**：F01 工程底座、F02 第二块板。
+- **待验收**（2026-09-29～30 按用户授权自动推进；全部 mock，无任何真实 LLM / 分销商调用）：
 
-## 2. 下一步：F03 起自动推进 Harness（用户 2026-09-29 定）
-1. **F03 环境内核**（已完成，待验收）：架构采用方案 A——纯 Python 内存领域模型按天推进（注入 → 到货 → 开工领料/缺料停线 → 订单到期）；Postgres 只存 `env_snapshot`（每日整状态 JSONB + 哈希）与 `env_write`（外部写入只追加日志 + 幂等键）；崩溃恢复 = 载入最近快照 + 重放当日写入；分叉 / 预演 = 载入快照。分五小步：① 领域模型 + 日推进（纯内存、离线测试）② 按种子生成两块板的计划/订单/初始库存 ③ 查询与写入接口 ④ 快照、分叉、写入日志与崩溃恢复（一次迁移）⑤ 结果指标。
-2. **F03 完成后自动完成所有 Harness Feature**，按 `features.json` 的依赖顺序。Harness = F06–F18 + F12、F22、F23；第一个是 F06。用户已拍板：
-   - 非 Harness 依赖 **一起做最小版**：F21（F10/F12/F15/F22 依赖）、F19、F20（F23 依赖）。
-   - 外部调用 **只用 mock** 和固定样例，不产生任何真实 LLM / 分销商调用；真实联调等用户授权。
-   - Contract **写了直接做**：每个 Feature 先写 Contract 并提交，不等确认直接实现；做完交运行证据，用户事后统一验收。
-3. 大致依赖顺序参考：F03 → F06 → F08 → F07 → F17 → F09 → F16 → F21 → F11 → F13 → F12 → F10 → F14 → F15 → F18 → F19 → F20 → F22 → F23（开工前以 `features.json` 的 `depends_on` 为准）。
+| Feature | 代码 | 迁移 | 要点 |
+|---|---|---|---|
+| F03 环境内核 | `src/simenv/` | 0002 | `make sim-run SEED=42`；快照改在"日开盘"存 |
+| F06 事件日志与 Artifact | `src/session/` | 0003 | 哈希链、失效传播、状态投影 |
+| F08 模型适配层 | `src/models/` | — | `config/models.yaml` 的 quirks 为待真实联调核实的假设 |
+| F07 工具代理层 | `src/tools/` | 0004 | 分销商只有固定样例后端；参数 Server 推迟 M2 |
+| F17 计量 | `src/observability/` | 0005 | |
+| F09 Runtime 薄版 | `src/runtime/` | — | 批内与案子间顺序执行（见 §5 待确认） |
+| F16 上下文组装 | `src/context/` | — | token 为字符估算 |
+| F21 确定性业务组件 | `src/business/` | — | 执行器用最小门控，F12 接入同一挂点 |
+
+- 配置集中处：消融开关、Runtime 预算、上下文上限在 `config/harness.yaml`；工具配额在 `config/tools.yaml`；Policy 在 `config/policy.yaml`；品类比对清单在 `config/checklists/`。
+- 测试共用装配在 `tests/kit.py`（整套 Runtime + ScriptedTransport）。
+
+## 2. 下一步：继续自动推进 Harness（用户 2026-09-29 定）
+1. 按依赖顺序继续：**F11 → F13 → F12 → F10 → F14 → F15 → F18 → F19 → F20 → F22 → F23**（开工前以 `features.json` 的 `depends_on` 为准）。下一个是 **F11 权限 L1/L2**（spec §5.5、§3.4）：替换 F07 代理层里"执行者 → 工具名集合"的最简白名单，接入能力令牌、代表链（事件 `meta` 字段已预留）、R0/R1/R2 分级、出站白名单、凭证脱敏。
+2. 每个 Feature：先写 Contract 并提交（`features.json` 状态改 `in_progress`）→ 实现 → `make check` + `make test-integration` 全绿 → 提交并改 `awaiting_acceptance`。不等确认，用户事后统一验收。
+3. 用户已拍板：非 Harness 依赖一起做最小版（F21 已做；F19、F20 为 F23 依赖）；外部调用只用 mock 和固定样例；Contract 写了直接做。
+4. 每做完两三个 Feature 更新一次本文件 §1 表格。
 
 ## 3. 代码规范（用户 2026-09-29 定，覆盖默认注释密度）
 - 每一句代码都有注释（中文）。
 - 每一段代码（函数 / 类 / 逻辑块）前写：功能说明、前后依赖说明（依赖谁、被谁用）、技术上完成了哪些部分。
-- 每个 Feature 完成后，在涉及的每个代码文件顶部写整个文件的摘要汇总。
+- 每个代码文件顶部写整个文件的摘要汇总（Feature 完成时核对是否仍准确）。
 - 只作用于新写 / 改写的代码，不回头改 F01/F02 已提交代码。
 
 ## 4. 协作节奏
@@ -37,11 +41,17 @@
 - 设计讨论时：每轮一个子系统、一段话 + 具体例子、≤2 个待决点，其余给默认值。给方案时列多个可行方案，说明技术实现、优缺点、对后续 Feature 的影响，给推荐。
 - spec 已定策略不删不降级，砍减只指推迟；信息只写进单一权威文档，别处只留编号引用。
 
-## 5. 已知问题
-- `features.json` 中 F20 的名称仍写"板级上下文 YAML"，与 F02 定的"原文存档、不预先结构化"冲突；做到 F20 写 Contract 时一并改。
-- `compose.yaml`、`CODING_RULES.md`、`requirement.txt` 仍引用已删除的旧文档（`DECISIONS.md` D14、`docs/spec/data-model.md` 等），`Makefile` 注释里也有 D14；待另行处理（用户曾提出清理后又搁置）。
-- 沙箱：pytest 启动会读 `.env`、写 `data/hardware/raw/` 与 `rm` 都会被拦，需在沙箱外执行或由用户在终端执行。
-- zsh 不会按空格拆分变量（`set -- $r`、`P="docker ..."; $P` 都会失败），脚本里用函数或 Python。
+## 5. 待用户确认（验收时一并定）
+- **F09 顺序执行**：批内任务与多个案子按固定顺序依次执行、不用线程。理由：线程交错会破坏可复现（§0.2）与全回放哈希链（§5.12）；Agent 思考不耗模拟时间（§4.2），结果不变只是更慢。"成批派发、整批结束才唤醒一次"与并发上限都保留。
+- **F03 快照时点**：由原定"日收盘"改为"日开盘"（当日机制后、写入前），快照只写一次，分叉点就是"同一局面、谁都没动手"。
+- **是否安装 `mcp` 包**（新依赖）：F07 的 Server 已按 MCP 工具形状实现，装上后加一层标准传输包装即可。
+- **真实联调**（需授权，G5）：F08 quirks、F16 token 系数、F07 分销商真实后端都等首次真实调用后校准。
 
-## 6. 新会话开场可以这样说
-"读 HANDOFF.md、AGENTS.md 和记忆，按 §2 开始 F03：先写 Contract 并提交，然后按五小步实现，之后按依赖顺序自动推进 Harness。"
+## 6. 已知问题
+- `features.json` 中 F20 的名称仍写"板级上下文 YAML"，与 F02 定的"原文存档、不预先结构化"冲突；做到 F20 写 Contract 时一并改。
+- `compose.yaml`、`CODING_RULES.md`、`requirement.txt` 仍引用已删除的旧文档（`DECISIONS.md` D14、`docs/spec/data-model.md` 等），`Makefile` 注释里也有 D14；待另行处理。
+- 沙箱：pytest 启动会读 `.env`（`make check`、`make test-integration` 须在沙箱外执行），写 `data/hardware/raw/` 与 `rm` 也会被拦。
+- zsh 不会按空格拆分变量，脚本里用函数或 Python。
+
+## 7. 新会话开场可以这样说
+"读 HANDOFF.md、AGENTS.md 和记忆，从 §2 的下一个 Feature（F11）继续自动推进 Harness。"
