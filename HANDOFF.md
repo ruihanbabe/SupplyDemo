@@ -6,7 +6,7 @@
 ## 1. 现在在哪
 - 权威文档：`spec.md`（v0.3，§0–§6、§11 已定稿；§7–§9 深度点实验策略待定 P8）。Feature 清单与状态在 `features.json`（29 个，M1–M5）；每个 Feature 的 Contract 在 `contracts/`。
 - 分支 `spec-v0.2-harness-reset`，最新提交见 `git log`；**本轮提交尚未推送**（推送前问用户）。
-- 门禁现状：`make check` 100 过；`make services-up && make migrate && make test-integration` 10 过（迁移到 0006）。本机 Docker 用 colima，先 `colima start`。
+- 门禁现状：`make check` 107 过；`make services-up && make migrate && make test-integration` 10 过（迁移到 0006）。本机 Docker 用 colima，先 `colima start`。
 - **已完成并验收**：F01 工程底座、F02 第二块板。
 - **待验收**（2026-09-29～30 按用户授权自动推进；全部 mock，无任何真实 LLM / 分销商调用）：
 
@@ -21,12 +21,13 @@
 | F16 上下文组装 | `src/context/` | — | token 为字符估算 |
 | F21 确定性业务组件 | `src/business/` | — | 执行器用最小门控，F12 接入同一挂点 |
 | F11 权限 L1/L2 | `src/permissions/` | 0006 | 能力令牌取代白名单；未写 mode 的案子默认 S3 只读 |
+| F13 污点追踪 | `src/taint/` | — | 标签在 Artifact `meta.taint`；编排者手填的数量进不了采购单（G4） |
 
-- 配置集中处：权限策略在 `config/permissions.yaml`；消融开关、Runtime 预算、上下文上限在 `config/harness.yaml`；工具配额在 `config/tools.yaml`；Policy 在 `config/policy.yaml`；品类比对清单在 `config/checklists/`。
+- 配置集中处：权限策略在 `config/permissions.yaml`，污点汇点与疑似指令模式在 `config/taint.yaml`；消融开关、Runtime 预算、上下文上限在 `config/harness.yaml`；工具配额在 `config/tools.yaml`；Policy 在 `config/policy.yaml`；品类比对清单在 `config/checklists/`。
 - 测试共用装配在 `tests/kit.py`（整套 Runtime + ScriptedTransport）。
 
 ## 2. 下一步：继续自动推进 Harness（用户 2026-09-29 定）
-1. 按依赖顺序继续：~~F11~~ → **F13 → F12 → F10 → F14 → F15 → F18 → F19 → F20 → F22 → F23**（开工前以 `features.json` 的 `depends_on` 为准）。下一个是 **F13 字段级污点追踪与汇点检查**（spec §5.5 污点追踪）。
+1. 按依赖顺序继续：~~F11 → F13~~ → **F12 → F10 → F14 → F15 → F18 → F19 → F20 → F22 → F23**（开工前以 `features.json` 的 `depends_on` 为准）。下一个是 **F12 证据门控与审批令牌**（spec §2.4、§5.5 审批令牌）：替换 F21 执行器的最小门控挂点。
 2. 每个 Feature：先写 Contract 并提交（`features.json` 状态改 `in_progress`）→ 实现 → `make check` + `make test-integration` 全绿 → 提交并改 `awaiting_acceptance`。不等确认，用户事后统一验收。
 3. 用户已拍板：非 Harness 依赖一起做最小版（F21 已做；F19、F20 为 F23 依赖）；外部调用只用 mock 和固定样例；Contract 写了直接做。
 4. 每做完两三个 Feature 更新一次本文件 §1 表格。
@@ -56,4 +57,4 @@
 - zsh 不会按空格拆分变量，脚本里用函数或 Python。
 
 ## 7. 新会话开场可以这样说
-"读 HANDOFF.md、AGENTS.md 和记忆，从 §2 的下一个 Feature（F13）继续自动推进 Harness。"
+"读 HANDOFF.md、AGENTS.md 和记忆，从 §2 的下一个 Feature（F12）继续自动推进 Harness。"
