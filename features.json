@@ -234,7 +234,7 @@
         "F11"
       ],
       "milestone": "M2",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F13.md",
       "note": ""
     },

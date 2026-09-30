@@ -117,7 +117,8 @@ def test_executor_gates_and_idempotency():
     chosen = {"distributor": "digikey", "stock": 900, "unit_price_usd": 0.5, "eta_day": 4, "amount_usd": 50.0}  # 选择
     s.produce("Decision:K1", "ProcurementDecision", {"feasible": True, "decisions": [  # 决策
         {"mpn": "SKY13453-385LF", "qty": 100, "chosen": chosen}]}, day=0, actor="policy", case_id="K1",
-        deps=[{"external": "quote:digikey:SKY13453-385LF", "version": "day0", "valid_until_day": 1}])  # 依赖报价
+        deps=[{"external": "quote:digikey:SKY13453-385LF", "version": "day0", "valid_until_day": 1}],  # 依赖报价
+        meta={"taint": {"*": "trusted", "decisions[].chosen": "external"}})  # F13：代码决策，选中报价为外部结构化
     ex = ProcurementExecutor(s, lambda: env)  # 执行器（最小门控）
     bad = ex.create_draft(case_id="K1", day=0, decision_ref="Decision:K1@v9", mpn="SKY13453-385LF")  # 不存在
     assert bad["ok"] is False and s.events(type="gate_rejected")  # 被拒并写反馈事件

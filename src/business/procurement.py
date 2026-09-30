@@ -6,9 +6,11 @@ ProcurementExecutor 是唯一能写采购数据的组件（spec §3.3）；写�
 - submit(PODraft 引用)：幂等键 = 案子 + 草稿版本 + 内容哈希前缀，写入环境（F03），写 po_submitted。
 每个动作先过门控挂点 gate(action, ...) → 拒绝原因列表；本文件自带最小门控（被引用 Artifact 有效、Decision 可行、类型正确），
 F12 用证据门控 + 审批令牌 + 提交前重校验替换同一挂点。拒绝时写 gate_rejected（F16 新反馈、F14 反馈卡片的来源）。
+F13：建草稿前过"采购单内容"汇点——料号、数量、供应商、单价在被引用 Decision 中的标签必须是可信 / 外部结构化 / 已校验，
+否则写 gate_rejected 拒绝；草稿各字段继承这些标签（meta.taint）。
 procurement_server()：三个写工具（参数只收 Artifact 引用），风险级 R1 建草稿、R1 送审、R2 提交；
 仅编排者在 S1 模式下可见（F11 按风险级与 config/permissions.yaml 强制）。
-依赖：session.log、simenv.api、tools.server。被编排者（经代理层）、F12、F15 使用。
+依赖：session.log、simenv.api、tools.server、taint.labels / sinks。被编排者（经代理层）、F12、F15 使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
 
@@ -19,6 +21,8 @@ from pydantic import BaseModel, Field  # 工具参数模型
 
 from session.log import ART_VALID, Session  # 事件日志
 from simenv.api import Environment  # 环境
+from taint.labels import TRUSTED, label_of, taint_of  # F13 标签
+from taint.sinks import TaintSinks  # F13 汇点
 from tools.server import Server, ToolDef  # 工具定义
 
 REF = re.compile(r"^(?P<id>.+)@v(?P<ver>\d+)$")  # Artifact 引用：ID@v版本
@@ -44,9 +48,11 @@ def minimal_gate(action: str, *, session: Session, case_id: str, artifact: dict 
 
 
 class ProcurementExecutor:
-    # 功能：见文件摘要。依赖：事件日志、当前环境（崩溃恢复后环境对象会换，所以用取值函数）、门控挂点。
-    def __init__(self, session: Session, get_env: Callable[[], Environment], gate: Gate = minimal_gate):
+    # 功能：见文件摘要。依赖：事件日志、当前环境（崩溃恢复后环境对象会换，所以用取值函数）、门控挂点、F13 汇点。
+    def __init__(self, session: Session, get_env: Callable[[], Environment], gate: Gate = minimal_gate,
+                 sinks: TaintSinks | None = None):
         self.session, self.get_env, self.gate = session, get_env, gate  # 依赖
+        self.sinks = sinks or TaintSinks()  # F13 汇点检查
 
     def _view(self, ref: str) -> dict | None:
         """按引用取 Artifact（含状态）；格式不对返回 None。"""
@@ -77,6 +83,16 @@ class ProcurementExecutor:
             self._reject("draft", case_id, day, dec, reasons)  # 记拒绝
         if reasons:  # 拒绝
             return {"ok": False, "reasons": reasons}  # 返回
+        i = dec["content"]["decisions"].index(pick)  # 该料在决策中的下标
+        dt = taint_of(dec)  # 决策的标签
+        labels = {f: label_of(dt, f"decisions[{i}].{p}") for f, p in (  # F13：草稿字段 ← 决策中的来源字段
+            ("mpn", "mpn"), ("qty", "qty"), ("distributor", "chosen.distributor"),  # 料号、数量、供应商
+            ("unit_price", "chosen.unit_price_usd"), ("eta_day", "chosen.eta_day"),  # 单价、到货日
+            ("amount_usd", "chosen.amount_usd"), ("evidence", "chosen"))}  # 金额、数值快照
+        reasons = self.sinks.po_content(labels)  # 采购单内容汇点
+        if reasons:  # 污染字段
+            self._reject("draft", case_id, day, dec, reasons)  # 记拒绝（反馈卡片来源）
+            return {"ok": False, "reasons": reasons}  # 返回
         c = pick["chosen"]  # 选中的报价
         content = {"mpn": mpn, "qty": pick["qty"], "distributor": c["distributor"],  # 草稿内容：全部来自 Decision
                    "unit_price": str(c["unit_price_usd"]), "eta_day": c["eta_day"],  # 单价与到货日
@@ -84,7 +100,8 @@ class ProcurementExecutor:
                    "evidence": {"stock": c["stock"], "unit_price_usd": c["unit_price_usd"]}}  # 数值快照（提交前重校验用）
         art = self.session.produce(f"PODraft:{case_id}:{mpn}", "PODraft", content, day=day,  # 产出
                                    actor=f"procurement@{case_id}", case_id=case_id,  # 身份
-                                   deps=[{"artifact": dec["artifact_id"], "version": dec["version"]}])  # 依赖决策
+                                   deps=[{"artifact": dec["artifact_id"], "version": dec["version"]}],  # 依赖决策
+                                   meta={"taint": {"*": TRUSTED, **labels}})  # F13：字段继承决策的标签
         return {"ok": True, "draft": f"{art['artifact_id']}@v{art['version']}", "content": content}  # 返回
 
     # 功能：送审（R1）。完成：记下草稿内容哈希，审批令牌（F12）将绑定它；通知主管。
