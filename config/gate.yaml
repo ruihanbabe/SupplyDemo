@@ -1,0 +1,16 @@
+# 证据门控与审批令牌（F12，spec §2.4、§5.5；G7：门控参数放配置）。
+
+version: 1
+
+# 替代料的验证等级要求（spec §2.4）：pass 直接通过；需要 H1 确认的等级；其余一律拒绝（C 级永远不行）。
+substitute:
+  pass_grades: [A]
+  confirm_grades: [B]          # 须有 H1 工程师确认记录
+
+# 审批令牌（G2）：审批通过后多少个模拟日内有效（含当天之后的第 N 天）。
+approval:
+  valid_days: 3
+
+# 提交前重校验（A2）：实时报价的库存须仍覆盖数量；单价相对草稿快照的偏差不超过该百分比。
+revalidation:
+  price_tolerance_pct: 0

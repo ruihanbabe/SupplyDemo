@@ -15,6 +15,7 @@ ablation:
   tool_result_folding: true        # F16 旧工具结果折叠：false 时活跃段内工具结果全文保留
   capability_scope: true           # F11 令牌作用域：false 时不按料号作用域收窄与检查（工具集合与风险级检查照常）
   taint_tracking: true             # F13 污点汇点：false 时照常打标，但汇点不拦、不做疑似指令检测
+  presubmit_revalidation: true     # F12 提交前重校验：false 时提交只查审批令牌，不实时复查库存与单价（A2 对照）
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:

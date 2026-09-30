@@ -1,20 +1,14 @@
 """F13：字段级污点追踪测试。全部离线：固定样例报价、脚本模型，不产生任何真实调用。"""
 import json  # 检查请求体
 
-from kit import MPN, build, dispatch, end, guard, open_case, tok  # 共用装配
+from kit import MPN, build, code_pipeline, dispatch, end, guard, open_case, tok  # 共用装配
 
-from business.components import code_executors  # 三个代码执行者
-from business.procurement import ProcurementExecutor  # 采购执行器
 from context.assemble import OrchestratorContext  # F16 上下文
 from infrastructure.config import load_harness_config  # 配置
 from models.providers import reply  # 脚本应答
 from permissions.egress import EgressPolicy  # 出站白名单
-from runtime.dispatch import Dispatcher  # 派发器
 from session.log import Session  # 事件日志
 from session.store import MemorySessionStore  # 内存存储
-from simenv.api import Environment  # 环境
-from simenv.bom import load_boms  # BOM
-from simenv.params import load_params  # 参数
 from taint.labels import (  # 标签
     EXTERNAL,
     TRUSTED,
@@ -33,29 +27,10 @@ from tools.quota import QuotaGuard  # 配额
 from tools.servers import distributor_server  # 分销商 Server
 
 
-# 功能：装配只带分销商 Server 的代码执行链：事件日志、环境、代理层、三个代码执行者、派发器、执行器。
-# 依赖：F07/F09/F11/F21。完成：返回 (session, env, run, executor)；run(执行者, 输入, 参数) 派一个任务并返回 (引用, Artifact)。
 def pipeline(proxy_switches=None, sinks=None):
-    s = Session(MemorySessionStore(), "r", clock=lambda: "t")  # 事件日志
-    env = Environment.create(load_params(), load_boms(), 42)  # 环境
-    cfg, kv = load_tools_config(), MemoryKV()  # 工具配置与 KV
-    proxy = ToolProxy([distributor_server()], s, kv=kv, quota=QuotaGuard(kv, cfg["providers"]),  # 代理层
-                      archive=MemoryArchive(), config=cfg, guard=guard(), switches=proxy_switches)  # 权限
-    registry = code_executors(lambda: env, proxy, run_id="r", sinks=sinks)  # 代码执行者
-    disp = Dispatcher(s, loop=None, registry=registry, budgets=load_harness_config()["runtime"],  # 派发器
-                      authority=proxy.guard.authority)  # 子令牌
-    parent = tok(proxy, "orchestrator", "K7")  # 编排者根令牌
-    s.open_case("K7", day=0, actor="runtime", payload={"mode": "S1"})  # 开案
-
-    def run(executor, inputs=(), params=None):  # 派一个任务并立即汇合
-        disp.dispatch(parent=parent, day=0, executor=executor, task=executor, inputs=list(inputs), reason="t",
-                      params=params)  # 派发
-        disp.run_pending(case_id="K7", day=0)  # 运行
-        ref = s.events(type="task_finished")[-1]["payload"]["artifact"]  # 产出引用
-        art_id, _, ver = ref.rpartition("@v")  # 拆引用
-        return ref, s.artifact_view(art_id, int(ver))  # 引用与 Artifact
-
-    return s, env, run, ProcurementExecutor(s, lambda: env, sinks=sinks)  # 返回
+    """kit.code_pipeline 的元组形式：(session, env, run, executor)。"""
+    p = code_pipeline(sinks=sinks, switches=proxy_switches)  # 装配
+    return p.s, p.env, p.run, p.ex  # 拆开
 
 
 # 功能：标签基础——最长规则优先、`[]` 匹配任意下标、字段边界对齐、缺表按不可信、合并取最弱、去污。

@@ -85,8 +85,10 @@ class ToolProxy:
     # 功能：见文件摘要的管道。
     # 依赖：本类各私有步骤；guard（F11）。
     # 完成：返回统一结构；每次调用恰好一条 tool_call 事件（成功或失败）；身份全部取自令牌。
+    #       fresh=True 跳过缓存读取（F12 提交前重校验用；只有代码能传，模型的工具参数里没有它）。
     # -----------------------------------------------------------------------
-    def call(self, name: str, args: dict, *, token, day: int, caused_by: int | None = None) -> dict:
+    def call(self, name: str, args: dict, *, token, day: int, caused_by: int | None = None,
+             fresh: bool = False) -> dict:
         executor = getattr(token, "executor", "unknown")  # 执行者（令牌不可信时照样记事件）
         actor, case_id = getattr(token, "actor", "unknown"), getattr(token, "case_id", None)  # 身份与案子
         tool = self.tools.get(name)  # 找工具
@@ -114,7 +116,7 @@ class ToolProxy:
                 return self._finish(error_result(kind, f"测试注入：{kind}"), info, keys, actor, day, case_id, caused_by)
         tconf = self.config["tools"].get(tool.config_key or "", {})  # 该工具的两个时钟配置
         ckey = f"cache:{name}:{sha256(canonical(params.model_dump(mode='json')))}"  # 缓存键
-        cached = self.kv.get(ckey) if tconf.get("cache_ttl_s") else None  # ④ 查缓存
+        cached = self.kv.get(ckey) if tconf.get("cache_ttl_s") and not fresh else None  # ④ 查缓存（fresh 跳过）
         if cached is not None:  # 命中
             hit = json.loads(cached)  # {raw, data, warnings, fetched_day, record_id}
             info.update(cache_hit=True, from_record=hit["record_id"])  # 记命中

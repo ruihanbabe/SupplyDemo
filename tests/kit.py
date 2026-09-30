@@ -47,9 +47,10 @@ def guard(executors=None, **kw) -> PermissionGuard:
 
 
 def tok(proxy_or_guard, executor, case_id="K7", mode="S1", scope=None):
-    """给某执行者签一张根令牌（测试直接调代理层时用）。"""
+    """给某执行者签一张根令牌（测试直接调代理层时用）；参数可为代理层、权限检查器或签发者。"""
     g = getattr(proxy_or_guard, "guard", proxy_or_guard)  # 代理层或检查器
-    return g.authority.issue_root(executor=executor, case_id=case_id, mode=mode,  # 签发
+    auth = g if hasattr(g, "issue_root") else g.authority  # 签发者
+    return auth.issue_root(executor=executor, case_id=case_id, mode=mode,  # 签发
                                   initiated_by="test", scope=scope)  # 发起者与作用域
 
 
@@ -115,3 +116,39 @@ def count(session, type, case_id="K7"):
     return len(session.events(case_id=case_id, type=type))  # 计数
 
 
+
+
+# 功能：只带分销商 Server 的代码执行链（F13 起）：事件日志、环境、代理层、三个代码执行者、派发器、采购执行器。
+# 依赖：F07/F09/F11/F21；gate 为可选的门控工厂 (proxy) → 门控（F12 传 EvidenceGate），缺省为 F21 最小门控；
+#       unlimited 去掉配额与限流（令牌桶按真实时间，连续调用会被限流）。
+# 完成：返回命名空间 {s, env, proxy, run, ex}；run(执行者, 输入, 参数) 派一个任务、立即汇合，返回 (引用, Artifact)。
+def code_pipeline(*, gate=None, sinks=None, overlays=(), switches=None, unlimited=False):
+    from types import SimpleNamespace  # 命名空间
+
+    from business.components import code_executors  # 代码执行者
+    from business.procurement import ProcurementExecutor, minimal_gate  # 执行器与最小门控
+
+    s = Session(MemorySessionStore(), "r", clock=lambda: "t")  # 事件日志
+    env = Environment.create(load_params(), load_boms(), 42)  # 环境
+    cfg, kv = load_tools_config(), MemoryKV()  # 工具配置与 KV
+    if unlimited:  # 测试不受真实时间令牌桶影响（一次测试里连续几十次调用）
+        cfg["providers"] = {k: {"daily_limit": None, "rate_per_s": None, "burst": None} for k in cfg["providers"]}
+    proxy = ToolProxy([distributor_server()], s, kv=kv, quota=QuotaGuard(kv, cfg["providers"]),  # 代理层
+                      archive=MemoryArchive(), config=cfg, guard=guard(), overlays=overlays,  # 权限与注入
+                      switches=switches)  # 开关
+    registry = code_executors(lambda: env, proxy, run_id="r", sinks=sinks)  # 代码执行者
+    disp = Dispatcher(s, loop=None, registry=registry, budgets=load_harness_config()["runtime"],  # 派发器
+                      authority=proxy.guard.authority)  # 子令牌
+    parent = tok(proxy, "orchestrator", "K7")  # 编排者根令牌
+    s.open_case("K7", day=0, actor="runtime", payload={"mode": "S1"})  # 开案（处置模式）
+
+    def run(executor, inputs=(), params=None, day=0):  # 派一个任务并立即汇合
+        disp.dispatch(parent=parent, day=day, executor=executor, task=executor, inputs=list(inputs), reason="t",
+                      params=params)  # 派发
+        disp.run_pending(case_id="K7", day=day)  # 运行
+        ref = s.events(type="task_finished")[-1]["payload"]["artifact"]  # 产出引用
+        art_id, _, ver = ref.rpartition("@v")  # 拆引用
+        return ref, s.artifact_view(art_id, int(ver))  # 引用与 Artifact
+
+    ex = ProcurementExecutor(s, lambda: env, gate=gate(proxy) if gate else minimal_gate, sinks=sinks)  # 执行器
+    return SimpleNamespace(s=s, env=env, proxy=proxy, run=run, ex=ex)  # 返回

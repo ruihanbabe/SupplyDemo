@@ -217,7 +217,7 @@
         "F21"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F12.md",
       "note": "M1 做换供应商路径所需的门控，替代料门控随 M2 补全"
     },

@@ -8,9 +8,11 @@ ProcurementExecutor 是唯一能写采购数据的组件（spec §3.3）；写�
 F12 用证据门控 + 审批令牌 + 提交前重校验替换同一挂点。拒绝时写 gate_rejected（F16 新反馈、F14 反馈卡片的来源）。
 F13：建草稿前过"采购单内容"汇点——料号、数量、供应商、单价在被引用 Decision 中的标签必须是可信 / 外部结构化 / 已校验，
 否则写 gate_rejected 拒绝；草稿各字段继承这些标签（meta.taint）。
+F12：门控挂点换成 gate.evidence.EvidenceGate（证据、审批令牌、提交前重校验）；建草稿时把料号传给门控；
+送审时附预演 preview_submission()：在环境状态副本上执行这次提交，给出提交前 / 后的缺料颗数、预计停线与延期天数。
 procurement_server()：三个写工具（参数只收 Artifact 引用），风险级 R1 建草稿、R1 送审、R2 提交；
 仅编排者在 S1 模式下可见（F11 按风险级与 config/permissions.yaml 强制）。
-依赖：session.log、simenv.api、tools.server、taint.labels / sinks。被编排者（经代理层）、F12、F15 使用。
+依赖：session.log、simenv.api / model、business.impact、tools.server、taint.labels / sinks。被编排者（经代理层）、F12、F15 使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
 
@@ -19,8 +21,11 @@ from collections.abc import Callable  # 挂点类型
 
 from pydantic import BaseModel, Field  # 工具参数模型
 
+from business.impact import analyze  # 预演用影响分析
 from session.log import ART_VALID, Session  # 事件日志
 from simenv.api import Environment  # 环境
+from simenv.engine import WriteRejected  # 环境拒绝写入
+from simenv.model import State  # 预演用状态副本
 from taint.labels import TRUSTED, label_of, taint_of  # F13 标签
 from taint.sinks import TaintSinks  # F13 汇点
 from tools.server import Server, ToolDef  # 工具定义
@@ -76,7 +81,7 @@ class ProcurementExecutor:
     # 功能：建草稿。完成：只从 Decision 里取字段（模型无法填自由文本进写操作）；同一 Decision + 料号重复建草稿产生新版本。
     def create_draft(self, *, case_id: str, day: int, decision_ref: str, mpn: str) -> dict:
         dec = self._view(decision_ref)  # 决策
-        reasons = self._check("draft", case_id, day, dec, "ProcurementDecision")  # 门控
+        reasons = self._check("draft", case_id, day, dec, "ProcurementDecision", mpn=mpn)  # 门控（F12 需料号）
         pick = next((d for d in dec["content"]["decisions"] if d["mpn"] == mpn), None) if not reasons else None  # 该料
         if not reasons and (pick is None or pick["chosen"] is None):  # 决策里没有这颗料的选择
             reasons = [f"决策中没有料号 {mpn} 的可行选择"]  # 原因
@@ -110,11 +115,14 @@ class ProcurementExecutor:
         reasons = self._check("request_approval", case_id, day, draft, "PODraft")  # 门控
         if reasons:  # 拒绝
             return {"ok": False, "reasons": reasons}  # 返回
+        preview = preview_submission(self.get_env(), draft["content"])  # F12 预演（副本上执行，真实环境不变）
         ev = self.session.append("approval_requested", day=day, actor=f"procurement@{case_id}",  # 送审事件
                                  case_id=case_id, payload={"draft": draft_ref,  # 草稿
-                                                           "content_hash": draft["content_hash"]})  # 内容哈希
+                                                           "content_hash": draft["content_hash"],  # 内容哈希
+                                                           "preview": preview})  # 预演结果
         self.session.append("human_request", day=day, actor=f"procurement@{case_id}", case_id=case_id,  # 通知主管
-                            payload={"role": "supervisor", "node": "H2", "draft": draft_ref}, caused_by=ev["seq"])
+                            payload={"role": "supervisor", "node": "H2", "draft": draft_ref,  # 审批对象
+                                     "preview": preview}, caused_by=ev["seq"])  # 审批页附预演
         return {"ok": True, "approval_seq": ev["seq"]}  # 返回
 
     # 功能：提交（R2）。完成：幂等键防重复下单；环境拒绝（WriteRejected）按门控拒绝反馈。
@@ -131,6 +139,29 @@ class ProcurementExecutor:
                             payload={"draft": draft_ref, "idempotency_key": key, **result},  # 采购单号与是否重复
                             entity_keys={"mpn": [c["mpn"]], "po": [result["po_id"]], "distributor": [c["distributor"]]})
         return {"ok": True, **result}  # 返回
+
+
+# ---------------------------------------------------------------------------
+# preview_submission：送审预演（spec §5.5"预演"）
+# 功能：在环境状态副本上执行这次提交，比较提交前 / 后的影响分析。
+# 依赖：business.impact.analyze、simenv.model.State、Environment（无存储，写入不落日志）。
+# 完成：返回 {before, after}（预计停线天数、预计延期天数：前推会让采购单发货到货）与 part（该料当前缺口、首次缺料日、
+#       本单预计到货日）；缺料颗数不比较（缺口表只算在途与在库，刚提交的采购单尚未发货）；副本拒绝写入时返回 error。
+# ---------------------------------------------------------------------------
+def preview_submission(env: Environment, content: dict) -> dict:
+    keys = ("projected_stop_days", "projected_delay_days")  # 对比的指标
+    before = analyze(env.state)  # 提交前
+    copy = Environment(State.from_dict(env.state.to_dict()))  # 副本（无存储）
+    try:  # 在副本上提交
+        copy.submit_purchase_order(mpn=content["mpn"], qty=content["qty"], distributor=content["distributor"],
+                                   unit_price=content["unit_price"], idempotency_key="preview")  # 预演写入
+    except WriteRejected as exc:  # 副本拒绝（如未知料号）
+        return {"error": f"预演失败：{exc}"}  # 只报告
+    after = analyze(copy.state)  # 提交后
+    gap = next((g for g in before["shortages"] if g["mpn"] == content["mpn"]), None)  # 该料缺口
+    part = {"mpn": content["mpn"], "gap": gap and gap["gap"], "first_short_day": gap and gap["first_short_day"],
+            "po_qty": content["qty"], "po_eta_day": content.get("eta_day")}  # 该料与本单
+    return {"before": {k: before[k] for k in keys}, "after": {k: after[k] for k in keys}, "part": part}  # 对比
 
 
 class DraftArgs(BaseModel):

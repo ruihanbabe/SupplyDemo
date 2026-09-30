@@ -4,6 +4,7 @@
   状态迁移（开启 → 规划中 → 执行中；等待 → 执行中）→ 从日志与 Artifact 现组装编排者上下文（M1 最小构建器，F16 替换）→
   编排者循环（每轮后运行本轮派发的任务批次并一次交回）→ end_segment(wait_for) 或预算触顶 / 失败 → 案子进入等待。
   进程内不保存半截对话；段中崩溃则整段重跑。
+  F12：report_to_planner 先过上报计划员门控（须附本案有效 ImpactReport，理由里的数字须出自它），不通过写 gate_rejected。
   F11：每段开始由 Authority 给编排者签根令牌（模式取开案内容 mode，缺省按权限配置；发起者 = 开案事件的执行者与序号）。
 - handle_control()：编排控制工具的实现（经 F07 代理层转交）：派任务、结束本段；目标修订 / 上报计划员 / 问用户在 M1 只记为
   human_request 事件（语义归 F22/F05/F25）。
@@ -16,6 +17,7 @@ from __future__ import annotations  # 类型注解延迟求值
 import json  # 上下文摘要
 from collections.abc import Callable  # 挂点类型
 
+from gate.evidence import planner_report_gate  # F12 上报计划员门控
 from permissions.tokens import Authority  # F11 根令牌签发
 from runtime.dispatch import Dispatcher  # 派发与汇合
 from runtime.loop import ExecutorLoop  # 执行者循环
@@ -88,6 +90,13 @@ class SegmentRunner:
                 return {"accepted": False, "error": "还有已派发未运行的任务，不能结束本段"}  # 拒绝
             self.stop = {"wait_for": args.wait_for, "reason": args.reason}  # 标记停止
             return {"accepted": True}  # 接受
+        if name == "report_to_planner":  # F12 上报计划员门控
+            reasons = planner_report_gate(self.session, ctx.case_id, args.impact_artifact, args.reason)  # 检查
+            if reasons:  # 不通过
+                self.session.append("gate_rejected", day=ctx.day, actor="gate", case_id=ctx.case_id,  # 反馈事件
+                                    payload={"action": "report_to_planner", "reasons": reasons,  # 原因
+                                             "artifact": args.impact_artifact})  # 引用
+                return {"accepted": False, "error": "；".join(reasons)}  # 交回编排者
         self.session.append("human_request", day=ctx.day, actor=actor, case_id=ctx.case_id,  # 需要人
                             payload={"role": HUMAN_CONTROLS[name], "tool": name,  # 对象与工具
                                      "args": args.model_dump(mode="json")})  # 内容

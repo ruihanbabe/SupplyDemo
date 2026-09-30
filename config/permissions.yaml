@@ -21,6 +21,7 @@ executors:
   impact_analysis: []
   sourcing: [distributor_quotes]
   policy: []
+  procurement: [distributor_quotes]   # F12 提交前重校验以该身份实时查报价
 
 # 同一执行者循环里被拒（无权限 / 工具不存在）累计达到该次数即强制结束（计入 §5.3 循环检测）。
 max_denied_attempts: 3
