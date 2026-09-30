@@ -22,7 +22,7 @@ import yaml  # 读配置
 from pydantic import ValidationError  # 参数校验错误
 
 from permissions.guard import Denial, PermissionGuard  # F11 权限检查
-from permissions.secrets import Redactor  # F11 脱敏
+from permissions.redaction import Redactor  # F11 脱敏
 from session.log import Session, canonical, sha256  # 事件日志与哈希工具
 from tools.archive import Archive  # 留档
 from tools.kv import KV  # 缓存

@@ -10,7 +10,7 @@ from sqlalchemy.exc import ProgrammingError  # 权限不足
 from business.procurement import procurement_server  # 采购写工具（R1/R2）
 from models.providers import reply  # 脚本应答
 from permissions.egress import EgressPolicy, egress_policy  # 出站白名单
-from permissions.secrets import Credentials, Redactor  # 凭证与脱敏
+from permissions.redaction import Credentials, Redactor  # 凭证与脱敏
 from permissions.tokens import AttenuationError, CapabilityToken  # 令牌
 from session.log import Session  # 事件日志
 from session.store import MemorySessionStore  # 内存存储

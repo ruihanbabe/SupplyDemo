@@ -64,7 +64,7 @@ class ToolDef:
 class Server:
     name: str  # Server 名
     tools: list[ToolDef]  # 工具
-    credentials: object = None  # F11：该 Server 独占的凭证（permissions.secrets.Credentials），代理层只登记脱敏
+    credentials: object = None  # F11：该 Server 独占的凭证（permissions.redaction.Credentials），代理层只登记脱敏
 
     def list_tools(self) -> list[dict]:
         """MCP list_tools。"""
