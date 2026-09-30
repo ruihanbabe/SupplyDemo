@@ -1,9 +1,10 @@
 # 料号 → 品类（F20；代码按正则前缀匹配，先匹配先用；匹配不上即"未分类"，不注入品类知识、Verifier 无比对清单）。
+# names：品类的口语叫法（F23 Resolver 检索层按描述找候选用）。
 # 只覆盖场景用到的 5 个品类（spec §6"术语表先覆盖场景用到的 4–5 个品类"），其余按需补。
 version: 1
 categories:
-  - {category: rf_switch,      pattern: "^SKY13"}
-  - {category: rf_synthesizer, pattern: "^RFFC"}
-  - {category: capacitor,      pattern: "^(CL[0-3]\\d|CC0402|GCM|GRM|LMK|UMK)"}
-  - {category: resistor,       pattern: "^(RC0[46]0[23]|RC1206|RC2010|RMCF|ERJ|WSLP|PWR16)"}
-  - {category: led,            pattern: "^LTST"}
+  - {category: rf_switch,      pattern: "^SKY13", names: [射频开关, RF switch]}
+  - {category: rf_synthesizer, pattern: "^RFFC", names: [综合器, 混频器, synthesizer, mixer]}
+  - {category: capacitor,      pattern: "^(CL[0-3]\\d|CC0402|GCM|GRM|LMK|UMK)", names: [电容, capacitor]}
+  - {category: resistor,       pattern: "^(RC0[46]0[23]|RC1206|RC2010|RMCF|ERJ|WSLP|PWR16)", names: [电阻, 采样电阻, resistor]}
+  - {category: led,            pattern: "^LTST", names: [LED, 指示灯, 发光二极管]}

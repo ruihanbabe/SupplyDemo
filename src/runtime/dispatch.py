@@ -9,6 +9,7 @@
 - F11：派发时由 Authority 从派发者令牌签发衰减后的子令牌（工具 = 父 ∩ 子角色 ∩ 注册工具，作用域 ⊆ 父），越界即拒绝派发；
   task_dispatched 事件 meta 记子令牌的代表链；LLM 子 Agent 凭子令牌跑循环，代码组件经 ctx["token"] 拿到子令牌调代理层。
 - F15：同一执行者同一任务说明此前未完成时标 redispatch_of，案子预算把重派计为一次重规划。
+- F23：执行者注册项可带 brief（定制输入格式，隔离由结构保证）、scope（代码强制子令牌作用域）、post（LLM 输出的代码后处理）。
 - F22：给了 node_sets 时，执行者不在父令牌模式的节点集合里直接拒绝派发（S3 没有比价、决策节点）；派发可带 plan_task。
 - F13：每个产出的 Artifact 在 meta.taint 写字段标签：LLM 子 Agent 的产出一律不可信；代码组件用 CodeResult.taint 声明，
   没声明按不可信（来源不明）；标签不进给编排者的汇总文本。
@@ -42,6 +43,9 @@ class ExecutorSpec:
     tools: list[str] = field(default_factory=list)  # 可用工具（LLM）
     output: type[BaseModel] | None = None  # 输出模型（LLM）
     code: Callable[[str, list[dict], dict], dict] | None = None  # 代码组件（F21）
+    brief: Callable[[str, list[dict], dict], str] | None = None  # F23：定制输入（任务, 输入, 参数）→ 用户消息（隔离由结构保证）
+    scope: Callable[[dict, list[dict]], list[str]] | None = None  # F23：代码强制的料号作用域（参数, 输入）→ 料号
+    post: Callable[[dict, list[dict], dict], CodeResult] | None = None  # F23：LLM 输出的代码后处理（引用校验、等级汇总、打标）
 
 
 @dataclass
@@ -95,6 +99,9 @@ class Dispatcher:
         if bad:  # 有坏引用
             return {"accepted": False, "error": f"输入 Artifact 不存在：{', '.join(bad)}"}  # 报错
         spec = self.registry[executor]  # 执行者注册项
+        if spec.scope is not None:  # F23：作用域由代码按参数与输入给出（Verifier 只能读原料与该候选）
+            views = [self.session.artifact_view(REF.match(r)["id"], int(REF.match(r)["ver"])) for r in inputs]  # 输入
+            scope = spec.scope(params or {}, views)  # 强制作用域（不采用编排者给的）
         try:  # F11 权限衰减：LLM 子 Agent 按注册工具收窄，代码组件按角色
             child = self.authority.attenuate(parent, executor=executor,  # 子令牌
                                              tools=spec.tools if spec.code is None else None, scope=scope)  # 工具与作用域
@@ -151,13 +158,20 @@ class Dispatcher:
             brief = "\n".join(f"- {a['artifact_id']}@v{a['version']}（{a['kind']}，{a['status']}）："  # 输入摘要
                               + json.dumps(a["content"], ensure_ascii=False) for a in inputs)  # 内容
             b = self.budgets["subagent"]  # 子 Agent 预算
+            user = (spec.brief(t.task, inputs, t.params) if spec.brief is not None  # F23：定制输入
+                    else f"任务：{t.task}\n输入：\n{brief or '（无）'}")  # 缺省输入
             res = self.loop.run(token=t.token, system=spec.system,  # 跑执行者循环（身份取自子令牌）
-                                user=f"任务：{t.task}\n输入：\n{brief or '（无）'}", tools=spec.tools,  # 输入
+                                user=user, tools=spec.tools,  # 输入
                                 output=spec.output, max_rounds=b["max_rounds"],  # 轮数预算
                                 max_tool_calls=b["max_tool_calls"], day=day)  # 工具预算
             status, reason = res.status, res.reason  # 状态与原因
             content = (res.output.model_dump(mode="json") if res.output is not None  # 结构化输出
                        else {"text": res.text}) if status == "done" else {"status": status, "reason": reason}  # 未完成
+            if status == "done" and spec.post is not None:  # F23：代码后处理（引用校验、等级汇总、打标、依赖）
+                out = spec.post(content, inputs, {"case_id": case_id, "day": day, "params": t.params,  # 后处理
+                                                  "token": t.token})  # 上下文
+                content, status, reason, extra_deps = out.content, out.status, out.reason, out.deps  # 拆开
+                taint = out.taint or ALL_UNTRUSTED  # 标签
         art = self.session.produce(f"{spec.kind}:{t.task_id}", spec.kind, content, day=day, actor=actor,  # 产出
                                    case_id=case_id, caused_by=t.seq,  # 因果：派发事件
                                    deps=[{"artifact": a["artifact_id"], "version": a["version"]} for a in inputs]  # 依赖

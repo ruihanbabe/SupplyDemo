@@ -1,0 +1,12 @@
+# 子 Agent 与 LLM 函数（F23，spec §3.2；G7：阈值与规则放配置）。
+
+version: 1
+
+resolver:
+  confidence_threshold: 0.7        # LLM 消歧置信度低于它就交采购员确认（H3）
+  max_candidates: 5                # 检索层最多给 LLM 的候选数
+  # 规则层：去掉这些常见包装 / 卷带后缀后再精确匹配（按厂商编码习惯，mock 规则）
+  strip_suffixes: ["-TR", "TR", "#PBF", "+T", "-T", "T/R"]
+
+explainer:
+  audiences: {buyer: 采购员, supervisor: 审批主管, engineer: 硬件工程师, planner: 计划员}

@@ -4,7 +4,7 @@ build_runtime(...) 在一处把 F03–F22 的组件接好，消融开关一律�
 - 工具层：环境（含合并查询 env_lookup）、分销商、留档、编排控制、采购（含合并写 po_action）、datasheet（术语表同义词 + 板级文档）、
   知识库 B 七个 Server；F11 权限、F15 重试熔断、F18 注入计划（可选）、F13 疑似指令检测随代理层生效。
 - 模型：F08 适配层（限流复用配额组件、重试熔断、注入包装）；F09 执行者循环（循环检测、F16 折叠）。
-- 业务与门控：F21 代码节点（带 F10 软声明）+ 调用方注册的 LLM 节点（F23）；F12 证据门控（审批令牌、软声明、datasheet 刷新）；
+- 业务与门控：F21 代码节点（带 F10 软声明）+ F23 五个 LLM 节点（原料画像、替代检索、Verifier、Resolver、Explainer）+ 调用方追加的节点；F12 证据门控（审批令牌、软声明、datasheet 刷新）；
   F15/F18 采购执行器（两步写、注入挂点）；HumanDesk、GoalDesk 为人工入口。
 - 编排：F22 按模式的节点集合与工具集、Planner（计划校验与模板兜底）；F16 上下文（记忆分区）；F14 升级；F20 知识库。
 - 调度：F10 CaseRouter（F14 反馈循环、F20 知识库同步）接 F09 Scheduler。
@@ -16,6 +16,8 @@ from __future__ import annotations  # 类型注解延迟求值
 import time  # 默认睡眠
 from dataclasses import dataclass  # 结果
 
+from agents.functions import load_agents_config  # F23 配置
+from agents.nodes import llm_executors  # F23 LLM 节点
 from business.components import code_executors  # 代码节点
 from business.procurement import ProcurementExecutor, procurement_server  # 采购
 from cases.claims import ClaimBook  # 软声明
@@ -148,7 +150,10 @@ def build_runtime(*, env: Environment, session: Session, transports: dict, kv=No
                         claims=claims, datasheet_refresh=lambda mpn, day: ingestor.refresh(mpn, day=day))  # 声明与刷新
     executor = ProcurementExecutor(session, get_env, gate=gate, on_point=plan.kill_point if plan else None)  # 采购
     holder["ex"] = executor  # 绑定
-    registry = {**code_executors(get_env, proxy, run_id=session.run_id, claims=claims), **(extra_executors or {})}
+    llm_nodes = llm_executors(store=ds_store, kb=kb, glossary=glossary, adapter=adapter, get_env=get_env,  # F23 五个节点
+                              switches=sw, agents_config=load_agents_config(), session=session)  # 开关与配置
+    registry = {**code_executors(get_env, proxy, run_id=session.run_id, claims=claims), **llm_nodes,  # 代码 + LLM 节点
+                **(extra_executors or {})}  # 调用方追加
     node_sets = {m: set(c["nodes"]) for m, c in ocfg["modes"].items()}  # 模式节点集合
     dispatcher = Dispatcher(session, loop, registry, budgets=rt, authority=auth, batch_join=sw["batch_join"],
                             node_sets=node_sets)  # 派发

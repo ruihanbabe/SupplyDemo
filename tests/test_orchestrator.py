@@ -98,7 +98,7 @@ def test_plan_validation_and_fallback():
     rt, _ = runtime()  # 装配
     rt.session.open_case("K9", day=0, actor="runtime", payload={"goal": "g", "mode": "S1"})  # 案子
     token = tok(rt.proxy, "orchestrator", case_id="K9")  # 编排者身份
-    wrong = [{"id": "T1", "executor": "verifier", "task": "x", "depends_on": [], "inputs": [], "reason": "r"}]  # 未接入
+    wrong = [{"id": "T1", "executor": "reschedule", "task": "x", "depends_on": [], "inputs": [], "reason": "r"}]  # 不在节点集合
     first = rt.segments.planner.write(token, wrong, day=0)  # 第 1 次
     assert first["accepted"] is False and "fallback" not in first  # 拒绝
     second = rt.segments.planner.write(token, wrong, day=0)  # 第 2 次：退回模板

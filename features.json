@@ -424,7 +424,7 @@
         "F22"
       ],
       "milestone": "M2",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F23.md",
       "note": ""
     },

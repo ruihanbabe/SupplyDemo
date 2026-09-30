@@ -27,6 +27,9 @@ ablation:
   memory_injection: true           # F20 记忆注入：false 时上下文不注入知识库 B 条目
   glossary_injection: true         # F20 术语注入：false 时节点启动不注入术语说明
   plan_validation: true            # F22 计划校验：false 时不校验编排者的任务图、不退回固定模板
+  verifier_isolation: true         # F23 Verifier 输入结构隔离：false 时把全部输入原样给它（含价格与检索过程）
+  citation_check: true             # F23 引用校验：false 时不校验引用、不降级
+  skill_injection: true            # F23 Skill 强制加载与比对清单注入：false 时节点启动不加载
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:
