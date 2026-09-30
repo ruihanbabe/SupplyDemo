@@ -348,7 +348,7 @@
     },
     {
       "id": "F20",
-      "name": "知识资产与知识库 B：术语表、比对清单与替代规则、Skills、板级上下文 YAML；KB B 种子导入、别名、H1/H3 写入、失效与撤销、按实体键注入",
+      "name": "知识资产与知识库 B：术语表、比对清单与替代规则、Skills、板级文档原文与文档工具；KB B 种子导入、别名、H1/H3 写入、失效与撤销、按实体键注入",
       "type": "最小",
       "spec": [
         "§6",
@@ -362,8 +362,8 @@
         "F06"
       ],
       "milestone": "M2",
-      "status": "not_started",
-      "contract": null,
+      "status": "in_progress",
+      "contract": "contracts/F20.md",
       "note": ""
     },
     {

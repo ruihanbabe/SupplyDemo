@@ -59,7 +59,6 @@
 
 ## 6. 已知问题
 - 环境 `validate_write` 只接受 BOM 内料号：替代料能过 F12 草稿门控，但还不能真正提交到环境（F23 做替代采购时一并处理）。
-- `features.json` 中 F20 的名称仍写"板级上下文 YAML"，与 F02 定的"原文存档、不预先结构化"冲突；做到 F20 写 Contract 时一并改。
 - `compose.yaml`、`CODING_RULES.md`、`requirement.txt` 仍引用已删除的旧文档（`DECISIONS.md` D14、`docs/spec/data-model.md` 等），`Makefile` 注释里也有 D14；待另行处理。
 - 沙箱：pytest 启动会读 `.env`（`make check`、`make test-integration` 须在沙箱外执行），写 `data/hardware/raw/` 与 `rm` 也会被拦。
 - zsh 不会按空格拆分变量，脚本里用函数或 Python。
