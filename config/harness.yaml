@@ -18,6 +18,9 @@ ablation:
   presubmit_revalidation: true     # F12 提交前重校验：false 时提交只查审批令牌，不实时复查库存与单价（A2 对照）
   same_source_merge: true          # F10 同源合并：false 时每颗缺料单独开案（A8 对照）
   supply_claims: true              # F10 软声明：false 时不登记、不判冲突、草稿门控不查声明（A9 对照）
+  feedback_cards: true             # F14 反馈卡片：false 时不生成卡片，新反馈分区回到原始事件
+  deviation_feedback: true         # F14 预期与偏差：false 时不比对预期（A1 对照）
+  forced_escalation: true          # F14 代码强制升级：false 时只保留预算触顶
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:

@@ -7,7 +7,7 @@
   再归一化——保留原文值，解析失败时归一化值留空（旧适配器 976bb17 的经验）。真实后端等用户授权（G5）。
 - validate_quotes：返回校验（B3），缺失字段置"未知"并警告，整体结构不对抛 BadFormat。
 - archive_server：按记录号 / 游标读留档（由 ToolProxy.read_record 实现，不调用上游）。
-- control_server：编排控制五个工具的参数模型，调用转交给注册的处理函数（语义归 F09/F22）。
+- control_server：编排控制工具（F14 起六个，含 escalate_to_human）的参数模型，调用转交给注册的处理函数（语义归 F09/F22）。
 - F11 风险级：环境、分销商、留档、派任务、问用户、结束本段为 R0；提出目标修订、上报计划员为 R1。
   distributor_server 可带独占凭证（真实后端用），查报价受料号作用域约束（scoped）；dispatch_task 增加可选 scope。
 依赖：tools.server、models.types（Mpn）、simenv.api、pydantic。被 ToolProxy 装配使用。
@@ -268,6 +268,11 @@ class AskUserArgs(BaseModel):
     options: list[str] = Field(default_factory=list)  # 候选答案
 
 
+class EscalateArgs(BaseModel):
+    """升级给人（F14）：理由必填。"""
+    reason: str = Field(min_length=1)  # 升级理由
+
+
 class EndSegmentArgs(BaseModel):
     """结束本活跃段；wait_for 决定案子进入哪种等待（F09 增加）。"""
     wait_for: Literal["human", "arrival", "external"]  # 等人工 / 等到货 / 等外部
@@ -286,6 +291,7 @@ def control_server(handler: Callable[[str, BaseModel, CallContext], object] | No
              ("propose_goal_revision", "目标需要改变时提出修订，交人确认（H4）。", GoalRevisionArgs),  # 目标修订
              ("report_to_planner", "排产相关影响只能上报计划员（H5），不能改计划或工单。", PlannerReportArgs),  # 上报
              ("ask_user", "需要采购员澄清或确认时提问。", AskUserArgs),  # 问用户
-             ("end_segment", "所有任务都在等外部结果时结束本活跃段。", EndSegmentArgs)]  # 结束本段
+             ("end_segment", "所有任务都在等外部结果时结束本活跃段。", EndSegmentArgs),  # 结束本段
+             ("escalate_to_human", "无法继续处置时升级给人（须写明理由），案子随即关闭、由人接手。", EscalateArgs)]  # F14
     risk = {"propose_goal_revision": "R1", "report_to_planner": "R1"}  # F11：写入需人处理的记录为 R1，其余 R0
     return Server("control", [ToolDef(n, d, m, forward(n), risk=risk.get(n, "R0")) for n, d, m in specs])  # 五个工具

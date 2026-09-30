@@ -16,7 +16,7 @@ from session.log import ART_INVALID, ART_VALID, Session  # 状态常量与日志
 
 #: 属于"新反馈"的事件类型（spec §5.7 反馈信号中会唤醒编排者的那些）。
 FEEDBACK_TYPES = ("case_woken", "invalidation_notice", "gate_rejected", "human_response", "feedback",
-                  "deviation", "conflict")  # 唤醒原因、失效、门控、人工应答、反馈卡片、偏差、冲突
+                  "deviation", "conflict", "claim_conflict", "human_decision")  # 唤醒、失效、门控、人工、卡片、偏差、冲突
 
 
 def _card(event: dict) -> str:
@@ -64,7 +64,7 @@ class OrchestratorContext:
     # _partitions：生成各分区
     # 功能：卡片、计划、有效、已失效、历史、新反馈。
     # 依赖：session 投影、summarize、_card。
-    # 完成：新反馈 = 上一个 segment_ended 之后的反馈事件；历史 = 此前各段结束与任务完成的一行记录。
+    # 完成：新反馈 = 上一个 segment_ended 之后的反馈事件（F14：已生成卡片的原始信号只出卡片）；历史 = 此前各段结束与任务完成的一行记录。
     # -----------------------------------------------------------------------
     def _partitions(self, session, case_id, reason, events) -> dict[str, str]:
         opened = next(e for e in events if e["type"] == "case_opened")["payload"]  # 开案内容
@@ -94,7 +94,9 @@ class OrchestratorContext:
         history = [f"第{e['day']}天 段结束：{e['payload']['reason']}" if e["type"] == "segment_ended"  # 段记录
                    else f"第{e['day']}天 {e['payload']['task_id']} {e['payload']['status']} → {e['payload']['artifact']}"
                    for e in events if e["seq"] <= last and e["type"] in ("segment_ended", "task_finished")]  # 任务
-        feedback = [_card(e) for e in events if e["seq"] > last and e["type"] in FEEDBACK_TYPES]  # 新反馈
+        carded = {e["payload"].get("signal_seq") for e in events if e["type"] == "feedback"}  # F14 已有卡片的信号
+        feedback = [_card(e) for e in events if e["seq"] > last and e["type"] in FEEDBACK_TYPES  # 新反馈
+                    and e["seq"] not in carded]  # 有卡片的原始信号不重复出现
         if not any(e["type"] == "case_woken" for e in events if e["seq"] > last):  # 没有唤醒事件时
             feedback.insert(0, f"【唤醒】{reason}")  # 至少写明本次唤醒原因
         return {"card": card, "plan": plan,  # 固定顺序

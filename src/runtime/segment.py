@@ -4,6 +4,7 @@
   状态迁移（开启 → 规划中 → 执行中；等待 → 执行中）→ 从日志与 Artifact 现组装编排者上下文（M1 最小构建器，F16 替换）→
   编排者循环（每轮后运行本轮派发的任务批次并一次交回）→ end_segment(wait_for) 或预算触顶 / 失败 → 案子进入等待。
   进程内不保存半截对话；段中崩溃则整段重跑。
+  F14：escalate_to_human 走代码升级路径（关闭案子、通知采购员）并结束本段；段结束时案子已关闭则不再迁入等待。
   F12：report_to_planner 先过上报计划员门控（须附本案有效 ImpactReport，理由里的数字须出自它），不通过写 gate_rejected。
   F11：每段开始由 Authority 给编排者签根令牌（模式取开案内容 mode，缺省按权限配置；发起者 = 开案事件的执行者与序号）。
 - handle_control()：编排控制工具的实现（经 F07 代理层转交）：派任务、结束本段；目标修订 / 上报计划员 / 问用户在 M1 只记为
@@ -18,6 +19,7 @@ import json  # 上下文摘要
 from collections.abc import Callable  # 挂点类型
 
 from cases.monitor import env_day_keys  # F10 环境事件实体键
+from feedback.escalation import Escalation  # F14 升级
 from gate.evidence import planner_report_gate  # F12 上报计划员门控
 from permissions.tokens import Authority  # F11 根令牌签发
 from runtime.dispatch import Dispatcher  # 派发与汇合
@@ -63,12 +65,13 @@ class SegmentRunner:
     # 功能：见文件摘要。依赖：执行者循环、派发器、预算配置、上下文构建器。
     # 完成：编排者工具清单由调用方给（F11 以后按能力令牌收窄）。
     def __init__(self, session: Session, loop: ExecutorLoop, dispatcher: Dispatcher, *, budgets: dict,
-                 orchestrator_tools: list[str] | None, authority: Authority,
+                 orchestrator_tools: list[str] | None, authority: Authority, escalation: Escalation | None = None,
                  context_builder: Callable[[Session, str, str], tuple[str, str]] = minimal_context):
         self.session, self.loop, self.dispatcher = session, loop, dispatcher  # 依赖
         self.budgets = budgets  # runtime 配置段
         self.tools = orchestrator_tools  # 编排者工具（None = 令牌可见的全部；实际再 ∩ L1 可见，F11）
         self.authority = authority  # F11 令牌签发者
+        self.escalation = escalation or Escalation(session)  # F14 升级（工具用 escalate，不受强制升级开关影响）
         self.context_builder = context_builder  # 上下文构建器
         self.stop: dict | None = None  # 本段是否已 end_segment（{wait_for, reason}）
 
@@ -91,6 +94,10 @@ class SegmentRunner:
                 return {"accepted": False, "error": "还有已派发未运行的任务，不能结束本段"}  # 拒绝
             self.stop = {"wait_for": args.wait_for, "reason": args.reason}  # 标记停止
             return {"accepted": True}  # 接受
+        if name == "escalate_to_human":  # F14 主动升级
+            self.escalation.escalate(ctx.case_id, "orchestrator", args.reason, day=ctx.day, actor=actor)  # 关闭并通知
+            self.stop = {"wait_for": "human", "reason": f"已升级给人：{args.reason}"}  # 结束本段
+            return {"accepted": True, "note": "已升级给人，案子关闭"}  # 接受
         if name == "report_to_planner":  # F12 上报计划员门控
             reasons = planner_report_gate(self.session, ctx.case_id, args.impact_artifact, args.reason)  # 检查
             if reasons:  # 不通过
@@ -141,6 +148,8 @@ class SegmentRunner:
                          else ("external", res.reason))  # 预算触顶、失败或直接给出结果
         self.session.append("segment_ended", day=day, actor="runtime", case_id=case_id,  # 段结束
                             payload={"loop_status": res.status, "reason": why, "rounds": res.rounds})  # 记录原因
+        if self.session.case_state(case_id)["state"] == CASE_CLOSED:  # F14：本段内已升级关闭
+            return {"status": "closed", "reason": why, "loop_status": res.status}  # 不再迁入等待
         self.session.transition(case_id, CASE_WAITING, day=day, actor="runtime", wait_for=wait_for,  # 进入等待
                                 reason=why)  # 原因
         return {"status": "waiting", "reason": why, "loop_status": res.status}  # 返回

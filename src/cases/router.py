@@ -7,10 +7,11 @@ CaseRouter 是 F09 Scheduler 的 router 挂点（调用签名：env_day 事件 �
    根因已有未关闭案子则写 case_target_added 并入；消融 same_source_merge 关闭时每颗料单独开案 →
 ④ 关闭检查：目标料号的缺口消失写 target_resolved；全部目标消除且本案提交的采购单都已到货才以 resolved 关闭 →
 ⑤ 写 routing_done（记下已处理到的事件号，重启后从这里继续）。
+F14：传入 FeedbackLoop 时，① 之后先做偏差比对与强制升级检查，② 中再为新信号生成反馈卡片，"必须重规划"级加入唤醒。
 - subscriptions(case_id)：订阅集 = 开案实体键 ∪ 目标料号 ∪ 本案 po_submitted 的实体键 ∪ 本案 Artifact 外部依赖里的料号。
 - targets(case_id)：目标及其状态（open / resolved），从 case_opened / case_target_added / target_resolved 投影。
 - user_message(case_id, text)：用户中途插话只记事件并返回"本期不支持"提示，不唤醒。
-依赖：cases.monitor、session.log、simenv（采购单状态）、PyYAML。被装配 Runtime 的代码（F22、F27）与测试使用。
+依赖：cases.monitor、session.log、simenv（采购单状态）、feedback.loop（可选）、PyYAML。被装配 Runtime 的代码（F22、F27）与测试使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
 
@@ -26,7 +27,7 @@ from simenv.model import PO_ARRIVED  # 采购单已到货
 
 ROOT = Path(__file__).resolve().parents[2]  # 仓库根
 CASES_CONFIG = ROOT / "config" / "cases.yaml"  # 默认配置
-OWN = {"routing_done", "event_delivered", "case_target_added", "target_resolved"}  # 路由自己写的事件（不再路由）
+OWN = {"routing_done", "event_delivered", "case_target_added", "target_resolved", "feedback"}  # 路由与反馈自己写的事件
 
 
 def load_cases_config(path: Path = CASES_CONFIG) -> dict:
@@ -37,8 +38,9 @@ def load_cases_config(path: Path = CASES_CONFIG) -> dict:
 class CaseRouter:
     # 功能：见文件摘要。依赖：事件日志、当前环境取值函数、配置、消融开关 same_source_merge。
     def __init__(self, session: Session, get_env: Callable[[], Environment], *, config: dict | None = None,
-                 merge: bool = True):
+                 merge: bool = True, feedback=None):
         self.session, self.get_env = session, get_env  # 依赖
+        self.feedback = feedback  # F14 反馈循环（FeedbackLoop；None = 不生成卡片、不查偏差与升级）
         self.config = config or load_cases_config()  # 配置
         self.merge = merge  # 同源合并开关
 
@@ -87,6 +89,8 @@ class CaseRouter:
         done = self.session.events(type="routing_done")  # 已完成的路由
         cursor = done[-1]["payload"]["upto"] if done else 0  # 上次处理到的事件号
         _, short_now = monitor_shortages(self.session, self.get_env().state, env_event)  # ① Monitor
+        if self.feedback is not None:  # F14：偏差比对与强制升级
+            self.feedback.before_routing(short_now, day)  # 写偏差 / 升级关闭
         new = [e for e in self.session.store.events(self.session.run_id, cursor) if e["type"] not in OWN]  # ② 新事件
         wakes: dict[str, str] = {}  # 案子 → 原因
         live = [c["case_id"] for c in self.session.cases() if c["state"] != CASE_CLOSED]  # 未关闭案子
@@ -105,6 +109,9 @@ class CaseRouter:
                 wakes.setdefault(c, f"订阅事件：{e['type']} #{e['seq']}")  # 唤醒
             if not hits and e["type"] == "monitor_shortage":  # 无主缺料
                 unmatched.append(e)  # 待开案
+        if self.feedback is not None:  # F14：反馈卡片与必须重规划的唤醒
+            for c, reason in self.feedback.on_events(new, day):  # 逐个
+                wakes.setdefault(c, reason)  # 唤醒
         for c, reason in self._open_or_merge(unmatched, day):  # ③ 开案 / 并入
             wakes.setdefault(c, reason)  # 唤醒
         self._close_check(short_now, day)  # ④ 关闭检查

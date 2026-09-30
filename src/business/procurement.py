@@ -69,14 +69,17 @@ class ProcurementExecutor:
         reasons = self.gate(action, session=self.session, case_id=case_id, artifact=artifact,  # 门控
                             expected_kind=kind, day=day, env=self.get_env(), **extra)  # 上下文
         if reasons:  # 拒绝
-            self._reject(action, case_id, day, artifact, reasons)  # 记反馈事件
+            self._reject(action, case_id, day, artifact, reasons, mpn=extra.get("mpn"))  # 记反馈事件
         return reasons  # 结果
 
-    def _reject(self, action, case_id, day, artifact, reasons) -> None:
-        """写 gate_rejected 事件（F16 新反馈、F14 反馈卡片的来源）。"""
+    def _reject(self, action, case_id, day, artifact, reasons, mpn: str | None = None) -> None:
+        """写 gate_rejected 事件（F16 新反馈、F14 反馈卡片与按料号计数的强制升级的来源）。"""
+        if mpn is None and artifact and artifact["kind"] == "PODraft":  # 送审 / 提交：料号取自草稿
+            mpn = artifact["content"].get("mpn")  # 草稿料号
         self.session.append("gate_rejected", day=day, actor="gate", case_id=case_id,  # 反馈事件
-                            payload={"action": action, "reasons": reasons,  # 动作与原因
-                                     "artifact": artifact and f"{artifact['artifact_id']}@v{artifact['version']}"})
+                            payload={"action": action, "reasons": reasons, "mpn": mpn,  # 动作、原因、料号（F14）
+                                     "artifact": artifact and f"{artifact['artifact_id']}@v{artifact['version']}"},
+                            entity_keys={"mpn": [mpn]} if mpn else None)  # 实体键
 
     # 功能：建草稿。完成：只从 Decision 里取字段（模型无法填自由文本进写操作）；同一 Decision + 料号重复建草稿产生新版本。
     def create_draft(self, *, case_id: str, day: int, decision_ref: str, mpn: str) -> dict:
@@ -85,7 +88,7 @@ class ProcurementExecutor:
         pick = next((d for d in dec["content"]["decisions"] if d["mpn"] == mpn), None) if not reasons else None  # 该料
         if not reasons and (pick is None or pick["chosen"] is None):  # 决策里没有这颗料的选择
             reasons = [f"决策中没有料号 {mpn} 的可行选择"]  # 原因
-            self._reject("draft", case_id, day, dec, reasons)  # 记拒绝
+            self._reject("draft", case_id, day, dec, reasons, mpn=mpn)  # 记拒绝
         if reasons:  # 拒绝
             return {"ok": False, "reasons": reasons}  # 返回
         i = dec["content"]["decisions"].index(pick)  # 该料在决策中的下标
@@ -96,7 +99,7 @@ class ProcurementExecutor:
             ("amount_usd", "chosen.amount_usd"), ("evidence", "chosen"))}  # 金额、数值快照
         reasons = self.sinks.po_content(labels)  # 采购单内容汇点
         if reasons:  # 污染字段
-            self._reject("draft", case_id, day, dec, reasons)  # 记拒绝（反馈卡片来源）
+            self._reject("draft", case_id, day, dec, reasons, mpn=mpn)  # 记拒绝（反馈卡片来源）
             return {"ok": False, "reasons": reasons}  # 返回
         c = pick["chosen"]  # 选中的报价
         content = {"mpn": mpn, "qty": pick["qty"], "distributor": c["distributor"],  # 草稿内容：全部来自 Decision
