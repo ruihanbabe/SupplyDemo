@@ -8,7 +8,8 @@ code_executors() 返回 {执行者名: ExecutorSpec}，并入 F09 Dispatcher 的
 F13 打标（CodeResult.taint）：影响分析全部可信；比价的报价行为外部结构化，需求料号 / 数量继承 ImpactReport 的标签，
 来自编排者 params 时料号在环境目录中可查为已校验、否则不可信，数量一律不可信（LLM 给的数值，G4）；
 决策先过 Policy 汇点（打分字段不得不可信，否则"未完成"），打分可信、选中报价与料号 / 数量继承比价的标签。
-依赖：business.impact / decide、runtime.dispatch（ExecutorSpec、CodeResult）、taint.labels / sinks。被装配 Runtime 的代码（F22、测试）使用。
+F10：决策产出时由 ClaimBook 为选中报价登记软声明（A9，传入 claims 才登记）。
+依赖：business.impact / decide、runtime.dispatch（ExecutorSpec、CodeResult）、taint.labels / sinks、cases.claims。被装配 Runtime 的代码（F22、测试）使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
 
@@ -36,10 +37,11 @@ def _first(inputs: list[dict], kind: str) -> dict | None:
 
 
 # 功能：见文件摘要。依赖：当前环境取值函数、工具代理层、运行号（环境外部引用用）、F13 汇点。
-# 完成：policy / business 配置默认从 config/ 读，可注入（测试）；sinks 缺省按 config/taint.yaml 开启。
+# 完成：policy / business 配置默认从 config/ 读，可注入（测试）；sinks 缺省按 config/taint.yaml 开启；
+#       claims 为 F10 ClaimBook（缺省不登记）。
 def code_executors(get_env: Callable[[], Environment], proxy, *, run_id: str,
                    policy: dict | None = None, business: dict | None = None,
-                   sinks: TaintSinks | None = None) -> dict[str, ExecutorSpec]:
+                   sinks: TaintSinks | None = None, claims=None) -> dict[str, ExecutorSpec]:
     sinks = sinks or TaintSinks()  # F13 汇点检查
     policy = policy or load_yaml("policy.yaml")  # Policy 配置
     business = business or load_yaml("business.yaml")  # 业务参数
@@ -81,6 +83,8 @@ def code_executors(get_env: Callable[[], Environment], proxy, *, run_id: str,
             return CodeResult({"decisions": [], "feasible": False, "blocked": blocked},  # 不出决策
                               status="unfinished", reason="；".join(blocked), taint=ALL_TRUSTED)  # 原因
         content = decide(q["content"], policy)  # 决策（依赖由 Dispatcher 按输入加上）
+        if claims is not None:  # F10 软声明（A9）
+            claims.register(ctx["case_id"], content, day=ctx["day"])  # 登记选中的供应
         qt = taint_of(q)  # 比价的标签
         taint = {"*": TRUSTED}  # 打分、过滤、理由为代码算出
         for i, d in enumerate(content["decisions"]):  # 每条决策（与比价的需求一一对应）

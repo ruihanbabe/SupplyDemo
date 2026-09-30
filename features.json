@@ -181,7 +181,7 @@
         "F21"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F10.md",
       "note": "M1 做薄版，后续里程碑补全"
     },

@@ -8,7 +8,7 @@
   F11：每段开始由 Authority 给编排者签根令牌（模式取开案内容 mode，缺省按权限配置；发起者 = 开案事件的执行者与序号）。
 - handle_control()：编排控制工具的实现（经 F07 代理层转交）：派任务、结束本段；目标修订 / 上报计划员 / 问用户在 M1 只记为
   human_request 事件（语义归 F22/F05/F25）。
-- Scheduler.run_day()：推进环境 → env_day 事件 → 路由挂点（F10）+ 到期定时器 + 排队案子 → 按固定顺序运行被唤醒的案子，
+- Scheduler.run_day()：推进环境 → env_day 事件（F10：实体键含料号与板，由 cases.monitor.env_day_keys 生成） → 路由挂点（F10）+ 到期定时器 + 排队案子 → 按固定顺序运行被唤醒的案子，
   已开始处置且未关闭的案子数有上限，超出的新案子排队 → 没有可运行案子时本日结束。
 依赖：runtime.loop、runtime.dispatch、session.log、simenv.api、permissions.tokens。被 F10（路由）、F22（编排者）、F27（Eval 运行器）使用。
 """
@@ -17,6 +17,7 @@ from __future__ import annotations  # 类型注解延迟求值
 import json  # 上下文摘要
 from collections.abc import Callable  # 挂点类型
 
+from cases.monitor import env_day_keys  # F10 环境事件实体键
 from gate.evidence import planner_report_gate  # F12 上报计划员门控
 from permissions.tokens import Authority  # F11 根令牌签发
 from runtime.dispatch import Dispatcher  # 派发与汇合
@@ -159,7 +160,7 @@ class SegmentRunner:
 
 class Scheduler:
     # 功能：按模拟日的调度循环。依赖：环境、日志、活跃段、路由挂点。
-    # 完成：router(env_day 事件) 返回 [(案子, 唤醒原因)]，F10 实现；默认不唤醒。
+    # 完成：router(env_day 事件) 返回 [(案子, 唤醒原因)]，F10 cases.router.CaseRouter 实现；默认不唤醒。
     def __init__(self, env: Environment, session: Session, segments: SegmentRunner, *,
                  router: Callable[[dict], list[tuple[str, str]]] | None = None, max_active: int = 4):
         self.env, self.session, self.segments = env, session, segments  # 依赖
@@ -197,8 +198,7 @@ class Scheduler:
     def run_day(self) -> dict:
         log = self.env.advance()  # 推进环境（注入 → 到货 → 发货 → 完工 → 预留 → 开工 → 到期）
         day = self.env.state.day  # 当天
-        keys = {"shipment": log["arrived"], "po": log["shipped"],  # 当日实体键
-                "work_order": log["started"] + log["stopped"] + log["done"], "order": log["orders_late"]}  # 工单与订单
+        keys = env_day_keys(self.env.state, log)  # 当日实体键（F10：含料号与板）
         event = self.session.append("env_day", day=day, actor="env", payload=log, entity_keys=keys)  # 环境事件
         wakes = list(self.router(event)) + self._due_timers(day)  # 路由 + 定时器
         queued = [c["case_id"] for c in self.session.cases() if c["state"] == CASE_OPEN]  # 未开始的案子（含排队）

@@ -119,10 +119,10 @@ def count(session, type, case_id="K7"):
 
 
 # 功能：只带分销商 Server 的代码执行链（F13 起）：事件日志、环境、代理层、三个代码执行者、派发器、采购执行器。
-# 依赖：F07/F09/F11/F21；gate 为可选的门控工厂 (proxy) → 门控（F12 传 EvidenceGate），缺省为 F21 最小门控；
+# 依赖：F07/F09/F11/F21/F10；gate 为可选的门控工厂 (proxy, claims) → 门控（F12 传 EvidenceGate），缺省为 F21 最小门控；
 #       unlimited 去掉配额与限流（令牌桶按真实时间，连续调用会被限流）。
 # 完成：返回命名空间 {s, env, proxy, run, ex}；run(执行者, 输入, 参数) 派一个任务、立即汇合，返回 (引用, Artifact)。
-def code_pipeline(*, gate=None, sinks=None, overlays=(), switches=None, unlimited=False):
+def code_pipeline(*, gate=None, sinks=None, overlays=(), switches=None, unlimited=False, claims=None, case_id="K7"):
     from types import SimpleNamespace  # 命名空间
 
     from business.components import code_executors  # 代码执行者
@@ -136,19 +136,20 @@ def code_pipeline(*, gate=None, sinks=None, overlays=(), switches=None, unlimite
     proxy = ToolProxy([distributor_server()], s, kv=kv, quota=QuotaGuard(kv, cfg["providers"]),  # 代理层
                       archive=MemoryArchive(), config=cfg, guard=guard(), overlays=overlays,  # 权限与注入
                       switches=switches)  # 开关
-    registry = code_executors(lambda: env, proxy, run_id="r", sinks=sinks)  # 代码执行者
+    book = claims(s) if claims else None  # F10 软声明（工厂：session → ClaimBook）
+    registry = code_executors(lambda: env, proxy, run_id="r", sinks=sinks, claims=book)  # 代码执行者
     disp = Dispatcher(s, loop=None, registry=registry, budgets=load_harness_config()["runtime"],  # 派发器
                       authority=proxy.guard.authority)  # 子令牌
-    parent = tok(proxy, "orchestrator", "K7")  # 编排者根令牌
-    s.open_case("K7", day=0, actor="runtime", payload={"mode": "S1"})  # 开案（处置模式）
+    s.open_case(case_id, day=0, actor="runtime", payload={"mode": "S1"})  # 开案（处置模式）
 
-    def run(executor, inputs=(), params=None, day=0):  # 派一个任务并立即汇合
+    def run(executor, inputs=(), params=None, day=0, case=case_id):  # 派一个任务并立即汇合（可指定案子）
+        parent = tok(proxy, "orchestrator", case)  # 编排者根令牌
         disp.dispatch(parent=parent, day=day, executor=executor, task=executor, inputs=list(inputs), reason="t",
                       params=params)  # 派发
-        disp.run_pending(case_id="K7", day=day)  # 运行
+        disp.run_pending(case_id=case, day=day)  # 运行
         ref = s.events(type="task_finished")[-1]["payload"]["artifact"]  # 产出引用
         art_id, _, ver = ref.rpartition("@v")  # 拆引用
         return ref, s.artifact_view(art_id, int(ver))  # 引用与 Artifact
 
-    ex = ProcurementExecutor(s, lambda: env, gate=gate(proxy) if gate else minimal_gate, sinks=sinks)  # 执行器
-    return SimpleNamespace(s=s, env=env, proxy=proxy, run=run, ex=ex)  # 返回
+    ex = ProcurementExecutor(s, lambda: env, gate=gate(proxy, book) if gate else minimal_gate, sinks=sinks)  # 执行器
+    return SimpleNamespace(s=s, env=env, proxy=proxy, run=run, ex=ex, claims=book)  # 返回

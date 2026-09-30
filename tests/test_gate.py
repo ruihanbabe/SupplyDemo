@@ -18,8 +18,8 @@ SUB = "SUBX-1"  # 不在任何 BOM 里的替代料
 def setup(*, overlays=(), revalidate=True):
     vault = ApprovalVault(key=b"k" * 32)  # 固定密钥
     p = code_pipeline(overlays=overlays, unlimited=True,  # 装配（不受真实时间限流影响）
-                      gate=lambda proxy: EvidenceGate(vault, proxy=proxy, authority=proxy.guard.authority,
-                                                      revalidate=revalidate))  # F12 门控
+                      gate=lambda proxy, claims: EvidenceGate(vault, proxy=proxy, authority=proxy.guard.authority,
+                                                              revalidate=revalidate))  # F12 门控
     return p, vault, HumanDesk(p.s, vault)  # 返回
 
 
