@@ -23,6 +23,7 @@ ablation:
   forced_escalation: true          # F14 代码强制升级：false 时只保留预算触顶
   auto_retry: true                 # F15 自动重试：false 时限流 / 超时 / 上游错误直接交回执行者
   circuit_breaker: true            # F15 熔断：false 时不计失败、不熔断
+  datasheet_synonyms: true         # F19 datasheet 检索同义词扩展：false 时只按原词检索（对比召回）
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:

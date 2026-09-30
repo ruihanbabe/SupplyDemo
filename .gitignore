@@ -28,3 +28,6 @@ venv/
 
 # Claude Code 个人配置
 .claude/settings.local.json
+
+# F19 真实 datasheet 原文（版权，不入 git）
+data/datasheets/

@@ -8,6 +8,7 @@ EvidenceGate 接入 F21 ProcurementExecutor 的门控挂点（签名同 minimal_
 - 提交另要：同一草稿已提交过 → 幂等重放放行；否则审批令牌查验（ApprovalVault）+ 提交前重校验（消融开关 presubmit_revalidation）：
   以 procurement 身份的 F11 令牌经代理层跳过缓存实时查该分销商报价，库存须覆盖数量、单价偏差不超容差；
   不通过即拒绝，原因写明变化，并对该报价写外部数据失效（F06 传播使决策与草稿失效，须重规划、重新送审）。
+F19：替代料提交前刷新其 datasheet（spec §6.2 检查时机之一），出新版本则验证报告失效、门控拒绝（受 presubmit_revalidation 开关）。
 F10：建草稿另查软声明——所用供应须有本案未冲突的声明（传入 claims 才查；A9）。
 planner_report_gate()：上报计划员须引用本案有效 ImpactReport，理由里的数字都须出现在该 ImpactReport 中。
 依赖：business.procurement.minimal_gate、gate.approval、taint.labels、session.log。被装配执行器的代码（F22、测试）与 runtime.segment 使用。
@@ -39,9 +40,10 @@ class EvidenceGate:
     # 完成：proxy / authority 为空时不能做重校验（提交直接拒绝，写明"重校验不可用"），避免静默放行。
     # -----------------------------------------------------------------------
     def __init__(self, vault: ApprovalVault, *, proxy=None, authority=None, config: dict | None = None,
-                 revalidate: bool = True, claims=None):
+                 revalidate: bool = True, claims=None, datasheet_refresh=None):
         self.vault, self.proxy, self.authority = vault, proxy, authority  # 依赖
         self.claims = claims  # F10 软声明（ClaimBook；None = 未接入，不查）
+        self.datasheet_refresh = datasheet_refresh  # F19：提交前刷新替代料 datasheet（Ingestor.refresh；None = 不查）
         self.config = config or load_gate_config()  # 门控配置
         self.revalidate = revalidate  # 消融开关 presubmit_revalidation
 
@@ -59,6 +61,9 @@ class EvidenceGate:
             return reasons  # 返回
         if action != "draft":  # 送审 / 提交：对象是草稿
             mpn = artifact["content"]["mpn"]  # 草稿的料号
+        if action == "submit" and self.datasheet_refresh is not None and self.revalidate \
+                and mpn not in {m for bom in env.state.boards.values() for m in bom}:  # F19：替代料提交前查 datasheet 版本
+            self.datasheet_refresh(mpn, day=day)  # 出新版本即失效传播，下面的报告检查随之拒绝
         reasons = self._substitute_evidence(session, case_id, mpn, env)  # 替代料证据
         if action == "draft" and not reasons and self.claims is not None:  # F10：草稿用的供应须有本案声明
             pick = next((d for d in artifact["content"]["decisions"] if d["mpn"] == mpn and d.get("chosen")), None)  # 该料

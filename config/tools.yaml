@@ -12,6 +12,7 @@ providers:
   element14:  {daily_limit: 1000, rate_per_s: 1,    burst: 2}
   glm-flash:  {daily_limit: null, rate_per_s: 1,    burst: 2}
   qwen-free:  {daily_limit: 50,   rate_per_s: 0.33, burst: 1}   # spec §5.3：每分钟 20 次、每天 50 次
+  datasheet:  {daily_limit: null, rate_per_s: null, burst: null}  # F19 datasheet 获取（本期只有固定样例）
 
 # 工具的两个时钟：cache_ttl_s 按真实秒（省配额），valid_days 按模拟日（门控看它）。
 tools:
