@@ -8,6 +8,8 @@ from pydantic import BaseModel  # 子 Agent 输出模型
 from infrastructure.config import load_harness_config  # 配置
 from models.adapter import ModelAdapter  # 模型适配层
 from models.providers import ScriptedTransport, load_models_config, reply  # 脚本传输
+from permissions.guard import PermissionGuard  # F11 权限检查
+from permissions.tokens import Authority, load_permissions_config  # F11 令牌
 from runtime.dispatch import Dispatcher, ExecutorSpec  # 派发
 from runtime.loop import ExecutorLoop  # 执行者循环
 from runtime.segment import Scheduler, SegmentRunner  # 活跃段与调度
@@ -29,6 +31,26 @@ ORCH_TOOLS = ["dispatch_task", "end_segment", "env_inventory", "ask_user"]  # �
 class Note(BaseModel):
     """子 Agent 的输出。"""
     note: str  # 结论
+
+
+# 功能：F11 测试用签发者 / 权限检查 / 令牌。executors 覆盖或追加角色工具（如测试专用执行者 quoter）。
+# 依赖：config/permissions.yaml。完成：令牌缺省为 S1 模式、案子 K7。
+def authority(executors=None, **kw) -> Authority:
+    cfg = load_permissions_config()  # 权限配置
+    cfg["executors"] = {**cfg["executors"], **(executors or {})}  # 追加测试执行者
+    return Authority(cfg, **kw)  # 签发者
+
+
+def guard(executors=None, **kw) -> PermissionGuard:
+    """测试用权限检查。"""
+    return PermissionGuard(authority(executors, **kw))  # 包一层
+
+
+def tok(proxy_or_guard, executor, case_id="K7", mode="S1", scope=None):
+    """给某执行者签一张根令牌（测试直接调代理层时用）。"""
+    g = getattr(proxy_or_guard, "guard", proxy_or_guard)  # 代理层或检查器
+    return g.authority.issue_root(executor=executor, case_id=case_id, mode=mode,  # 签发
+                                  initiated_by="test", scope=scope)  # 发起者与作用域
 
 
 def call(name, **args):
@@ -63,20 +85,21 @@ def build(script, *, budgets=None, max_active=4, context=None, **switches):
     holder = {}  # 延迟绑定控制处理函数（SegmentRunner 依赖代理层，代理层依赖处理函数）
     kv = MemoryKV()  # KV
     tcfg = load_tools_config()  # 工具配置
+    auth = authority({"quoter": ["distributor_quotes"]}, scope_enabled=sw["capability_scope"])  # F11 签发者
     proxy = ToolProxy([environment_server(lambda: env), distributor_server(),  # Server
                        control_server(lambda n, a, c: holder["seg"].handle_control(n, a, c))], session,  # 控制
                       kv=kv, quota=QuotaGuard(kv, tcfg["providers"]), archive=MemoryArchive(), config=tcfg,
-                      whitelist={"orchestrator": set(ORCH_TOOLS), "quoter": {"distributor_quotes"}},  # 白名单
-                      switches=sw)  # 开关
+                      guard=PermissionGuard(auth), switches=sw)  # F11 权限与开关
     transport = ScriptedTransport(script)  # 脚本
     adapter = ModelAdapter(load_models_config(), {"glm-flash": transport}, session, switches=sw)  # 适配层
     fold = config["context"]["fold_after_rounds"] if sw["tool_result_folding"] else None  # F16 折叠
     loop = ExecutorLoop(adapter, proxy, loop_detection=sw["loop_detection"], fold_after=fold)  # 执行者循环
     registry = {"quoter": ExecutorSpec("quoter", "SourcingNote", system="你查报价。",  # 一个 LLM 子 Agent
                                        tools=["distributor_quotes"], output=Note)}  # 工具与输出
-    dispatcher = Dispatcher(session, loop, registry, budgets=rt, batch_join=sw["batch_join"])  # 派发器
+    dispatcher = Dispatcher(session, loop, registry, budgets=rt, authority=auth, batch_join=sw["batch_join"])  # 派发器
     extra = {"context_builder": context} if context is not None else {}  # F16 上下文构建器（可选）
-    seg = SegmentRunner(session, loop, dispatcher, budgets=rt, orchestrator_tools=ORCH_TOOLS, **extra)  # 活跃段
+    seg = SegmentRunner(session, loop, dispatcher, budgets=rt, orchestrator_tools=ORCH_TOOLS,  # 活跃段
+                        authority=auth, **extra)  # F11 签发者
     holder["seg"] = seg  # 绑定
     sched = Scheduler(env, session, seg, max_active=max_active)  # 调度
     return session, seg, sched, env, transport  # 返回

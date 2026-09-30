@@ -13,6 +13,7 @@ ablation:
   batch_join: true                 # F09 批次汇合：false 时每个任务完成都单独唤醒编排者一次
   context_assembly: true           # F16 分区组装：false 时把本案全部 Artifact 原文与全部事件直接塞进上下文
   tool_result_folding: true        # F16 旧工具结果折叠：false 时活跃段内工具结果全文保留
+  capability_scope: true           # F11 令牌作用域：false 时不按料号作用域收窄与检查（工具集合与风险级检查照常）
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:

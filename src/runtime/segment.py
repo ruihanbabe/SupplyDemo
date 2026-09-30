@@ -4,17 +4,19 @@
   状态迁移（开启 → 规划中 → 执行中；等待 → 执行中）→ 从日志与 Artifact 现组装编排者上下文（M1 最小构建器，F16 替换）→
   编排者循环（每轮后运行本轮派发的任务批次并一次交回）→ end_segment(wait_for) 或预算触顶 / 失败 → 案子进入等待。
   进程内不保存半截对话；段中崩溃则整段重跑。
+  F11：每段开始由 Authority 给编排者签根令牌（模式取开案内容 mode，缺省按权限配置；发起者 = 开案事件的执行者与序号）。
 - handle_control()：编排控制工具的实现（经 F07 代理层转交）：派任务、结束本段；目标修订 / 上报计划员 / 问用户在 M1 只记为
   human_request 事件（语义归 F22/F05/F25）。
 - Scheduler.run_day()：推进环境 → env_day 事件 → 路由挂点（F10）+ 到期定时器 + 排队案子 → 按固定顺序运行被唤醒的案子，
   已开始处置且未关闭的案子数有上限，超出的新案子排队 → 没有可运行案子时本日结束。
-依赖：runtime.loop、runtime.dispatch、session.log、simenv.api。被 F10（路由）、F22（编排者）、F27（Eval 运行器）使用。
+依赖：runtime.loop、runtime.dispatch、session.log、simenv.api、permissions.tokens。被 F10（路由）、F22（编排者）、F27（Eval 运行器）使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
 
 import json  # 上下文摘要
 from collections.abc import Callable  # 挂点类型
 
+from permissions.tokens import Authority  # F11 根令牌签发
 from runtime.dispatch import Dispatcher  # 派发与汇合
 from runtime.loop import ExecutorLoop  # 执行者循环
 from session.log import (  # 事件日志与状态常量
@@ -58,27 +60,29 @@ class SegmentRunner:
     # 功能：见文件摘要。依赖：执行者循环、派发器、预算配置、上下文构建器。
     # 完成：编排者工具清单由调用方给（F11 以后按能力令牌收窄）。
     def __init__(self, session: Session, loop: ExecutorLoop, dispatcher: Dispatcher, *, budgets: dict,
-                 orchestrator_tools: list[str],
+                 orchestrator_tools: list[str] | None, authority: Authority,
                  context_builder: Callable[[Session, str, str], tuple[str, str]] = minimal_context):
         self.session, self.loop, self.dispatcher = session, loop, dispatcher  # 依赖
         self.budgets = budgets  # runtime 配置段
-        self.tools = orchestrator_tools  # 编排者工具
+        self.tools = orchestrator_tools  # 编排者工具（None = 令牌可见的全部；实际再 ∩ L1 可见，F11）
+        self.authority = authority  # F11 令牌签发者
         self.context_builder = context_builder  # 上下文构建器
         self.stop: dict | None = None  # 本段是否已 end_segment（{wait_for, reason}）
 
     # -----------------------------------------------------------------------
     # handle_control：编排控制工具的实现
-    # 功能：F07 control_server 的处理函数；ctx 带案子与模拟日。
+    # 功能：F07 control_server 的处理函数；ctx 带案子、模拟日与调用者令牌（F11）。
     # 依赖：dispatcher、session。
-    # 完成：有待运行任务时拒绝 end_segment；需要人的控制工具记 human_request（F17 统计打扰人工）。
+    # 完成：有待运行任务时拒绝 end_segment；需要人的控制工具记 human_request（F17 统计打扰人工）；
+    #       派任务以调用者令牌为父令牌签发子令牌（F11 衰减）。
     # -----------------------------------------------------------------------
     def handle_control(self, name: str, args, ctx) -> dict:
-        actor = f"orchestrator@{ctx.case_id}"  # 身份
+        actor = ctx.token.actor  # 身份（来自令牌）
         if name == "dispatch_task":  # 派任务
-            return self.dispatcher.dispatch(case_id=ctx.case_id, day=ctx.day, actor=actor,  # 登记
+            return self.dispatcher.dispatch(parent=ctx.token, day=ctx.day,  # 登记（父令牌）
                                             executor=args.executor, task=args.task,  # 执行者与说明
                                             inputs=args.inputs, reason=args.reason,  # 输入与理由
-                                            params=args.params)  # 代码组件参数
+                                            params=args.params, scope=args.scope)  # 代码组件参数与作用域
         if name == "end_segment":  # 结束本段
             if self.dispatcher.pending:  # 还有待运行任务
                 return {"accepted": False, "error": "还有已派发未运行的任务，不能结束本段"}  # 拒绝
@@ -112,9 +116,13 @@ class SegmentRunner:
         self.stop, self.dispatcher.pending = None, []  # 段内状态从零开始（不保存半截对话）
         system, user = self.context_builder(self.session, case_id, reason)  # 现组装上下文
         rounds = self.budgets["orchestrator"]["max_rounds_per_segment"]  # 段轮数预算
-        res = self.loop.run(executor="orchestrator", actor=f"orchestrator@{case_id}", system=system, user=user,
+        opened = self.session.events(case_id=case_id, type="case_opened")[0]  # 开案事件
+        token = self.authority.issue_root(executor="orchestrator", case_id=case_id,  # F11 根令牌
+                                          mode=opened["payload"].get("mode"),  # 案子模式（缺省按配置）
+                                          initiated_by=f"{opened['actor']}#{opened['seq']}")  # 由谁发起
+        res = self.loop.run(token=token, system=system, user=user,  # 编排者循环（身份取自令牌）
                             tools=self.tools, output=None, max_rounds=rounds, max_tool_calls=rounds * 8,  # 预算
-                            day=day, case_id=case_id,  # 模拟日与案子
+                            day=day,  # 模拟日
                             after_round=lambda: self.dispatcher.run_pending(case_id=case_id, day=day),  # 汇合
                             should_stop=lambda: self.stop is not None)  # end_segment
         while self.dispatcher.pending:  # 编排者已给出结果但还有任务没跑（汇合关闭时）

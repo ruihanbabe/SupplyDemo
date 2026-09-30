@@ -1,5 +1,6 @@
 """F17：可观测计量测试（离线全部 mock；集成测 Postgres 计量表）。"""
 import pytest  # 测试框架
+from kit import guard, tok  # F11 权限装配
 
 from models.adapter import ModelAdapter  # 模型适配层
 from models.providers import ScriptedTransport, load_models_config, reply  # 脚本传输
@@ -41,7 +42,8 @@ def scenario(session_store, meter_store, use_meter: bool = True):
     env = Environment.create(load_params(), load_boms(), 42)  # 环境
     proxy = ToolProxy([environment_server(lambda: env), distributor_server()], s, kv=kv,  # 代理层
                       quota=QuotaGuard(kv, config["providers"], today=lambda: DAY),  # 配额
-                      archive=MemoryArchive(), config=config, whitelist={"v": {"*"}}, meter=meter)  # 计量
+                      archive=MemoryArchive(), config=config, guard=guard({"v": ["distributor_quotes"]}),  # F11 权限
+                      meter=meter)  # 计量
     adapter = ModelAdapter(load_models_config(), {  # 适配层
         "glm-flash": ScriptedTransport([reply("x", tokens=(100, 5)), reply("y", tokens=(120, 5))]),  # 两次失败
         "qwen-free": ScriptedTransport([reply('{"a": 1}', tokens=(90, 7))])}, s, meter=meter)  # 降级成功
@@ -55,10 +57,10 @@ def scenario(session_store, meter_store, use_meter: bool = True):
 
     adapter.call("default", [Message("user", "q")], output=Out, day=16, actor="orch", case_id="K7")  # 模型调用
     args = {"mpns": ["SKY13453-385LF"], "qty": 10}  # 报价参数
-    proxy.call("distributor_quotes", args, executor="v", actor="v", day=16, case_id="K7")  # 首次：三家扣配额
-    proxy.call("distributor_quotes", args, executor="v", actor="v", day=16, case_id="K7")  # 缓存命中
+    proxy.call("distributor_quotes", args, token=tok(proxy, "v"), day=16)  # 首次：三家扣配额
+    proxy.call("distributor_quotes", args, token=tok(proxy, "v"), day=16)  # 缓存命中
     proxy.call("distributor_quotes", {**args, "qty": 11, "distributors": ["mouser"]},  # mouser 配额已用完
-               executor="v", actor="v", day=16, case_id="K7")  # 限流
+               token=tok(proxy, "v"), day=16)  # 限流
     s.transition("K7", "planning", day=17, actor="runtime")  # 重规划
     s.append("human_request", day=17, actor="runtime", case_id="K7", payload={"role": "buyer"})  # 打扰人工
     s.close_case("K7", "escalated", day=17, actor="runtime")  # 升级关闭

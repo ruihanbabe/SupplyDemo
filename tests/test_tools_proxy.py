@@ -3,6 +3,7 @@ import threading  # 并发扣令牌
 from uuid import uuid4  # Redis 键前缀隔离
 
 import pytest  # 测试框架
+from kit import guard, tok  # F11 权限装配
 
 from infrastructure.config import load_harness_config  # 消融开关
 from session.log import Session  # 事件日志
@@ -24,6 +25,9 @@ from tools.servers import (  # 各 Server
 )
 
 MPN = "SKY13453-385LF"  # hackrf 上的射频开关
+ALL = ["env_inventory", "env_purchase_orders", "env_shipments", "env_work_orders", "env_orders",  # 四个 Server 的全部工具
+       "distributor_quotes", "read_record", "dispatch_task", "propose_goal_revision", "report_to_planner",
+       "ask_user", "end_segment"]
 
 
 class Clock:
@@ -42,7 +46,7 @@ def env0():
 
 
 # 功能：装配一个代理层；可替换 KV、留档、挂点、白名单、配置。
-def make(env, *, kv=None, archive=None, overlays=(), faults=(), whitelist=None, config=None, **sw):
+def make(env, *, kv=None, archive=None, overlays=(), faults=(), executors=None, config=None, **sw):
     config = config or load_tools_config()  # 配置
     kv = kv or MemoryKV(Clock())  # KV
     session = Session(MemorySessionStore(), "run", clock=lambda: "t")  # 事件日志
@@ -58,8 +62,8 @@ def make(env, *, kv=None, archive=None, overlays=(), faults=(), whitelist=None, 
                archive_server(), control_server()]  # 留档与控制
     proxy = ToolProxy(servers, session, kv=kv, quota=QuotaGuard(kv, config["providers"]),  # 代理层
                       archive=archive or MemoryArchive(), config=config,  # 留档与配置
-                      whitelist=whitelist or {"verifier": {"distributor_quotes", "read_record",  # 白名单
-                                                           "env_inventory"}},  # 三个工具
+                      guard=guard(executors or {"verifier": ["distributor_quotes", "read_record",  # F11 角色工具
+                                                             "env_inventory"]}),  # 三个工具
                       overlays=overlays, faults=faults,  # 挂点
                       switches={**load_harness_config()["ablation"], **sw})  # 开关
     return proxy, session, backend_calls  # 返回
@@ -68,20 +72,22 @@ def make(env, *, kv=None, archive=None, overlays=(), faults=(), whitelist=None, 
 def q(proxy, day=16, **args):
     """以 verifier 身份查报价。"""
     return proxy.call("distributor_quotes", {"mpns": [MPN], "qty": 300, **args},  # 调用
-                      executor="verifier", actor="verifier@K7", day=day, case_id="K7")  # 身份与日
+                      token=tok(proxy, "verifier"), day=day)  # 身份与日
 
 
 # 功能：白名单拒绝与不存在的工具都不调用上游，错误附可用工具；参数错误不扣配额。环境 Server 没有写 / 改计划工具。
 def test_whitelist_params_and_no_write_tools(env0):
     proxy, session, calls = make(env0)  # 装配
-    r = proxy.call("env_work_orders", {}, executor="verifier", actor="v", day=1)  # 不在白名单
+    r = proxy.call("env_work_orders", {}, token=tok(proxy, "verifier"), day=1)  # 不在白名单
     assert r["error"]["type"] == "forbidden" and "distributor_quotes" in r["error"]["message"]  # 附可用工具
-    r = proxy.call("reschedule_work_order", {}, executor="verifier", actor="v", day=1)  # 编造的工具
+    r = proxy.call("reschedule_work_order", {}, token=tok(proxy, "verifier"), day=1)  # 编造的工具
     assert r["error"]["type"] == "not_found"  # 不存在
     r = q(proxy, qty=-1)  # 参数错误
     assert r["error"]["type"] == "param_error" and calls == []  # 不调用上游
     assert proxy.quota.kv.counters == {}  # 没扣配额
-    names = {t["name"] for t in make(env0, whitelist={"x": {"*"}})[0].visible_tools("x")}  # 全部工具
+    full = make(env0, executors={"x": ALL})[0]  # 角色拥有全部工具的代理层
+    names = {t["name"] for t in full.visible_tools(tok(full, "x"))}  # 全部可见工具（S1）
+    assert "distributor_quotes" in names  # 确实拿到了工具清单
     assert not any(w in n for n in names for w in ("submit", "reschedule", "update", "write"))  # 无写 / 改计划工具
     assert len(session.events(type="tool_call")) == 3  # 每次调用一条事件
 
@@ -169,23 +175,23 @@ def test_overlay_records_raw_and_delivered(env0):
 def test_pagination_reads_archive(env0):
     proxy, _, calls = make(env0)  # 装配
     mpns = sorted(env0.get_bom("hackrf-one"))[:5]  # 5 颗料 × 3 家 = 15 行
-    r = proxy.call("distributor_quotes", {"mpns": mpns, "qty": 10}, executor="verifier", actor="v", day=1)  # 查
+    r = proxy.call("distributor_quotes", {"mpns": mpns, "qty": 10}, token=tok(proxy, "verifier"), day=1)  # 查
     assert len(r["data"]) == 10 and r["truncated"] and r["next_cursor"].endswith(":10")  # 截断
     n = len(calls)  # 上游调用数
-    page2 = proxy.call("read_record", {"cursor": r["next_cursor"]}, executor="verifier", actor="v", day=1)  # 翻页
+    page2 = proxy.call("read_record", {"cursor": r["next_cursor"]}, token=tok(proxy, "verifier"), day=1)  # 翻页
     assert len(page2["data"]) == 5 and not page2["truncated"] and len(calls) == n  # 读留档，不调上游
-    bad = proxy.call("read_record", {"cursor": "rec-999"}, executor="verifier", actor="v", day=1)  # 不存在
+    bad = proxy.call("read_record", {"cursor": "rec-999"}, token=tok(proxy, "verifier"), day=1)  # 不存在
     assert bad["error"]["type"] == "not_found"  # 查不到
 
 
 # 功能：环境 Server 返回 F03 的真实状态、查不到转 not_found；编排控制未注册时明确报"尚未具备"。
 def test_environment_and_control_servers(env0):
-    proxy, _, _ = make(env0, whitelist={"orch": {"*"}})  # 全部工具
-    inv = proxy.call("env_inventory", {"mpns": [MPN]}, executor="orch", actor="o", day=0)  # 查库存
+    proxy, _, _ = make(env0, executors={"orch": ALL})  # 全部工具
+    inv = proxy.call("env_inventory", {"mpns": [MPN]}, token=tok(proxy, "orch"), day=0)  # 查库存
     assert inv["data"][0] == env0.get_inventory(MPN) and inv["source"]["provider"] == "sim"  # 与环境一致
-    miss = proxy.call("env_orders", {"order_id": "O-999"}, executor="orch", actor="o", day=0)  # 查不到
+    miss = proxy.call("env_orders", {"order_id": "O-999"}, token=tok(proxy, "orch"), day=0)  # 查不到
     assert miss["error"]["type"] == "not_found"  # 转换
-    ctl = proxy.call("end_segment", {"wait_for": "human", "reason": "等审批"}, executor="orch", actor="o", day=0)  # 控制工具
+    ctl = proxy.call("end_segment", {"wait_for": "human", "reason": "等审批"}, token=tok(proxy, "orch"), day=0)  # 控制工具
     assert ctl["error"]["type"] == "upstream_error" and "尚未具备" in ctl["error"]["message"]  # 明确报尚未具备
 
 

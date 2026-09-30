@@ -6,7 +6,8 @@ ProcurementExecutor 是唯一能写采购数据的组件（spec §3.3）；写�
 - submit(PODraft 引用)：幂等键 = 案子 + 草稿版本 + 内容哈希前缀，写入环境（F03），写 po_submitted。
 每个动作先过门控挂点 gate(action, ...) → 拒绝原因列表；本文件自带最小门控（被引用 Artifact 有效、Decision 可行、类型正确），
 F12 用证据门控 + 审批令牌 + 提交前重校验替换同一挂点。拒绝时写 gate_rejected（F16 新反馈、F14 反馈卡片的来源）。
-procurement_server()：三个写工具（参数只收 Artifact 引用），供编排者在 S1 下使用（白名单与 S1 限定归 F11/F22）。
+procurement_server()：三个写工具（参数只收 Artifact 引用），风险级 R1 建草稿、R1 送审、R2 提交；
+仅编排者在 S1 模式下可见（F11 按风险级与 config/permissions.yaml 强制）。
 依赖：session.log、simenv.api、tools.server。被编排者（经代理层）、F12、F15 使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
@@ -131,10 +132,13 @@ def procurement_server(executor: Callable[[], ProcurementExecutor]) -> Server:
     return Server("procurement", [
         ToolDef("create_po_draft", "按决策为一颗料生成采购单草稿（写操作，受门控）。例：create_po_draft(decision='Decision:K7@v1', mpn='X')",
                 DraftArgs, lambda a, ctx: executor().create_draft(case_id=ctx.case_id, day=ctx.day,
-                                                                  decision_ref=a.decision, mpn=a.mpn)),
+                                                                  decision_ref=a.decision, mpn=a.mpn),
+                risk="R1"),  # F11：可撤销写
         ToolDef("request_approval", "把草稿送主管审批（H2），之后案子等待人工。例：request_approval(draft='PODraft:K7:X@v1')",
                 DraftRefArgs, lambda a, ctx: executor().request_approval(case_id=ctx.case_id, day=ctx.day,
-                                                                         draft_ref=a.draft)),
+                                                                         draft_ref=a.draft),
+                risk="R1"),  # F11：可撤销写
         ToolDef("submit_po", "审批通过后提交采购单（不可撤销，受门控与审批令牌）。例：submit_po(draft='PODraft:K7:X@v1')",
-                DraftRefArgs, lambda a, ctx: executor().submit(case_id=ctx.case_id, day=ctx.day, draft_ref=a.draft)),
+                DraftRefArgs, lambda a, ctx: executor().submit(case_id=ctx.case_id, day=ctx.day, draft_ref=a.draft),
+                risk="R2"),  # F11：不可撤销写
     ])

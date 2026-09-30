@@ -25,15 +25,15 @@ def load_yaml(name: str) -> dict:
 # ---------------------------------------------------------------------------
 # sourcing：比价
 # 功能：见文件摘要。
-# 依赖：proxy.call("distributor_quotes")；distributors 为环境的分销商物流参数（ship_days / transit_days）。
+# 依赖：proxy.call("distributor_quotes")；distributors 为环境的分销商物流参数（ship_days / transit_days）；
+#       token 为 Runtime 签给 sourcing 的子能力令牌（F11，身份与案子取自它）。
 # 完成：数量不是数字（"unknown"，B3）时不算"能满足"；整个查询失败时该料所有来源记为缺失并附错误类型。
 # ---------------------------------------------------------------------------
-def sourcing(proxy, demands: list[dict], *, distributors: dict, day: int, case_id: str | None,
-             actor: str) -> tuple[dict, list[dict]]:
+def sourcing(proxy, demands: list[dict], *, distributors: dict, day: int, token) -> tuple[dict, list[dict]]:
     items, deps = [], []  # 结果与依赖
     for d in demands:  # 每条需求
         r = proxy.call("distributor_quotes", {"mpns": [d["mpn"]], "qty": d["qty"]},  # 经代理层查报价
-                       executor="sourcing", actor=actor, day=day, case_id=case_id)  # 代码组件身份
+                       token=token, day=day)  # 代码组件凭子令牌调用（F11）
         if not r["ok"]:  # 整体失败
             items.append({"mpn": d["mpn"], "qty": d["qty"], "offers": [],  # 无报价
                           "missing": sorted(distributors), "error": r["error"]["type"]})  # 全部缺失

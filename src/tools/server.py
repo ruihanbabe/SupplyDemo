@@ -2,9 +2,10 @@
 
 进程内 Server，接口按 MCP 的工具形状（name / description / inputSchema，list_tools / call_tool）；
 将来装上 mcp 包时只加一层标准传输包装。代理层之外的代码不直接调用 handler（G1）。
-- ToolDef：参数模型、处理函数、来源（sim / external）、提供方推导函数、返回校验器、真实时间缓存键名、实体键提取。
-- Server：一组工具；list_tools 输出 MCP 形状。
-- CallContext：代理层传给处理函数的上下文（模拟日、案子、因配额不可用的提供方）。
+- ToolDef：参数模型、处理函数、来源（sim / external）、提供方推导函数、返回校验器、真实时间缓存键名、实体键提取；
+  F11 增加风险级 risk（R0/R1/R2，spec §3.4）与 scoped（是否受能力令牌的料号作用域约束）。
+- Server：一组工具；list_tools 输出 MCP 形状；F11 增加 credentials（该 Server 独占的凭证，代理层只拿来登记脱敏）。
+- CallContext：代理层传给处理函数的上下文（模拟日、案子、因配额不可用的提供方；F11 增加调用者能力令牌）。
 依赖：pydantic。被各 Server 定义文件与 tools.proxy 使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
@@ -23,18 +24,21 @@ class NotFound(LookupError):
     """查不到，代理层转成 not_found 错误。"""
 
 
-# 功能：处理函数收到的上下文。依赖：无。完成：模拟日、案子、执行者、配额不可用的提供方（部分成功用）。
+# 功能：处理函数收到的上下文。依赖：无。完成：模拟日、案子、执行者、配额不可用的提供方（部分成功用）；
+#       F11：调用者令牌（控制工具据此给子任务签发衰减后的令牌，模型拿不到它）。
 @dataclass
 class CallContext:
     day: int  # 当前模拟日
     case_id: str | None  # 案子
     executor: str  # 执行者角色
     unavailable: set[str] = field(default_factory=set)  # 本次因配额 / 限流不可用的提供方
+    token: object = None  # F11：调用者的能力令牌（permissions.tokens.CapabilityToken）
 
 
 # 功能：一个工具的完整声明。依赖：pydantic 参数模型。
 # 完成：providers(args) 给出本次调用涉及的提供方（配额按它扣）；validate(raw) 做返回校验（B3），
-#       返回 (数据, 警告)；cache_key 为 config/tools.yaml 中的工具名（为空则不缓存）。
+#       返回 (数据, 警告)；cache_key 为 config/tools.yaml 中的工具名（为空则不缓存）；
+#       F11：risk 风险级、scoped 为 True 时调用涉及的料号（entity_keys 的 mpn）须在令牌作用域内。
 @dataclass
 class ToolDef:
     name: str  # 工具名
@@ -46,6 +50,8 @@ class ToolDef:
     validate: Callable[[object], tuple[object, list[str]]] | None = None  # 返回校验器
     config_key: str | None = None  # 在 config/tools.yaml tools 段里的键（缓存与有效期）
     entity_keys: Callable[[BaseModel], dict[str, list[str]]] = lambda args: {}  # 事件实体键
+    risk: str = "R0"  # F11 风险级：R0 只读 / R1 可撤销写 / R2 不可撤销写
+    scoped: bool = False  # F11：是否受料号作用域约束
 
     def schema(self) -> dict:
         """MCP 形状的工具描述。"""
@@ -53,11 +59,12 @@ class ToolDef:
                 "inputSchema": self.params.model_json_schema()}  # 参数 Schema
 
 
-# 功能：一个 Server。依赖：ToolDef。完成：按名取工具、列出工具（MCP 形状）。
+# 功能：一个 Server。依赖：ToolDef。完成：按名取工具、列出工具（MCP 形状）；F11：独占凭证（只交给自己的后端）。
 @dataclass
 class Server:
     name: str  # Server 名
     tools: list[ToolDef]  # 工具
+    credentials: object = None  # F11：该 Server 独占的凭证（permissions.secrets.Credentials），代理层只登记脱敏
 
     def list_tools(self) -> list[dict]:
         """MCP list_tools。"""

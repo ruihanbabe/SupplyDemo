@@ -29,7 +29,7 @@ def test_baseline_has_only_hw_part_and_survives_repeat_and_downgrade(migrated):
     conn, config, schema = migrated
     assert set(inspect(conn).get_table_names(schema=schema)) == BASELINE
     command.upgrade(config, "head")
-    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0005"  # F17 起为 0005
+    assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "0006"  # F11 起为 0006
     command.downgrade(config, "base")
     assert inspect(conn).get_table_names(schema=schema) == ["alembic_version"]
     command.upgrade(config, "head")

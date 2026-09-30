@@ -1,5 +1,6 @@
 """F21：确定性业务组件离线测试（固定样例报价，不联网、不调用 LLM）。"""
 import pytest  # 测试框架
+from kit import guard, tok  # F11 权限装配
 
 from business.components import code_executors  # 被测：代码执行者
 from business.decide import decide, grade, load_yaml, sourcing  # 被测：比价、决策、等级
@@ -35,7 +36,7 @@ def make_proxy(session, providers=None):
     cfg["providers"].update(providers or {})  # 覆盖配额
     kv = MemoryKV()  # KV
     return ToolProxy([distributor_server()], session, kv=kv, quota=QuotaGuard(kv, cfg["providers"]),  # 代理层
-                     archive=MemoryArchive(), config=cfg, whitelist={"sourcing": {"distributor_quotes"}})
+                     archive=MemoryArchive(), config=cfg, guard=guard())  # F11：sourcing 角色在权限配置里
 
 
 # 功能：影响分析不改真实环境；前推的停线天数与真实不干预运行一致；按缺口在第 0 天补货后不再停线。
@@ -64,7 +65,7 @@ def test_sourcing_partial_success():
     proxy = make_proxy(s, {"mouser": {"daily_limit": 0, "rate_per_s": None, "burst": None}})  # mouser 不可用
     env = Environment.create(load_params(), load_boms(), 42)  # 环境
     content, deps = sourcing(proxy, [{"mpn": "SKY13453-385LF", "qty": 10}], distributors=env.state.distributors,
-                             day=3, case_id="K1", actor="sourcing@K1")  # 比价
+                             day=3, token=tok(proxy, "sourcing", "K1"))  # 比价（F11 令牌）
     item = content["items"][0]  # 唯一需求
     assert item["missing"] == ["mouser"] and {o["distributor"] for o in item["offers"]} == {"digikey", "element14"}
     assert all(d["version"] == "day3" and d["valid_until_day"] == 4 for d in deps)  # 版本与有效期
@@ -140,11 +141,13 @@ def test_a1_code_path_clears_shortages():
     proxy = make_proxy(s)  # 代理层
     registry = code_executors(lambda: env, proxy, run_id="r")  # 三个代码执行者
     rt = load_harness_config()["runtime"]  # 预算
-    disp = Dispatcher(s, loop=None, registry=registry, budgets=rt)  # 代码执行者不需要模型循环
+    disp = Dispatcher(s, loop=None, registry=registry, budgets=rt,  # 代码执行者不需要模型循环
+                      authority=proxy.guard.authority)  # F11 子令牌签发
+    parent = tok(proxy, "orchestrator", "K7")  # 编排者根令牌
     s.open_case("K7", day=0, actor="runtime", payload={"goal": "消除全部缺口"})  # 开案
 
     def run(executor, inputs=(), params=None):  # 派一个任务并立即汇合
-        disp.dispatch(case_id="K7", day=0, actor="orch", executor=executor, task=executor,  # 派发
+        disp.dispatch(parent=parent, day=0, executor=executor, task=executor,  # 派发
                       inputs=list(inputs), reason="测试", params=params)  # 输入与参数
         disp.run_pending(case_id="K7", day=0)  # 运行
         ref = s.events(type="task_finished")[-1]["payload"]["artifact"]  # 刚完成任务的产出引用

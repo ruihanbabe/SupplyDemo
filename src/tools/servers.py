@@ -8,6 +8,8 @@
 - validate_quotes：返回校验（B3），缺失字段置"未知"并警告，整体结构不对抛 BadFormat。
 - archive_server：按记录号 / 游标读留档（由 ToolProxy.read_record 实现，不调用上游）。
 - control_server：编排控制五个工具的参数模型，调用转交给注册的处理函数（语义归 F09/F22）。
+- F11 风险级：环境、分销商、留档、派任务、问用户、结束本段为 R0；提出目标修订、上报计划员为 R1。
+  distributor_server 可带独占凭证（真实后端用），查报价受料号作用域约束（scoped）；dispatch_task 增加可选 scope。
 依赖：tools.server、models.types（Mpn）、simenv.api、pydantic。被 ToolProxy 装配使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
@@ -194,8 +196,8 @@ def validate_quotes(rows) -> tuple[list[dict], list[str]]:
     return out, warnings  # 结果与警告
 
 
-def distributor_server(backend=None) -> Server:
-    """构造分销商 Server；backend 默认为固定样例后端。"""
+def distributor_server(backend=None, credentials=None) -> Server:
+    """构造分销商 Server；backend 默认为固定样例后端；credentials 为该 Server 独占的凭证（F11，只交给后端）。"""
     backend = backend or FixtureDistributorBackend()  # 后端
 
     def quotes(args: QuoteArgs, ctx: CallContext):  # 处理函数
@@ -215,7 +217,8 @@ def distributor_server(backend=None) -> Server:
         QuoteArgs, quotes, source="external",  # 参数、处理、来源
         providers=lambda a: [d for d in DISTRIBUTORS if d in a.distributors],  # 涉及的分销商
         validate=validate_quotes, config_key="distributor_quotes",  # 校验与时钟配置
-        entity_keys=lambda a: {"mpn": list(a.mpns), "distributor": list(a.distributors)})])  # 实体键
+        entity_keys=lambda a: {"mpn": list(a.mpns), "distributor": list(a.distributors)},  # 实体键
+        scoped=True)], credentials=credentials)  # F11：受料号作用域约束；凭证只随 Server
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +247,7 @@ class DispatchArgs(BaseModel):
     inputs: list[str] = Field(default_factory=list)  # 输入 Artifact 引用（ID@v版本）
     reason: str  # 一句理由（写进计划，spec §5.9）
     params: dict = Field(default_factory=dict)  # 给代码组件的结构化参数（F21，如需求列表、影响范围）
+    scope: list[str] | None = None  # F11：本任务的料号作用域（须在你自己的作用域内；不写 = 沿用你的作用域）
 
 
 class GoalRevisionArgs(BaseModel):
@@ -283,4 +287,5 @@ def control_server(handler: Callable[[str, BaseModel, CallContext], object] | No
              ("report_to_planner", "排产相关影响只能上报计划员（H5），不能改计划或工单。", PlannerReportArgs),  # 上报
              ("ask_user", "需要采购员澄清或确认时提问。", AskUserArgs),  # 问用户
              ("end_segment", "所有任务都在等外部结果时结束本活跃段。", EndSegmentArgs)]  # 结束本段
-    return Server("control", [ToolDef(n, d, m, forward(n)) for n, d, m in specs])  # 五个工具
+    risk = {"propose_goal_revision": "R1", "report_to_planner": "R1"}  # F11：写入需人处理的记录为 R1，其余 R0
+    return Server("control", [ToolDef(n, d, m, forward(n), risk=risk.get(n, "R0")) for n, d, m in specs])  # 五个工具

@@ -2,7 +2,8 @@
 
 code_executors() 返回 {执行者名: ExecutorSpec}，并入 F09 Dispatcher 的注册表后，编排者可用 dispatch_task 派给它们：
 - impact_analysis → ImpactReport：params.scope 可选；依赖外部引用 env:<运行>（版本 = 模拟日，有效期 = config/business.yaml impact.valid_days）。
-- sourcing → SourcingQuote：params.demands 或从输入 ImpactReport 的缺口生成需求列表；依赖各报价（F06 失效传播与过期）。
+- sourcing → SourcingQuote：params.demands 或从输入 ImpactReport 的缺口生成需求列表；依赖各报价（F06 失效传播与过期）；
+  经代理层查报价时用 Dispatcher 签给它的子令牌 ctx["token"]（F11）。
 - policy → ProcurementDecision：输入一个 SourcingQuote；规则来自 config/policy.yaml。
 依赖：business.impact / decide、runtime.dispatch（ExecutorSpec、CodeResult）。被装配 Runtime 的代码（F22、测试）使用。
 """
@@ -43,7 +44,7 @@ def code_executors(get_env: Callable[[], Environment], proxy, *, run_id: str,
         if not demands:  # 没有需求
             return CodeResult({"day": ctx["day"], "items": []}, status="unfinished", reason="没有需求列表")  # 未完成
         content, deps = sourcing(proxy, demands, distributors=get_env().state.distributors,  # 查报价
-                                 day=ctx["day"], case_id=ctx["case_id"], actor=f"sourcing@{ctx['case_id']}")
+                                 day=ctx["day"], token=ctx["token"])  # F11：凭子令牌
         return CodeResult(content, deps)  # 内容与依赖
 
     def policy_decide(task, inputs, ctx):  # 策略决策

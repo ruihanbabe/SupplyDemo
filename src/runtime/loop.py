@@ -7,7 +7,9 @@ ExecutorLoop.run() 驱动一个执行者（子 Agent 或编排者）：模型调
 - F16 折叠：fold_after 轮之前的工具结果在每次调模型前折叠为带记录号的存根。
 - 挂点：after_round（每轮工具调用处理完后调用，返回要追加给模型的消息，编排者用它做批次汇合）；should_stop（编排者 end_segment）。
 - 格式失败（ModelFailure）以 failed 结束；传输失败（ModelUnavailable）向上抛（F15 重试熔断）。
-依赖：models.adapter、models.types、tools.proxy、session.log.canonical。被 runtime.dispatch（子 Agent）与 runtime.segment（编排者）使用。
+- F11：执行者、身份、案子都取自 Runtime 持有的能力令牌；给模型的工具表 = 请求的工具 ∩ 令牌 L1 可见工具；
+  被拒（无权限 / 工具不存在）累计达 config/permissions.yaml max_denied_attempts 即强制结束（受 loop_detection 开关）。
+依赖：models.adapter、models.types、tools.proxy、session.log.canonical、permissions（令牌经代理层校验）。被 runtime.dispatch（子 Agent）与 runtime.segment（编排者）使用。
 """
 from __future__ import annotations  # 类型注解延迟求值
 
@@ -49,16 +51,21 @@ class ExecutorLoop:
     # -----------------------------------------------------------------------
     # run：跑一个执行者
     # 功能：见文件摘要。
-    # 依赖：adapter.call、proxy.call；工具定义从代理层取（参数模型给 F08 做校验）。
-    # 完成：executor 用于选模型链（F08）和工具白名单（F07）；actor 是 Runtime 标注的身份（不信模型自报）。
+    # 依赖：adapter.call、proxy.call；工具定义从代理层取（参数模型给 F08 做校验）；proxy.guard（F11）。
+    # 完成：令牌的执行者用于选模型链（F08），令牌本身交代理层做 L1/L2（F11）；actor 是 Runtime 标注的身份（不信模型自报）。
     # -----------------------------------------------------------------------
-    def run(self, *, executor: str, actor: str, system: str, user: str, tools: list[str],
+    def run(self, *, token, system: str, user: str, tools: list[str] | None,
             output: type[BaseModel] | None, max_rounds: int, max_tool_calls: int, day: int,
-            case_id: str | None, known_mpns: set[str] | None = None,
+            known_mpns: set[str] | None = None,
             after_round: Callable[[], list[Message]] | None = None,
             should_stop: Callable[[], bool] | None = None) -> LoopResult:
+        executor, actor, case_id = token.executor, token.actor, token.case_id  # 身份全部来自令牌
+        visible = self.proxy.guard.visible(token, self.proxy.tools)  # F11 L1 可见工具
+        names = [n for n in (tools if tools is not None else visible) if n in visible]  # 请求 ∩ 可见
         specs = [ToolSpec(n, self.proxy.tools[n].description, self.proxy.tools[n].params)  # 工具定义
-                 for n in tools]  # 只给本执行者的工具
+                 for n in names]  # 只给本执行者可见的工具
+        max_denied = self.proxy.guard.config["max_denied_attempts"]  # 反复越权上限
+        denied = 0  # 本循环被拒次数
         messages = [Message("system", system), Message("user", user)]  # 初始对话（从日志与 Artifact 现组装）
         rounds_of: list[int] = [0, 0]  # 每条消息所属轮次（F16 折叠用）
         tool_of: list[str | None] = [None, None]  # 每条工具消息对应的工具名
@@ -92,10 +99,15 @@ class ExecutorLoop:
                                           round_, used_calls, text)  # 触顶
                     used_calls += 1  # 计数
                     strikes = 0 if key != last_key else strikes  # 换了调用就清零
-                    result = self.proxy.call(call.name, call.arguments, executor=executor, actor=actor,  # F07
-                                             day=day, case_id=case_id)  # 模拟日与案子
+                    result = self.proxy.call(call.name, call.arguments, token=token, day=day)  # F07 管道 + F11 权限
                     content = json.dumps(result, ensure_ascii=False)  # 统一返回格式转文本
                     last_key, last_result = key, content  # 记住本次
+                    if not result["ok"] and (result["error"]["type"] == "forbidden"  # 无权限
+                                             or call.name not in self.proxy.tools):  # 或编造的工具
+                        denied += 1  # 计入越权次数
+                        if self.loop_detection and denied >= max_denied:  # 反复越权（§5.5 计入循环检测）
+                            return LoopResult("unfinished", None, f"反复越权：被拒 {denied} 次，强制结束",
+                                              round_, used_calls, text)  # 强制结束
                 messages.append(Message("tool", content, tool_call_id=call.id))  # 工具结果
                 rounds_of.append(round_)  # 所属轮次
                 tool_of.append(call.name)  # 工具名
