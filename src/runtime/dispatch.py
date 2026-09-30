@@ -9,6 +9,7 @@
 - F11：派发时由 Authority 从派发者令牌签发衰减后的子令牌（工具 = 父 ∩ 子角色 ∩ 注册工具，作用域 ⊆ 父），越界即拒绝派发；
   task_dispatched 事件 meta 记子令牌的代表链；LLM 子 Agent 凭子令牌跑循环，代码组件经 ctx["token"] 拿到子令牌调代理层。
 - F15：同一执行者同一任务说明此前未完成时标 redispatch_of，案子预算把重派计为一次重规划。
+- F22：给了 node_sets 时，执行者不在父令牌模式的节点集合里直接拒绝派发（S3 没有比价、决策节点）；派发可带 plan_task。
 - F13：每个产出的 Artifact 在 meta.taint 写字段标签：LLM 子 Agent 的产出一律不可信；代码组件用 CodeResult.taint 声明，
   没声明按不可信（来源不明）；标签不进给编排者的汇总文本。
 依赖：runtime.loop.ExecutorLoop、session.log.Session、permissions.tokens、taint.labels、pydantic。被 runtime.segment 使用；F21/F23 注册执行者。
@@ -69,9 +70,11 @@ class Task:
 class Dispatcher:
     # 功能：见文件摘要。依赖：注册表、执行者循环、事件日志、子 Agent 预算、F11 签发者。完成：批次汇合开关。
     def __init__(self, session: Session, loop: ExecutorLoop, registry: dict[str, ExecutorSpec], *,
-                 budgets: dict, authority: Authority, batch_join: bool = True):
+                 budgets: dict, authority: Authority, batch_join: bool = True,
+                 node_sets: dict[str, set[str]] | None = None):
         self.session, self.loop, self.registry = session, loop, registry  # 依赖
         self.authority = authority  # F11 令牌签发者
+        self.node_sets = node_sets  # F22：模式 → 可派发的节点（路由的硬边界；None = 不限）
         self.budgets = budgets  # config runtime 段
         self.batch_join = batch_join  # 汇合开关
         self.pending: list[Task] = []  # 本段待运行任务
@@ -80,8 +83,11 @@ class Dispatcher:
     # 完成：未知执行者、坏引用、子令牌越界（F11）直接报错给编排者（不登记）；parent 为派发者令牌，身份与案子取自它。
     def dispatch(self, *, parent, day: int, executor: str, task: str,
                  inputs: list[str], reason: str, params: dict | None = None,
-                 scope: list[str] | None = None) -> dict:
+                 scope: list[str] | None = None, plan_task: str | None = None) -> dict:
         case_id, actor = parent.case_id, parent.actor  # 案子与派发者身份（来自令牌）
+        if self.node_sets is not None and executor not in self.node_sets.get(parent.mode, set()):  # F22 模式节点集合
+            allowed = sorted(self.node_sets.get(parent.mode, set()) & set(self.registry))  # 该模式可用且已接入
+            return {"accepted": False, "error": f"{parent.mode} 模式不能使用节点 {executor!r}，可用：{', '.join(allowed)}"}
         if executor not in self.registry:  # 未注册
             return {"accepted": False, "error": f"没有执行者 {executor!r}，可用：{', '.join(sorted(self.registry))}"}
         bad = [r for r in inputs if not REF.match(r) or self.session.artifact_view(  # 引用必须存在
@@ -106,7 +112,8 @@ class Dispatcher:
                                  payload={"task_id": task_id, "executor": executor, "task": task,  # 内容
                                           "inputs": inputs, "reason": reason, "params": params or {},  # 输入、理由、参数
                                           "scope": sorted(child.scope) if child.scope is not None else None,  # 作用域
-                                          **({"redispatch_of": again} if again else {})},  # F15 重派（计一次重规划）
+                                          **({"redispatch_of": again} if again else {}),  # F15 重派（计一次重规划）
+                                          **({"plan_task": plan_task} if plan_task else {})},  # F22 计划任务号
                                  meta=child.chain())  # F11 代表链
         self.pending.append(Task(task_id, executor, task, inputs, reason, ev["seq"], params or {}, child))  # 待运行
         return {"accepted": True, "task_id": task_id}  # 接受

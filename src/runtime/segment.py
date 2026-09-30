@@ -4,6 +4,8 @@
   状态迁移（开启 → 规划中 → 执行中；等待 → 执行中）→ 从日志与 Artifact 现组装编排者上下文（M1 最小构建器，F16 替换）→
   编排者循环（每轮后运行本轮派发的任务批次并一次交回）→ end_segment(wait_for) 或预算触顶 / 失败 → 案子进入等待。
   进程内不保存半截对话；段中崩溃则整段重跑。
+  F22：write_plan 交给 Planner（校验、重规划计数、退回固定模板）；request_human 按 kind 转目标修订（GoalDesk，H4 确认）、
+  上报计划员（F12 门控）或提议记忆（F20）；编排者工具集按案子模式取配置（S1 8 个、S3 6 个）。
   F20：propose_memory 交给知识库 B 生成提议并通知 H1 / H3（未接入时明确拒绝）。
   F14：escalate_to_human 走代码升级路径（关闭案子、通知采购员）并结束本段；段结束时案子已关闭则不再迁入等待。
   F12：report_to_planner 先过上报计划员门控（须附本案有效 ImpactReport，理由里的数字须出自它），不通过写 gate_rejected。
@@ -67,14 +69,17 @@ class SegmentRunner:
     # 完成：编排者工具清单由调用方给（F11 以后按能力令牌收窄）。
     def __init__(self, session: Session, loop: ExecutorLoop, dispatcher: Dispatcher, *, budgets: dict,
                  orchestrator_tools: list[str] | None, authority: Authority, escalation: Escalation | None = None,
-                 knowledge=None,
+                 knowledge=None, planner=None, goals=None, tools_by_mode: dict[str, list[str]] | None = None,
                  context_builder: Callable[[Session, str, str], tuple[str, str]] = minimal_context):
         self.session, self.loop, self.dispatcher = session, loop, dispatcher  # 依赖
         self.budgets = budgets  # runtime 配置段
         self.tools = orchestrator_tools  # 编排者工具（None = 令牌可见的全部；实际再 ∩ L1 可见，F11）
+        self.tools_by_mode = tools_by_mode  # F22：按模式的编排者工具集（config/orchestrator.yaml，优先于上一项）
         self.authority = authority  # F11 令牌签发者
         self.escalation = escalation or Escalation(session)  # F14 升级（工具用 escalate，不受强制升级开关影响）
         self.knowledge = knowledge  # F20 知识库 B（propose_memory；None = 未接入）
+        self.planner = planner  # F22 任务图与计划校验（write_plan；None = 未接入）
+        self.goals = goals  # F22 目标修订（GoalDesk；None = 只记 human_request）
         self.context_builder = context_builder  # 上下文构建器
         self.stop: dict | None = None  # 本段是否已 end_segment（{wait_for, reason}）
 
@@ -91,7 +96,26 @@ class SegmentRunner:
             return self.dispatcher.dispatch(parent=ctx.token, day=ctx.day,  # 登记（父令牌）
                                             executor=args.executor, task=args.task,  # 执行者与说明
                                             inputs=args.inputs, reason=args.reason,  # 输入与理由
-                                            params=args.params, scope=args.scope)  # 代码组件参数与作用域
+                                            params=args.params, scope=args.scope,  # 代码组件参数与作用域
+                                            plan_task=args.plan_task)  # F22 计划任务号
+        if name == "write_plan":  # F22 写 / 改任务图
+            if self.planner is None:  # 未接入
+                return {"accepted": False, "error": "计划校验尚未接入"}  # 明确拒绝
+            return self.planner.write(ctx.token, [t.model_dump() for t in args.tasks], day=ctx.day)  # 校验与产出
+        if name == "request_human":  # F22 合并的三个交人提议
+            if args.kind == "goal_revision":  # 目标修订
+                return self._goal_revision(ctx, args.new_goal, args.reason)  # 交采购员
+            if args.kind == "planner":  # 上报计划员
+                return self._report_to_planner(ctx, args.impact_artifact, args.reason, args.model_dump(mode="json"))
+            if self.knowledge is None:  # 提议记忆但未接入
+                return {"accepted": False, "error": "知识库尚未接入"}  # 明确拒绝
+            return self.knowledge.propose(self.session, case_id=ctx.case_id, day=ctx.day, actor=actor,  # 提议记忆
+                                          kind=args.memory_kind or "", report=args.report, board=args.board,
+                                          designators=args.designators, alias=args.alias, mpn=args.mpn)  # 内容
+        if name == "propose_goal_revision" and self.goals is not None:  # 细粒度工具：同一路径
+            return self._goal_revision(ctx, args.new_goal, args.reason)  # 交采购员
+        if name == "report_to_planner":  # 细粒度工具：同一路径
+            return self._report_to_planner(ctx, args.impact_artifact, args.reason, args.model_dump(mode="json"))
         if name == "end_segment":  # 结束本段
             if self.dispatcher.pending:  # 还有待运行任务
                 return {"accepted": False, "error": "还有已派发未运行的任务，不能结束本段"}  # 拒绝
@@ -106,16 +130,31 @@ class SegmentRunner:
             self.escalation.escalate(ctx.case_id, "orchestrator", args.reason, day=ctx.day, actor=actor)  # 关闭并通知
             self.stop = {"wait_for": "human", "reason": f"已升级给人：{args.reason}"}  # 结束本段
             return {"accepted": True, "note": "已升级给人，案子关闭"}  # 接受
-        if name == "report_to_planner":  # F12 上报计划员门控
-            reasons = planner_report_gate(self.session, ctx.case_id, args.impact_artifact, args.reason)  # 检查
-            if reasons:  # 不通过
-                self.session.append("gate_rejected", day=ctx.day, actor="gate", case_id=ctx.case_id,  # 反馈事件
-                                    payload={"action": "report_to_planner", "reasons": reasons,  # 原因
-                                             "artifact": args.impact_artifact})  # 引用
-                return {"accepted": False, "error": "；".join(reasons)}  # 交回编排者
         self.session.append("human_request", day=ctx.day, actor=actor, case_id=ctx.case_id,  # 需要人
                             payload={"role": HUMAN_CONTROLS[name], "tool": name,  # 对象与工具
                                      "args": args.model_dump(mode="json")})  # 内容
+        return {"accepted": True, "note": "已提交给人，等待应答"}  # 接受
+
+    def _goal_revision(self, ctx, new_goal: str | None, reason: str) -> dict:
+        """目标修订：接了 GoalDesk 走 H4 确认流程，否则只记 human_request（M1 行为）。"""
+        if self.goals is not None:  # F22
+            return self.goals.propose(case_id=ctx.case_id, day=ctx.day, actor=ctx.token.actor,  # 交采购员
+                                      new_goal=new_goal or "", reason=reason)  # 新目标与理由
+        self.session.append("human_request", day=ctx.day, actor=ctx.token.actor, case_id=ctx.case_id,  # 需要人
+                            payload={"role": "goal_revision", "tool": "propose_goal_revision",  # 对象
+                                     "args": {"new_goal": new_goal, "reason": reason}})  # 内容
+        return {"accepted": True, "note": "已提交给人，等待应答"}  # 接受
+
+    def _report_to_planner(self, ctx, impact_artifact: str | None, reason: str, args: dict) -> dict:
+        """上报计划员：先过 F12 门控（须附本案有效 ImpactReport，数字须出自它），再通知计划员。"""
+        reasons = planner_report_gate(self.session, ctx.case_id, impact_artifact or "", reason)  # 检查
+        if reasons:  # 不通过
+            self.session.append("gate_rejected", day=ctx.day, actor="gate", case_id=ctx.case_id,  # 反馈事件
+                                payload={"action": "report_to_planner", "reasons": reasons,  # 原因
+                                         "artifact": impact_artifact})  # 引用
+            return {"accepted": False, "error": "；".join(reasons)}  # 交回编排者
+        self.session.append("human_request", day=ctx.day, actor=ctx.token.actor, case_id=ctx.case_id,  # 需要人
+                            payload={"role": "planner", "tool": "report_to_planner", "args": args})  # 计划员
         return {"accepted": True, "note": "已提交给人，等待应答"}  # 接受
 
     # -----------------------------------------------------------------------
@@ -145,8 +184,9 @@ class SegmentRunner:
         token = self.authority.issue_root(executor="orchestrator", case_id=case_id,  # F11 根令牌
                                           mode=opened["payload"].get("mode"),  # 案子模式（缺省按配置）
                                           initiated_by=f"{opened['actor']}#{opened['seq']}")  # 由谁发起
+        tools = self.tools_by_mode[token.mode] if self.tools_by_mode else self.tools  # F22：按模式的工具集（≤ 8）
         res = self.loop.run(token=token, system=system, user=user,  # 编排者循环（身份取自令牌）
-                            tools=self.tools, output=None, max_rounds=rounds, max_tool_calls=rounds * 8,  # 预算
+                            tools=tools, output=None, max_rounds=rounds, max_tool_calls=rounds * 8,  # 预算
                             day=day,  # 模拟日
                             after_round=lambda: self.dispatcher.run_pending(case_id=case_id, day=day),  # 汇合
                             should_stop=lambda: self.stop is not None)  # end_segment

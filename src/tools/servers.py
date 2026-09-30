@@ -7,7 +7,8 @@
   再归一化——保留原文值，解析失败时归一化值留空（旧适配器 976bb17 的经验）。真实后端等用户授权（G5）。
 - validate_quotes：返回校验（B3），缺失字段置"未知"并警告，整体结构不对抛 BadFormat。
 - archive_server：按记录号 / 游标读留档（由 ToolProxy.read_record 实现，不调用上游）。
-- control_server：编排控制工具（F14 起含 escalate_to_human，F20 起含 propose_memory）的参数模型，调用转交给注册的处理函数（语义归 F09/F22）。
+- control_server：编排控制工具（F14 起含 escalate_to_human，F20 起含 propose_memory，F22 起含 write_plan 与合并的 request_human）的参数模型
+- F22：environment_server 另有编排者专用的合并查询 env_lookup（与 5 个原查询同一实现），调用转交给注册的处理函数（语义归 F09/F22）。
 - F11 风险级：环境、分销商、留档、派任务、问用户、结束本段为 R0；提出目标修订、上报计划员为 R1。
   distributor_server 可带独占凭证（真实后端用），查报价受料号作用域约束（scoped）；dispatch_task 增加可选 scope。
 - F15：单家分销商超时 / 上游错误只记进 CallContext.failed（部分成功），全部失败才整体抛错交代理层重试。
@@ -70,6 +71,20 @@ class OrderArgs(BaseModel):
     order_id: str | None = None  # 按订单号
 
 
+class EnvLookupArgs(BaseModel):
+    """F22 编排者专用：合并 5 个环境只读查询（kind 选查什么，其余字段按该查询的参数填）。"""
+    kind: Literal["inventory", "purchase_orders", "shipments", "work_orders", "orders"]  # 查什么
+    mpns: list[Mpn] = Field(default_factory=list, max_length=50)  # 库存：料号列表
+    mpn: Mpn | None = None  # 采购单 / 运单：按料号
+    board: str | None = None  # 库存 / 工单 / 订单：按板
+    status: str | None = None  # 采购单 / 运单 / 工单：按状态
+    po_id: str | None = None  # 采购单号
+    shipment_id: str | None = None  # 运单号
+    wo_id: str | None = None  # 工单号
+    with_needs: bool = False  # 工单：附领料清单
+    order_id: str | None = None  # 订单号
+
+
 def environment_server(get_env: Callable[[], Environment]) -> Server:
     """构造环境 Server。"""
 
@@ -101,6 +116,14 @@ def environment_server(get_env: Callable[[], Environment]) -> Server:
     def orders(env, a):  # 查订单
         return [env.get_order(a.order_id)] if a.order_id else env.list_orders(a.board)  # 单条或列表
 
+    parts = {"inventory": (InventoryArgs, inventory), "purchase_orders": (PoArgs, pos),  # F22：kind → 原查询
+             "shipments": (ShipmentArgs, shipments), "work_orders": (WorkOrderArgs, work_orders),  # 同上
+             "orders": (OrderArgs, orders)}  # 同上
+
+    def lookup(env, a):  # 合并查询：按 kind 转成原查询的参数再调用
+        model, fn = parts[a.kind]  # 原参数模型与查询
+        return fn(env, model.model_validate({k: getattr(a, k) for k in model.model_fields}))  # 同一实现
+
     def keys_of(**fields):  # 实体键提取器
         return lambda a: {k: [v] if isinstance(v, str) else list(v)  # 统一成列表
                           for k, attr in fields.items() if (v := getattr(a, attr, None))}  # 有值才记
@@ -117,6 +140,11 @@ def environment_server(get_env: Callable[[], Environment]) -> Server:
                 WorkOrderArgs, guard(work_orders), entity_keys=keys_of(board="board", work_order="wo_id")),
         ToolDef("env_orders", "查客户订单与交付、延期。例：env_orders(board='bms-c1')",
                 OrderArgs, guard(orders), entity_keys=keys_of(board="board", order="order_id")),
+        ToolDef("env_lookup", "查模拟 ERP（只读）：kind=inventory 库存 / purchase_orders 采购单 / shipments 运单 / "  # F22
+                "work_orders 工单 / orders 订单，其余参数按所查内容填。改计划请上报计划员。"
+                "例：env_lookup(kind='inventory', mpns=['SKY13453-385LF'])", EnvLookupArgs, guard(lookup),
+                entity_keys=keys_of(mpn="mpns", board="board", po="po_id", shipment="shipment_id",  # 实体键
+                                    work_order="wo_id", order="order_id")),  # 同上
     ])
 
 
@@ -265,6 +293,7 @@ class DispatchArgs(BaseModel):
     reason: str  # 一句理由（写进计划，spec §5.9）
     params: dict = Field(default_factory=dict)  # 给代码组件的结构化参数（F21，如需求列表、影响范围）
     scope: list[str] | None = None  # F11：本任务的料号作用域（须在你自己的作用域内；不写 = 沿用你的作用域）
+    plan_task: str | None = None  # F22：对应任务图里的任务号（投影任务状态）
 
 
 class GoalRevisionArgs(BaseModel):
@@ -300,6 +329,35 @@ class ProposeMemoryArgs(BaseModel):
     mpn: str | None = None  # 别名：料号
 
 
+class RequestHumanArgs(BaseModel):
+    """F22 编排者专用：合并三个交人处理的提议——goal_revision 目标修订（H4）、planner 上报计划员（H5）、memory 提议记忆（H1/H3）。"""
+    kind: Literal["goal_revision", "planner", "memory"]  # 哪一种
+    reason: str = ""  # 理由（目标修订、上报必填）
+    new_goal: str | None = None  # 目标修订：新目标
+    impact_artifact: str | None = Field(default=None, pattern=r"^.+@v\d+$")  # 上报：ImpactReport 引用
+    memory_kind: Literal["substitution", "alias"] | None = None  # 记忆：种类
+    report: str | None = Field(default=None, pattern=r"^.+@v\d+$")  # 记忆（替代）：VerificationReport 引用
+    board: str | None = None  # 记忆（替代）：适用的板
+    designators: list[str] = Field(default_factory=list)  # 记忆（替代）：适用的位号
+    alias: str | None = None  # 记忆（别名）：说法
+    mpn: str | None = None  # 记忆（别名）：料号
+
+
+class PlanTask(BaseModel):
+    """任务图里的一个任务（spec §2.2）。"""
+    id: str = Field(min_length=1)  # 任务号，如 T1
+    executor: str  # 用哪个节点
+    task: str  # 任务说明
+    depends_on: list[str] = Field(default_factory=list)  # 依赖的任务号（没有依赖的可并行）
+    inputs: list[str] = Field(default_factory=list)  # 依赖的已有 Artifact 引用
+    reason: str  # 一句理由（跨活跃段靠它延续思路，spec §5.9）
+
+
+class WritePlanArgs(BaseModel):
+    """写 / 改任务图（F22）：已有计划时再写即重规划。"""
+    tasks: list[PlanTask] = Field(min_length=1, max_length=30)  # 任务
+
+
 class EndSegmentArgs(BaseModel):
     """结束本活跃段；wait_for 决定案子进入哪种等待（F09 增加）。"""
     wait_for: Literal["human", "arrival", "external"]  # 等人工 / 等到货 / 等外部
@@ -320,6 +378,10 @@ def control_server(handler: Callable[[str, BaseModel, CallContext], object] | No
              ("ask_user", "需要采购员澄清或确认时提问。", AskUserArgs),  # 问用户
              ("end_segment", "所有任务都在等外部结果时结束本活跃段。", EndSegmentArgs),  # 结束本段
              ("escalate_to_human", "无法继续处置时升级给人（须写明理由），案子随即关闭、由人接手。", EscalateArgs),  # F14
-             ("propose_memory", "提议一条长期记忆（替代关系或料号别名），交工程师 / 采购员确认后才落库。", ProposeMemoryArgs)]
-    risk = {"propose_goal_revision": "R1", "report_to_planner": "R1", "propose_memory": "R1"}  # F11/F20：需人处理的为 R1
+             ("propose_memory", "提议一条长期记忆（替代关系或料号别名），交工程师 / 采购员确认后才落库。", ProposeMemoryArgs),
+             ("write_plan", "写或修改任务图：每个任务写明节点、依赖、输入与一句理由；代码会校验，不合格会给原因。", WritePlanArgs),
+             ("request_human", ("交人处理的提议：kind=goal_revision 目标修订（采购员确认）/ planner 上报计划员"
+                                "（附 ImpactReport）/ memory 提议长期记忆（替代关系或别名）。"), RequestHumanArgs)]  # F22
+    risk = {"propose_goal_revision": "R1", "report_to_planner": "R1", "propose_memory": "R1",  # F11/F20：需人处理的为 R1
+            "request_human": "R1"}  # F22：合并的三个提议都是 R1
     return Server("control", [ToolDef(n, d, m, forward(n), risk=risk.get(n, "R0")) for n, d, m in specs])  # 五个工具

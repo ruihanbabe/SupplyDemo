@@ -6,7 +6,7 @@
 ## 1. 现在在哪
 - 权威文档：`spec.md`（v0.3，§0–§6、§11 已定稿；§7–§9 深度点实验策略待定 P8）。Feature 清单与状态在 `features.json`（29 个，M1–M5）；每个 Feature 的 Contract 在 `contracts/`。
 - 分支 `spec-v0.2-harness-reset`，最新提交见 `git log`；**本轮提交尚未推送**（推送前问用户）。
-- 门禁现状：`make check` 152 过；`make services-up && make migrate && make test-integration` 14 过（迁移到 0008）。本机 Docker 用 colima，先 `colima start`。
+- 门禁现状：`make check` 159 过；`make services-up && make migrate && make test-integration` 14 过（迁移到 0008）。本机 Docker 用 colima，先 `colima start`。
 - **已完成并验收**：F01 工程底座、F02 第二块板。
 - **待验收**（2026-09-29～30 按用户授权自动推进；全部 mock，无任何真实 LLM / 分销商调用）：
 
@@ -25,16 +25,17 @@
 | F12 证据门控与审批令牌 | `src/gate/` | — | 人工操作入口 `HumanDesk`；令牌密钥取 `SUPPLYAGENT_APPROVAL_KEY` |
 | F10 事件接入与案子管理（薄版） | `src/cases/` | — | 根因 = `caused_by` 链的根；F04 前同一天 Monitor 报的缺料合成一案 |
 | F14 反馈与升级 | `src/feedback/` | — | 经 `CaseRouter(feedback=FeedbackLoop)` 每日运行；新增控制工具 `escalate_to_human` |
-| F15 异常处理与恢复 | `src/resilience/` | — | 代理层与模型适配层传入 `Resilience` 才重试熔断；进程启动时调 `ProcurementExecutor.recover_pending_writes` |
+| F15 异常处理与恢复 | `src/resilience/` | — | 由 F22 `build_runtime` 接入；`Runtime.start()` 做两步写恢复 |
 | F18 测试注入、回放与分叉 | `src/replay/` | — | 全回放哈希一致以同一运行号、无配额部分成功的运行为准 |
 | F19 datasheet 知识库 A | `src/datasheets/` | 0007 | 只用合成样例（`tests/fixtures/datasheets/`）；真实下载与 Docling 未接入 |
 | F20 知识资产与知识库 B | `src/knowledge_base/`、`skills/`、`config/knowledge/` | 0008 | 术语表 5 品类、4 个 Skill、板级 README 走文档工具；新增控制工具 `propose_memory` |
+| F22 编排者与 Runtime 装配 | `src/orchestrator/` | — | `build_runtime()` 一处装配全部组件；编排者合并工具 env_lookup / po_action / request_human（S1 8 个、S3 6 个） |
 
-- 配置集中处：术语表与品类映射在 `config/knowledge/`，Skills 在 `skills/`；datasheet 检索在 `config/datasheets.yaml`；重试与熔断在 `config/resilience.yaml`；反馈分级与升级阈值在 `config/feedback.yaml`；开案与路由在 `config/cases.yaml`；门控与审批在 `config/gate.yaml`；权限策略在 `config/permissions.yaml`，污点汇点与疑似指令模式在 `config/taint.yaml`；消融开关、Runtime 预算、上下文上限在 `config/harness.yaml`；工具配额在 `config/tools.yaml`；Policy 在 `config/policy.yaml`；品类比对清单在 `config/checklists/`。
+- 配置集中处：编排者节点集合、工具集与固定模板在 `config/orchestrator.yaml`；术语表与品类映射在 `config/knowledge/`，Skills 在 `skills/`；datasheet 检索在 `config/datasheets.yaml`；重试与熔断在 `config/resilience.yaml`；反馈分级与升级阈值在 `config/feedback.yaml`；开案与路由在 `config/cases.yaml`；门控与审批在 `config/gate.yaml`；权限策略在 `config/permissions.yaml`，污点汇点与疑似指令模式在 `config/taint.yaml`；消融开关、Runtime 预算、上下文上限在 `config/harness.yaml`；工具配额在 `config/tools.yaml`；Policy 在 `config/policy.yaml`；品类比对清单在 `config/checklists/`。
 - 测试共用装配在 `tests/kit.py`（整套 Runtime + ScriptedTransport）。
 
 ## 2. 下一步：继续自动推进 Harness（用户 2026-09-29 定）
-1. 按依赖顺序继续：~~F11 → F13 → F12 → F10 → F14 → F15 → F18 → F19 → F20~~ → **F22 → F23**（开工前以 `features.json` 的 `depends_on` 为准）。下一个是 **F22 编排者**（spec §2、§3.2）：同时负责把前面各 Feature 的可选组件装配成完整 Runtime（软声明、重试熔断、反馈循环、知识库、启动时恢复两步写）。
+1. 按依赖顺序继续：~~F11 → F13 → F12 → F10 → F14 → F15 → F18 → F19 → F20 → F22~~ → **F23**（开工前以 `features.json` 的 `depends_on` 为准）。下一个是 **F23 子 Agent 与 LLM 函数**（spec §3.2）；DigiKey 参数检索与真实模型调用需用户授权（G5），开工前先问是否只用固定样例与脚本模型。其余未开工：F04、F05、F24–F29。
 2. 每个 Feature：先写 Contract 并提交（`features.json` 状态改 `in_progress`）→ 实现 → `make check` + `make test-integration` 全绿 → 提交并改 `awaiting_acceptance`。不等确认，用户事后统一验收。
 3. 用户已拍板：非 Harness 依赖一起做最小版（F21 已做；F19、F20 为 F23 依赖）；外部调用只用 mock 和固定样例；Contract 写了直接做。
 4. 每做完两三个 Feature 更新一次本文件 §1 表格。
@@ -51,6 +52,7 @@
 - spec 已定策略不删不降级，砍减只指推迟；信息只写进单一权威文档，别处只留编号引用。
 
 ## 5. 待用户确认（验收时一并定）
+- **F22 工具收敛**（用户已定合并方案）：S3 只允许 R0，所以 S3 编排者没有 request_human（不能在问答里提议记忆）；是否放开待定。
 - **F09 顺序执行**：批内任务与多个案子按固定顺序依次执行、不用线程。理由：线程交错会破坏可复现（§0.2）与全回放哈希链（§5.12）；Agent 思考不耗模拟时间（§4.2），结果不变只是更慢。"成批派发、整批结束才唤醒一次"与并发上限都保留。
 - **F03 快照时点**：由原定"日收盘"改为"日开盘"（当日机制后、写入前），快照只写一次，分叉点就是"同一局面、谁都没动手"。
 - **`mcp` 包**：用户已同意、自行安装中（官方 PyPI + `--only-binary cryptography`，本机 Intel Mac 无 cryptography 50 预编译包）；装好后 `make freeze`，再给 F07 Server 加标准传输包装。
@@ -65,4 +67,4 @@
 - zsh 不会按空格拆分变量，脚本里用函数或 Python。
 
 ## 7. 新会话开场可以这样说
-"读 HANDOFF.md、AGENTS.md 和记忆，从 §2 的下一个 Feature（F22）继续自动推进 Harness。"
+"读 HANDOFF.md、AGENTS.md 和记忆，从 §2 的下一个 Feature（F23）继续自动推进 Harness。"

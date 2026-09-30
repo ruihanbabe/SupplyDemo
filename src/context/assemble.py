@@ -87,12 +87,17 @@ class OrchestratorContext:
                 targets[p["target"]][1] = p["status"]  # 覆盖
             elif e["type"] == "target_status":  # 新目标
                 targets[p["target"]] = [p["target"], p["status"]]  # 记下
-        card = (f"[案子卡片]\n目标：{opened.get('goal', '（未写）')}\n状态：{state['state']}"  # 目标与状态
+        revised = [e["payload"]["new_goal"] for e in events if e["type"] == "goal_revised"]  # F22 已确认的目标修订
+        goal = revised[-1] if revised else opened.get("goal", "（未写）")  # 当前目标
+        card = (f"[案子卡片]\n目标：{goal}\n状态：{state['state']}"  # 目标与状态
                 + "".join(f"\n- {n}：{s}" for n, s in targets.values()))  # 各目标
         status = session.artifact_status()  # Artifact 状态
         arts = [a for a in session.store.artifacts(session.run_id) if a["case_id"] == case_id]  # 本案 Artifact
         plans = [a for a in arts if a["kind"] == "Plan" and status[(a["artifact_id"], a["version"])] == ART_VALID]  # 计划
-        plan = "[计划]\n" + (self._plan_text(plans[-1]) if plans else "尚无计划")  # 计划分区
+        done = {e["payload"]["task_id"]: e["payload"]["status"] for e in events if e["type"] == "task_finished"}  # 任务结果
+        progress = {e["payload"]["plan_task"]: done.get(e["payload"]["task_id"], "进行中")  # F22 计划任务 → 最近状态
+                    for e in events if e["type"] == "task_dispatched" and e["payload"].get("plan_task")}  # 按派发顺序覆盖
+        plan = "[计划]\n" + (self._plan_text(plans[-1], progress) if plans else "尚无计划")  # 计划分区
         mx = self.cfg["summary_max_chars"]  # 摘要长度
         valid = [summarize(a, mx) for a in arts  # 有效 Artifact 摘要
                  if a["kind"] != "Plan" and status[(a["artifact_id"], a["version"])] == ART_VALID]  # 过滤
@@ -120,11 +125,13 @@ class OrchestratorContext:
                 "feedback": "[新反馈]\n" + "\n".join(feedback)}  # 新反馈
 
     @staticmethod
-    def _plan_text(plan: dict) -> str:
-        """计划 Artifact → 任务图文本（每个任务带一句理由，spec §5.9 跨活跃段推理）。"""
-        tasks = plan["content"].get("tasks", [])  # 任务
+    def _plan_text(plan: dict, progress: dict | None = None) -> str:
+        """计划 Artifact → 任务图文本（每个任务带一句理由与依赖，状态从派发 / 完成事件投影，spec §5.9）。"""
+        tasks, progress = plan["content"].get("tasks", []), progress or {}  # 任务与进度
         return f"{plan['artifact_id']}@v{plan['version']}\n" + "\n".join(  # 版本
-            f"- {t.get('id')} {t.get('executor')}：{t.get('task')}（理由：{t.get('reason')}；状态：{t.get('status', '待办')}）"
+            f"- {t.get('id')} {t.get('executor')}：{t.get('task')}"  # 任务
+            + (f"（依赖 {'、'.join(t['depends_on'])}）" if t.get("depends_on") else "")  # 依赖
+            + f"（理由：{t.get('reason')}；状态：{progress.get(t.get('id'), t.get('status', '待办'))}）"  # 理由与状态
             for t in tasks)  # 逐个任务
 
     # -----------------------------------------------------------------------

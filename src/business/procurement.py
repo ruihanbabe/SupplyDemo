@@ -14,6 +14,7 @@ F18：on_point 挂点在"意图之后、调用环境之前"（after_intent）调
 recover_pending_writes() 在进程重启后补齐"有意图、无完成"的写入（环境按幂等键去重，不会重复下单）。
 送审时附预演 preview_submission()：在环境状态副本上执行这次提交，给出提交前 / 后的缺料颗数、预计停线与延期天数。
 procurement_server()：三个写工具（参数只收 Artifact 引用），风险级 R1 建草稿、R1 送审、R2 提交；
+F22 另加编排者专用的合并写工具 po_action（风险取最严 R2，门控按动作照旧）；
 仅编排者在 S1 模式下可见（F11 按风险级与 config/permissions.yaml 强制）。
 依赖：session.log、simenv.api / model、business.impact、tools.server、taint.labels / sinks。被编排者（经代理层）、F12、F15 使用。
 """
@@ -21,6 +22,7 @@ from __future__ import annotations  # 类型注解延迟求值
 
 import re  # 解析 Artifact 引用
 from collections.abc import Callable  # 挂点类型
+from typing import Literal  # 动作取值
 
 from pydantic import BaseModel, Field  # 工具参数模型
 
@@ -206,6 +208,19 @@ def preview_submission(env: Environment, content: dict) -> dict:
     return {"before": {k: before[k] for k in keys}, "after": {k: after[k] for k in keys}, "part": part}  # 对比
 
 
+def po_action(ex: ProcurementExecutor, a, ctx) -> dict:
+    """F22 合并写工具：按动作转给执行器的同一方法（门控逐一照旧）；缺参数直接给原因。"""
+    if a.action == "draft":  # 建草稿
+        if not (a.decision and a.mpn):  # 缺参数
+            return {"ok": False, "reasons": ["draft 需要 decision 与 mpn"]}  # 原因
+        return ex.create_draft(case_id=ctx.case_id, day=ctx.day, decision_ref=a.decision, mpn=a.mpn)  # 建草稿
+    if not a.draft:  # 缺草稿引用
+        return {"ok": False, "reasons": [f"{a.action} 需要 draft"]}  # 原因
+    if a.action == "request_approval":  # 送审
+        return ex.request_approval(case_id=ctx.case_id, day=ctx.day, draft_ref=a.draft)  # 送审
+    return ex.submit(case_id=ctx.case_id, day=ctx.day, draft_ref=a.draft)  # 提交
+
+
 class DraftArgs(BaseModel):
     """建草稿：只收 Decision 引用与料号。"""
     decision: str = Field(pattern=r"^.+@v\d+$")  # Decision 引用
@@ -215,6 +230,14 @@ class DraftArgs(BaseModel):
 class DraftRefArgs(BaseModel):
     """送审 / 提交：只收草稿引用。"""
     draft: str = Field(pattern=r"^.+@v\d+$")  # 草稿引用
+
+
+class PoActionArgs(BaseModel):
+    """F22 编排者专用：合并 3 个采购写动作（draft 给 decision + mpn；request_approval / submit 给 draft）。"""
+    action: Literal["draft", "request_approval", "submit"]  # 动作
+    decision: str | None = Field(default=None, pattern=r"^.+@v\d+$")  # 建草稿：Decision 引用
+    mpn: str | None = None  # 建草稿：料号
+    draft: str | None = Field(default=None, pattern=r"^.+@v\d+$")  # 送审 / 提交：草稿引用
 
 
 def procurement_server(executor: Callable[[], ProcurementExecutor]) -> Server:
@@ -231,4 +254,7 @@ def procurement_server(executor: Callable[[], ProcurementExecutor]) -> Server:
         ToolDef("submit_po", "审批通过后提交采购单（不可撤销，受门控与审批令牌）。例：submit_po(draft='PODraft:K7:X@v1')",
                 DraftRefArgs, lambda a, ctx: executor().submit(case_id=ctx.case_id, day=ctx.day, draft_ref=a.draft),
                 risk="R2"),  # F11：不可撤销写
+        ToolDef("po_action", "采购写操作（受门控）：action=draft 按决策为一颗料建草稿（给 decision、mpn）/ request_approval 送主管审批"
+                " / submit 审批通过后提交（给 draft）。例：po_action(action='draft', decision='Decision:K7@v1', mpn='X')",
+                PoActionArgs, lambda a, ctx: po_action(executor(), a, ctx), risk="R2"),  # F22 合并工具：风险取最严
     ])

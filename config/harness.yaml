@@ -26,6 +26,7 @@ ablation:
   datasheet_synonyms: true         # F19 datasheet 检索同义词扩展：false 时只按原词检索（对比召回）
   memory_injection: true           # F20 记忆注入：false 时上下文不注入知识库 B 条目
   glossary_injection: true         # F20 术语注入：false 时节点启动不注入术语说明
+  plan_validation: true            # F22 计划校验：false 时不校验编排者的任务图、不退回固定模板
 
 # F09 Runtime 硬预算与并发（spec §5.3 默认值）。
 runtime:

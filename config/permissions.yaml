@@ -16,7 +16,7 @@ write_executors: [orchestrator]
 # 派任务时子令牌 = 父令牌工具 ∩ 子执行者这一行（权限衰减）。代码组件也在这里登记（它们经代理层取数）。
 executors:
   orchestrator: [dispatch_task, propose_goal_revision, report_to_planner, ask_user, end_segment, escalate_to_human,
-                 propose_memory,
+                 propose_memory, write_plan, request_human, env_lookup, po_action,   # F22 编排者专用合并工具
                  env_inventory, env_purchase_orders, env_shipments, env_work_orders, env_orders, read_record,
                  create_po_draft, request_approval, submit_po]
   impact_analysis: []
