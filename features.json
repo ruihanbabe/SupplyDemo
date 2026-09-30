@@ -92,9 +92,9 @@
         "F03"
       ],
       "milestone": "M1",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
+      "status": "in_progress",
+      "contract": "contracts/F05.md",
+      "note": "Contract 已写（2026-09-30）；H5 真推迟工单（用户无偏好，取推荐项）"
     },
     {
       "id": "F06",
