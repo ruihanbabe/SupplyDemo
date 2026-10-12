@@ -9,6 +9,7 @@ spec §5.10、§6.3：长期记忆只有替代关系（H1 工程师确认）与�
     （不信模型给的数值，G4）；别名给出说法与料号。写 memory_proposed，并给对应人工节点发 human_request（替代 H1、别名 H3）。
   - confirm(session, 提议事件号, by, node, day)：只接受对应节点的确认；条目过 F13 长期记忆汇点（必须带确认记录、说法等不可信文本
     以引用块 {quote, source} 存放），写条目、状态"已确认"与 memory_confirmed 事件。
+  - reject(session, 提议事件号, by, node, day)（F05）：否决只写人工决定，不落库。
   - sync(events)：datasheet 出新版本 → 依赖旧版本的条目"待重验"；part_eol 事件（F04 产生）→ 涉及该料的条目"已标记 EOL"。
   - revoke_case(case_id)：来源案子判定被投毒 → 其衍生条目一键撤销。
   - inject(keys, limit)：按实体键（料号、板）匹配，最多 5 条（配置），标明来源与状态；撤销的不注入（消融 memory_injection 关闭时为空）。
@@ -191,6 +192,17 @@ class KnowledgeBase:
         session.append("memory_confirmed", day=day, actor=f"human:{by}", case_id=ev["case_id"],  # 事件
                        payload={"entry_id": eid, "proposal_seq": proposal_seq}, caused_by=dec["seq"])  # 因果
         return eid  # 条目号
+
+    def reject(self, session: Session, proposal_seq: int, *, by: str, node: str, day: int) -> dict:
+        """人工否决提议（F05 起）：只写人工决定，不落库。节点不对抛 ValueError。"""
+        ev = session.store.event(session.run_id, proposal_seq)  # 提议
+        if ev is None or ev["type"] != "memory_proposed":  # 不是提议
+            raise ValueError(f"事件 #{proposal_seq} 不是记忆提议")  # 报错
+        if node != NODE_OF[ev["payload"]["kind"]]:  # 节点不对
+            raise ValueError(f"{ev['payload']['kind']} 须由 {NODE_OF[ev['payload']['kind']]} 处理，收到 {node}")  # 报错
+        return session.append("human_decision", day=day, actor=f"human:{by}", case_id=ev["case_id"],  # 人工决定
+                              payload={"node": node, "artifact": f"proposal#{proposal_seq}", "decision": "reject",
+                                       "by": by, "note": ""}, caused_by=proposal_seq)  # 否决记录
 
     # ------------------------------------------------------------------ 失效与撤销
     def sync(self, events: list[dict]) -> list[str]:

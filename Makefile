@@ -11,7 +11,8 @@ SRC         := src
 
 .DEFAULT_GOAL := help
 .PHONY: help setup status check compile lint test \
-        services-up services-status services-smoke services-down freeze migrate test-integration
+        services-up services-status services-smoke services-down freeze migrate test-integration \
+        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test trace-migrate trace-test crm-migrate crm-test gateway-migrate gateway-test runtime-migrate runtime-test
 
 help: ## 列出所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -61,10 +62,10 @@ test: ## ② 离线测试：pytest，固定数据与 mock，不连服务也不�
 check: compile lint test ## ①② 两层的离线门禁（不证明真实服务与业务正确性）
 	@echo ">> check 完成：仅覆盖离线语法/lint/测试"
 
-test-integration: ## ③ 集成故障注入：连本地真实 PostgreSQL / Redis，需先 services-up
+test-integration: ## ③ 集成故障注入：连本地真实 PostgreSQL / Redis，不调用外部服务
 	@if [ ! -d tests ]; then echo ">> 尚无 tests/ 目录，test-integration 跳过（不算通过）"; exit 0; fi; \
 	$(COMPOSE) ps --status running --quiet postgres >/dev/null 2>&1 || { echo ">> 服务未启动，先跑 make services-up"; exit 1; }; \
-	$(VPY) -m pytest -q -m integration tests
+	$(VPY) -m pytest -q -m "integration and not supabase_live" tests
 
 migrate: ## 把 alembic 迁移（基线只有 hw_part）升级到本地数据库
 	@test -d alembic || { echo ">> alembic/ 未初始化，随 F01 一并建立"; exit 1; }
@@ -110,3 +111,67 @@ build-parts: ## 从原始层 KiCad 文件生成料号表 hw_part（先做 MANIFE
 sim-run: ## 不接 Agent 按种子跑满模拟环境，打印逐日事件与结果指标（纯内存，零 token）；用法 make sim-run SEED=42
 	@test -n "$(SEED)" || { echo ">> 需要种子：make sim-run SEED=42"; exit 1; }
 	@PYTHONPATH=src $(VPY) -m simenv.cli --seed $(SEED)
+
+# ---------- F31 新产品：Next.js + Supabase 兼容 PostgreSQL ----------
+
+web-install: ## 安装 frontend/ 的锁定 Node 依赖
+	@npm --prefix frontend ci
+
+web-check: ## 校验 F31 前端边界、lint 与 production build
+	@npm --prefix frontend run check
+
+api-check: ## 校验 F31 Python API 的语法、lint 与离线 HTTP 契约
+	@$(VPY) -m compileall -q src/product_api tests/test_product_api.py
+	@$(VENV)/bin/ruff check src/product_api tests/test_product_api.py
+	@$(VPY) -m pytest -q tests/test_product_api.py
+
+api-integration-test: tenant-migrate ## F31 Python API 的本地 PostgreSQL 租户事务验收（需服务已启动）
+	@$(VPY) -m pytest -q -m integration tests/test_product_api_integration.py
+
+api-live-auth-test: tenant-migrate ## F31：显式授权后以测试用户验证真实 Supabase Auth、Python API 与本地 RLS
+	@$(VPY) -m pytest -q -m supabase_live tests/test_product_api_supabase_live.py
+
+api-run: ## 在 127.0.0.1:8000 启动 F31 Python API（读取 .env；真实 Auth 配置缺失时安全拒绝业务请求）
+	@PYTHONPATH=src $(VENV)/bin/uvicorn product_api.app:create_default_app --factory --env-file .env --host 127.0.0.1 --port 8000
+
+tenant-migrate: ## 应用 F31 组织/RLS SQL（需先 services-up；不触碰旧 Alembic 表）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0001_f31_tenant.sql
+
+tenant-test: ## F31 真实 PostgreSQL RLS 验收（需先 tenant-migrate；事务结束后回滚 fixture）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f31_rls.sql
+
+supply-migrate: ## 应用 F39 供应链事实与时间线 schema（需先 tenant-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0002_f39_supply.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0003_f39_supply_timeline.sql
+
+supply-test: ## F39 真实 PostgreSQL 供应链 RLS 验收（需先 supply-migrate；事务结束后回滚 fixture）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f39_supply.sql
+
+trace-migrate: ## 应用 F40 组织级 Trace schema（需先 supply-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0004_f40_trace.sql
+
+trace-test: ## F40 真实 PostgreSQL Trace 隔离、哈希链与只追加验收（需先 trace-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f40_trace.sql
+
+crm-migrate: ## 应用 F32 CRM schema（需先 trace-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0005_f32_crm.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0006_f32_crm_commands.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0007_f32_crm_interactions.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0008_f32_crm_review.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0011_f32_crm_scope.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0012_f32_crm_audit.sql
+
+crm-test: ## F32 真实 PostgreSQL CRM RLS 与 Proposal 验收（需先 crm-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f32_crm.sql
+
+gateway-migrate: ## 应用 F34 Gateway schema（需先 trace-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0009_f34_gateway.sql
+
+gateway-test: ## F34 Gateway 组织隔离验收（需先 gateway-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f34_gateway.sql
+
+runtime-migrate: ## 应用 F35 Durable Runtime schema（需先 tenant-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0010_f35_runtime.sql
+
+runtime-test: ## F35 SQL 队列、租约与幂等验收（需先 runtime-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f35_runtime.sql

@@ -1,0 +1,29 @@
+# 模拟人工（F05，spec §4.5；G7：应答规则放配置）。
+# 只在 build_runtime(humans=...) 传入时启用；Web / 真人运行不启用。
+# 延迟：请求当天记为第 0 天，到"请求日 + 延迟"那天（环境推进后、路由前）应答。
+
+version: 1
+
+# H2 主管审批采购单：延迟在 [min, max] 内按种子与请求事件号确定性选取。
+supervisor:
+  delay_days: {min: 1, max: 2}
+  reject_amount_over_usd: null      # 金额超过即驳回；null = 不设上限（默认全部批准）
+
+# H1 工程师：mock 替代规则（原料 → 替代料 → approve / reject）；表外按 unlisted。
+# 同一张表用于 B 级替代确认与替代关系记忆。
+engineer:
+  delay_days: 1
+  unlisted: reject
+  substitutes: []                   # 例：- {original: SKY13453-385LF, substitute: XXX, decision: approve}
+
+# H3 采购员：mock 别名表（说法 → 料号）；命中才确认别名记忆 / 回答消歧，未命中不应答。
+buyer:
+  delay_days: 1
+  aliases: {}                       # 例："那颗射频开关": SKY13453-385LF
+  # H4 目标修订：approve / reject / ignore（不应答）
+  goal_revision: approve
+
+# H5 计划员：对上报所附 ImpactReport 中预计停线且未开工的工单，各推迟其预计停线天数，不超过 max_postpone_days。
+planner:
+  delay_days: 1
+  max_postpone_days: 5

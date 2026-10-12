@@ -5,7 +5,7 @@ build_runtime(...) 在一处把 F03–F22 的组件接好，消融开关一律�
   知识库 B 七个 Server；F11 权限、F15 重试熔断、F18 注入计划（可选）、F13 疑似指令检测随代理层生效。
 - 模型：F08 适配层（限流复用配额组件、重试熔断、注入包装）；F09 执行者循环（循环检测、F16 折叠）。
 - 业务与门控：F21 代码节点（带 F10 软声明）+ F23 五个 LLM 节点（原料画像、替代检索、Verifier、Resolver、Explainer）+ 调用方追加的节点；F12 证据门控（审批令牌、软声明、datasheet 刷新）；
-  F15/F18 采购执行器（两步写、注入挂点）；HumanDesk、GoalDesk 为人工入口。
+  F15/F18 采购执行器（两步写、注入挂点）；HumanDesk、GoalDesk、PlannerDesk、BuyerDesk 为人工入口；F05 模拟人工（可选）挂在调度的路由前。
 - 编排：F22 按模式的节点集合与工具集、Planner（计划校验与模板兜底）；F16 上下文（记忆分区）；F14 升级；F20 知识库。
 - 调度：F10 CaseRouter（F14 反馈循环、F20 知识库同步）接 F09 Scheduler。
 Runtime.start()：进程启动时补齐两步写（F15）并写运行清单（F18）；run_day() 推进一天；template_driver() 给固定模板对照组。
@@ -31,6 +31,8 @@ from feedback.escalation import Escalation  # 升级
 from feedback.loop import FeedbackLoop  # 反馈循环
 from gate.approval import ApprovalVault, HumanDesk  # 审批
 from gate.evidence import EvidenceGate  # 证据门控
+from humans.desks import BuyerDesk, PlannerDesk, load_humans_config  # F05 新人工入口
+from humans.sim import SimulatedHumans  # F05 模拟人工
 from infrastructure.config import load_harness_config  # 配置
 from knowledge_base.assets import CompositeParser, CompositeSource, Glossary  # 知识资产
 from knowledge_base.kb import KnowledgeBase, MemoryKBStore, case_memory, kb_server  # 知识库 B
@@ -87,6 +89,9 @@ class Runtime:
     ingestor: Ingestor  # datasheet 入库
     fault_plan: FaultPlan | None  # 注入计划
     seeds: dict  # 种子（写进运行清单）
+    planner_desk: PlannerDesk | None = None  # F05 计划员入口（H5）
+    buyer_desk: BuyerDesk | None = None  # F05 采购员消歧入口（H3）
+    humans: SimulatedHumans | None = None  # F05 模拟人工（None = 不自动应答）
 
     def start(self) -> dict:
         """进程启动：补齐两步写（F15）→ 写运行清单（F18）。"""
@@ -106,11 +111,13 @@ class Runtime:
 
 
 # 功能：见文件摘要。依赖：各组件构造函数。
-# 完成：transports 为 {端点名: 传输}；tools_config / switches 可覆盖（测试去掉真实时间限流）；extra_executors 为 LLM 节点注册项（F23）。
+# 完成：transports 为 {端点名: 传输}；tools_config / switches 可覆盖（测试去掉真实时间限流）；extra_executors 为 LLM 节点注册项（F23）；
+#       humans 为 F05 模拟人工规则（True = config/humans.yaml，dict = 指定；不传则不自动应答），种子取 seeds["humans"]，缺省用 seeds["env"]。
 def build_runtime(*, env: Environment, session: Session, transports: dict, kv=None, archive=None,
                   kb_store=None, datasheet_store=None, datasheet_source=None, faults: list[dict] | None = None,
                   switches: dict | None = None, tools_config: dict | None = None, extra_executors: dict | None = None,
-                  seeds: dict | None = None, sleep=time.sleep, vault_key: bytes | None = None) -> Runtime:
+                  seeds: dict | None = None, sleep=time.sleep, vault_key: bytes | None = None,
+                  humans: dict | bool | None = None) -> Runtime:
     config = load_harness_config()  # Harness 配置
     sw = {**config["ablation"], **(switches or {})}  # 消融开关
     rt = config["runtime"]  # 预算
@@ -168,7 +175,15 @@ def build_runtime(*, env: Environment, session: Session, transports: dict, kv=No
     feedback = FeedbackLoop(session, get_env, cards=sw["feedback_cards"], deviation=sw["deviation_feedback"],
                             escalation=sw["forced_escalation"])  # F14
     router = CaseRouter(session, get_env, merge=sw["same_source_merge"], feedback=feedback, knowledge=kb)  # F10
-    scheduler = Scheduler(env, session, seg, router=router, max_active=rt["max_active_cases"])  # F09
+    desk = HumanDesk(session, vault)  # 人工入口（H1、H2）
+    hcfg = load_humans_config() if humans is True else humans  # F05：True = 默认规则，dict = 指定规则
+    planner_desk = PlannerDesk(session, get_env, hcfg or load_humans_config())  # H5 入口
+    buyer_desk = BuyerDesk(session)  # H3 消歧入口
+    sim = (SimulatedHumans(session, desk=desk, goals=goals, knowledge=kb, planner=planner_desk, buyer=buyer_desk,
+                           config=hcfg, seed=(seeds or {}).get("humans", (seeds or {}).get("env", 0)))
+           if hcfg else None)  # 不传则不自动应答
+    scheduler = Scheduler(env, session, seg, router=router, max_active=rt["max_active_cases"],  # F09
+                          before_routing=sim.respond if sim else None)  # F05 路由前应答
     return Runtime(session, env, sw, auth, proxy, adapter, dispatcher, seg, scheduler, router, executor,  # 结果
-                   HumanDesk(session, vault), goals, kb, ingestor, plan, dict(seeds or {}))  # 人工入口等
+                   desk, goals, kb, ingestor, plan, dict(seeds or {}), planner_desk, buyer_desk, sim)  # 人工入口等
 

@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "updated": "2026-09-29",
-  "notes": "划分原则、里程碑顺序与砍减（=推迟）规则见 spec.md §11；spec 已定策略一律要做，时间不够时从 M5 末尾往前推迟，状态记为 deferred。",
+  "version": 3,
+  "updated": "2026-10-12",
+  "notes": "v0.5 已把产品重基线为 AI Native CRM 与供应链处置系统。F01–F29 是历史实现资产，不自动代表 v0.5 已验收；F30 先逐项兼容审计。2026-10-12 用户确认删除须由 Python 重做的旧 Next/TypeScript 服务实现及其测试：Next 只作薄前端/BFF，Python API/Worker/Harness 是主产品实现，Node 只可作无状态 Pi sidecar。",
   "status_values": [
     "not_started",
     "contract_draft",
@@ -92,9 +92,9 @@
         "F03"
       ],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "deferred",
       "contract": "contracts/F05.md",
-      "note": "Contract 已写（2026-09-30）；H5 真推迟工单（用户无偏好，取推荐项）"
+      "note": "2026-10-09 冻结为 eval_only：保留当前工作树代码供模拟/回归/Eval；不是 v0.4 真实人工审批或产品运行时，后续仅由 F39 分层迁入。"
     },
     {
       "id": "F06",
@@ -539,6 +539,162 @@
       "status": "not_started",
       "contract": null,
       "note": ""
+    },
+    {
+      "id": "F30",
+      "name": "v0.5 重基线与既有能力兼容审计",
+      "type": "最小",
+      "spec": ["§0.4", "§3", "§5"],
+      "necessity": "防止把单租户模拟 Harness 误报为多租户产品能力；为所有复用提供逐项证据。",
+      "depends_on": ["F01", "F03", "F06", "F07", "F08", "F09", "F10", "F11", "F12", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23"],
+      "milestone": "M0",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F30.md",
+      "note": "2026-10-10 已补 v0.5 Python 主体/薄前端重基线说明；兼容矩阵待用户验收，不改业务代码。"
+    },
+    {
+      "id": "F31",
+      "name": "多租户身份、组织隔离、RBAC/RLS 与服务端 API",
+      "type": "深度",
+      "spec": ["§1.1", "§2.1"],
+      "necessity": "图中的组织隔离和信任边界；没有它不能安全提供 CRM 或 BYOK。",
+      "depends_on": ["F30"],
+      "milestone": "M1",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F31.md",
+      "note": "2026-10-12：Python API、RBAC、组织/RLS 事务、Next 薄 BFF 与真实 Supabase Auth HTTP 会话联调均已验证；`make api-live-auth-test` 以测试用户验证 token 重验、组织选择与跨组织拒绝。等待用户验收。F32/F39 的 Python 上游尚未实现，相关 BFF 路由不可作为已可用业务端点。"
+    },
+    {
+      "id": "F32",
+      "name": "CRM 业务域：客户、联系人、商机、会话、Kanban 与受控提案",
+      "type": "深度",
+      "spec": ["§1.2", "§2.6"],
+      "necessity": "保留图中 CRM 核心对象，并与采购异常工作流建立可审计关联。",
+      "depends_on": ["F31"],
+      "milestone": "M1",
+      "status": "in_progress",
+      "contract": "contracts/F32.md",
+      "note": "2026-10-12：CRM schema/RLS 保留；Python Repository、命令、Proposal 与 HTTP API 待从头实现并验证。"
+    },
+    {
+      "id": "F33",
+      "name": "React Workbench、审批收件箱、SSE 运行回放与配额面板",
+      "type": "最小",
+      "spec": ["§2.1", "§4"],
+      "necessity": "保留图中的工作台、可视化和 Event-ID 回放，成为真人参与入口。",
+      "depends_on": ["F31", "F32", "F35", "F36", "F37", "F06", "F17"],
+      "milestone": "M4",
+      "status": "in_progress",
+      "contract": "contracts/F33.md",
+      "note": "2026-10-10：Next 保持 Workbench/BFF；业务读取、审批命令与 SSE 迁至 Python API。"
+    },
+    {
+      "id": "F34",
+      "name": "组织级 Model Gateway / BYOK、预算、成本与审计",
+      "type": "深度",
+      "spec": ["§0.3", "§2.3", "§4"],
+      "necessity": "保留图中的 Gateway/BYOK；把现有模型适配层置于组织、凭证和预算边界内。",
+      "depends_on": ["F31", "F08", "F17"],
+      "milestone": "M2",
+      "status": "in_progress",
+      "contract": "contracts/F34.md",
+      "note": "2026-10-12：Gateway/Replay/计量待由 Python Worker/API 从头实现；真实 Provider/BYOK 仍需 G5 授权。"
+    },
+    {
+      "id": "F35",
+      "name": "SQL Durable Runtime、PiRuntimeAdapter、独立 Worker/cron 与可恢复队列",
+      "type": "深度",
+      "spec": ["§2.2", "§3", "§4"],
+      "necessity": "保留图中的 SQL job、claim/lease/reaper/retry 和独立 Worker；HTTP 不承担 Agent 执行。",
+      "depends_on": ["F30", "F31", "F06", "F09", "F15"],
+      "milestone": "M2",
+      "status": "in_progress",
+      "contract": "contracts/F35.md",
+      "note": "2026-10-12：SQL schema 保留；Runtime/Worker/PiRuntimeAdapter 待由 Python 实现，Node 仅作 Pi JSONL sidecar。"
+    },
+    {
+      "id": "F36",
+      "name": "统一 Agent Specialist、企业知识/Wiki/RAG、引用与长期记忆",
+      "type": "深度",
+      "spec": ["§2.4", "§2.5", "§3"],
+      "necessity": "保留图中的 Agent Harness、Specialist 与知识底座，并复用采购验证链路。",
+      "depends_on": ["F31", "F34", "F35", "F19", "F20", "F22", "F23"],
+      "milestone": "M3",
+      "status": "contract_draft",
+      "contract": "contracts/F36.md",
+      "note": "2026-10-10：Specialist、知识权限与记忆确认预定由 Python Harness 实现；Node 只可作 Pi sidecar。"
+    },
+    {
+      "id": "F37",
+      "name": "人工决策、受控写入、发送账本与 WhatsApp/飞书渠道",
+      "type": "深度",
+      "spec": ["§0.3", "§2.6", "§2.7"],
+      "necessity": "保留图中动作分级、审批发送、渠道事件和内部协作，且不绕过 SupplyAgent 审批约束。",
+      "depends_on": ["F31", "F32", "F35", "F36", "F12"],
+      "milestone": "M3",
+      "status": "contract_draft",
+      "contract": "contracts/F37.md",
+      "note": "2026-10-10：审批、渠道 webhook 与执行 Adapter 预定由 Python API/Worker 实现；真实渠道连接与发送仍须另获 G5 授权。"
+    },
+    {
+      "id": "F38",
+      "name": "SQL Trace、Eval、可选 Langfuse 与容器化交付",
+      "type": "深度",
+      "spec": ["§4", "§6"],
+      "necessity": "保留图中的 Trace、Eval、工程部署与完成项，并证明多租户与副作用边界。",
+      "depends_on": ["F33", "F34", "F35", "F36", "F37", "F18", "F27", "F28", "F29"],
+      "milestone": "M4",
+      "status": "contract_draft",
+      "contract": "contracts/F38.md",
+      "note": "2026-10-10：交付拓扑预定为 Next web、Python API、Python worker 与可选 Node Pi sidecar。"
+    },
+    {
+      "id": "F39",
+      "name": "供应链领域迁入：组织范围服务与模拟环境分层",
+      "type": "深度",
+      "spec": ["§3", "§3.1"],
+      "necessity": "保留 SupplyAgent 的确定性采购价值，同时阻止单租户 simenv 直接成为产品 API 或模型工具。",
+      "depends_on": ["F30", "F31", "F03", "F10", "F21"],
+      "milestone": "M1",
+      "status": "in_progress",
+      "contract": "contracts/F39.md",
+      "note": "2026-10-12：供应链领域服务、确定性计算与 API 待由 Python 实现；`simenv` 仍只作测试/Eval。"
+    },
+    {
+      "id": "F40",
+      "name": "产品 Trace 迁入：组织级 Event Log、Artifact、计量、回放与 SSE 投影",
+      "type": "深度",
+      "spec": ["§3.1", "§4"],
+      "necessity": "让已有事件、Artifact、计量和回放变成多租户产品审计事实，而不是单租户实验轨迹。",
+      "depends_on": ["F30", "F31", "F06", "F17", "F18"],
+      "milestone": "M1",
+      "status": "in_progress",
+      "contract": "contracts/F40.md",
+      "note": "2026-10-12：Trace schema/RLS 保留；Python Repository、checkpoint、SSE 和回放服务待实现。"
+    },
+    {
+      "id": "F41",
+      "name": "受控副作用迁入：工具、权限、Proposal、审批令牌、执行账本与恢复",
+      "type": "深度",
+      "spec": ["§2.6", "§2.7", "§3.1"],
+      "necessity": "把已有采购门控扩展为 CRM 更新、采购提交和渠道发送的统一不可绕过边界。",
+      "depends_on": ["F31", "F35", "F37", "F07", "F11", "F12", "F13", "F15"],
+      "milestone": "M3",
+      "status": "contract_draft",
+      "contract": "contracts/F41.md",
+      "note": "2026-10-10：统一 Execution 链预定由 Python API/Worker 实现；旧 F14 的反馈与 F21 的采购执行器在本 Feature 一并接入。"
+    },
+    {
+      "id": "F42",
+      "name": "Harness 迁入：旧模型/编排/上下文/子 Agent 策略接入 PiRuntimeAdapter",
+      "type": "深度",
+      "spec": ["§2.2", "§2.4", "§3.1"],
+      "necessity": "复用现有 Agent 策略和证据分工，但由 Pi + SQL Worker 承担实际产品 turn 的生命周期。",
+      "depends_on": ["F34", "F35", "F40", "F08", "F09", "F16", "F22", "F23"],
+      "milestone": "M2",
+      "status": "contract_draft",
+      "contract": "contracts/F42.md",
+      "note": "2026-10-12：Python Harness/PiRuntimeAdapter 与 Node Pi sidecar 的协议待从头实现并以 Python 合约测试验证。"
     }
   ]
 }

@@ -154,7 +154,7 @@ class SegmentRunner:
                                          "artifact": impact_artifact})  # 引用
             return {"accepted": False, "error": "；".join(reasons)}  # 交回编排者
         self.session.append("human_request", day=ctx.day, actor=ctx.token.actor, case_id=ctx.case_id,  # 需要人
-                            payload={"role": "planner", "tool": "report_to_planner", "args": args})  # 计划员
+                            payload={"role": "planner", "node": "H5", "tool": "report_to_planner", "args": args})  # 计划员（F05 补节点）
         return {"accepted": True, "note": "已提交给人，等待应答"}  # 接受
 
     # -----------------------------------------------------------------------
@@ -220,10 +220,13 @@ class SegmentRunner:
 class Scheduler:
     # 功能：按模拟日的调度循环。依赖：环境、日志、活跃段、路由挂点。
     # 完成：router(env_day 事件) 返回 [(案子, 唤醒原因)]，F10 cases.router.CaseRouter 实现；默认不唤醒。
+    #       before_routing(day)：环境推进后、路由前的挂点（F05 模拟人工在此应答，当天的人工决定当天唤醒案子）；默认无。
     def __init__(self, env: Environment, session: Session, segments: SegmentRunner, *,
-                 router: Callable[[dict], list[tuple[str, str]]] | None = None, max_active: int = 4):
+                 router: Callable[[dict], list[tuple[str, str]]] | None = None, max_active: int = 4,
+                 before_routing: Callable[[int], object] | None = None):
         self.env, self.session, self.segments = env, session, segments  # 依赖
         self.router = router or (lambda event: [])  # 路由挂点
+        self.before_routing = before_routing  # F05 路由前挂点
         self.max_active = max_active  # 并发上限
 
     def set_timer(self, case_id: str, due_day: int, reason: str, *, day: int) -> dict:
@@ -259,6 +262,8 @@ class Scheduler:
         day = self.env.state.day  # 当天
         keys = env_day_keys(self.env.state, log)  # 当日实体键（F10：含料号与板）
         event = self.session.append("env_day", day=day, actor="env", payload=log, entity_keys=keys)  # 环境事件
+        if self.before_routing is not None:  # F05：模拟人工先应答
+            self.before_routing(day)  # 写人工决定，下面的路由据此唤醒
         wakes = list(self.router(event)) + self._due_timers(day)  # 路由 + 定时器
         queued = [c["case_id"] for c in self.session.cases() if c["state"] == CASE_OPEN]  # 未开始的案子（含排队）
         wakes += [(c, "排队后开始处置") for c in queued if c not in {w[0] for w in wakes}]  # 排队的也试一次

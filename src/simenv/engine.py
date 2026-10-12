@@ -2,7 +2,8 @@
 
 本文件是模拟工厂的"物理定律"：把 State 推进一天（spec §4.2），以及把一条外部写入作用到 State。
 - advance(state, injectors)：注入挂点 → 到货 → 发货 → 重算预留 → 领料开工/缺料停线 → 完工 → 订单到期。
-- apply_write(state, write)：目前只有 submit_po（下采购单），带幂等键，重复写入返回同一张单。
+- apply_write(state, write)：submit_po（下采购单）与 postpone_work_order（F05 计划员推迟工单开工日，只有人工入口调用），
+  都带幂等键，重复写入返回同一结果。
 - 推进过程不含任何随机数：同一初始状态 + 同一写入序列 ⇒ 同一结果，这是快照恢复与分叉的前提。
 依赖：model（领域对象与状态）。被 api.Environment（对外门面）、测试、F04（注入函数通过 injectors 挂入）使用。
 """
@@ -219,15 +220,20 @@ def _check_orders(state: State, day: int, log: dict) -> None:
 
 # ---------------------------------------------------------------------------
 # apply_write：把一条外部写入作用到状态
-# 功能：外部（经 F21 Procurement 执行器）对环境的唯一写入口；目前只有 submit_po。
-# 依赖：被 api.Environment.submit_purchase_order 与崩溃恢复重放调用；幂等索引存在 state.idempotency 里。
-# 完成：幂等（同键返回同单）、校验（validate_write，拒绝时状态不变）、按分销商备货天数算计划发货日。
-#       不校验审批令牌：G2 由 F12/F21 在执行器一侧强制（见 Contract）。
+# 功能：外部对环境的唯一写入口：submit_po（经 F21 Procurement 执行器）、postpone_work_order（经 F05 PlannerDesk）。
+# 依赖：被 api.Environment 的两个写方法与崩溃恢复重放调用；幂等索引存在 state.idempotency 里。
+# 完成：幂等（同键返回同一结果）、校验（validate_write，拒绝时状态不变）、按分销商备货天数算计划发货日。
+#       不校验审批令牌：G2 由 F12/F21 在执行器一侧强制（见 Contract）；推迟上限由 PlannerDesk 按配置检查（G7）。
 # ---------------------------------------------------------------------------
 def apply_write(state: State, write: dict) -> dict:
-    if is_duplicate(state, write):  # 这个幂等键已经下过单
-        return {"po_id": state.idempotency[write["idempotency_key"]], "duplicate": True}  # 返回原单
+    if is_duplicate(state, write):  # 这个幂等键已经写过
+        done = state.idempotency[write["idempotency_key"]]  # 原结果的编号
+        if write.get("kind") == "postpone_work_order":  # 推迟工单
+            return {"wo_id": done, "start_day": state.work_orders[done].start_day, "duplicate": True}  # 原结果
+        return {"po_id": done, "duplicate": True}  # 返回原单
     validate_write(state, write)  # 先校验，不合法则抛错、状态不变
+    if write["kind"] == "postpone_work_order":  # F05 计划员推迟
+        return _postpone(state, write)  # 推迟
     key, p = write["idempotency_key"], write["payload"]  # 幂等键与采购单内容
     po = PurchaseOrder(  # 新建采购单
         id=state.next_id("PO"),  # 分配单号
@@ -239,6 +245,21 @@ def apply_write(state: State, write: dict) -> dict:
     state.purchase_orders[po.id] = po  # 登记采购单
     state.idempotency[key] = po.id  # 登记幂等索引
     return {"po_id": po.id, "duplicate": False}  # 返回新单号
+
+
+# ---------------------------------------------------------------------------
+# _postpone：计划员推迟工单开工日（F05，spec §4.5）
+# 功能：新开工日 = max(原开工日, 今天) + 天数；缺料停线的工单改回"未开工"（重新排期，不再算停线）。
+# 依赖：被 apply_write 调用（已校验）；Agent 没有调用它的工具（G8），只有 humans.desks.PlannerDesk。
+# 完成：登记幂等键 → 工单号；返回新开工日。
+# ---------------------------------------------------------------------------
+def _postpone(state: State, write: dict) -> dict:
+    p = write["payload"]  # 内容
+    wo = state.work_orders[p["wo_id"]]  # 工单
+    wo.start_day = max(wo.start_day, state.day) + p["days"]  # 往后挪
+    wo.status = WO_PLANNED  # 停线的也改回未开工
+    state.idempotency[write["idempotency_key"]] = wo.id  # 幂等索引
+    return {"wo_id": wo.id, "start_day": wo.start_day, "duplicate": False}  # 结果
 
 
 # ---------------------------------------------------------------------------
@@ -259,14 +280,24 @@ def is_duplicate(state: State, write: dict) -> bool:
 # 完成：料号必须出现在某块板的 BOM 里（本期环境只管这两块板的料）。
 # ---------------------------------------------------------------------------
 def validate_write(state: State, write: dict) -> None:
-    if write.get("kind") != "submit_po":  # 目前只支持下采购单
+    if write.get("kind") not in ("submit_po", "postpone_work_order"):  # 只支持这两种
         raise WriteRejected(f"未知写入种类：{write.get('kind')!r}")  # 未知种类直接拒绝
     key = write.get("idempotency_key")  # 幂等键
     if not isinstance(key, str) or not key:  # 没有幂等键就无法防重复
         raise WriteRejected("写入必须带非空的幂等键")  # 拒绝
-    p = write.get("payload")  # 采购单内容
+    p = write.get("payload")  # 写入内容
     if not isinstance(p, dict):  # 内容必须是字典
         raise WriteRejected("写入内容 payload 必须是对象")  # 拒绝
+    if write["kind"] == "postpone_work_order":  # F05 推迟工单
+        wo = state.work_orders.get(p.get("wo_id"))  # 目标工单
+        if wo is None:  # 不存在
+            raise WriteRejected(f"未知工单：{p.get('wo_id')!r}")  # 拒绝
+        if wo.status not in (WO_PLANNED, WO_STOPPED):  # 已开工或已完工
+            raise WriteRejected(f"工单 {wo.id} 已开工或完工，不能推迟")  # 拒绝
+        days = p.get("days")  # 推迟天数
+        if not isinstance(days, int) or isinstance(days, bool) or days <= 0:  # 须为正整数
+            raise WriteRejected(f"推迟天数必须是正整数：{days!r}")  # 拒绝
+        return  # 推迟写入校验完毕
     known = {m for bom in state.boards.values() for m in bom}  # 所有板 BOM 里的料号
     if p.get("mpn") not in known:  # 料号不在任何 BOM 里
         raise WriteRejected(f"未知料号：{p.get('mpn')!r}")  # 拒绝

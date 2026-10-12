@@ -7,7 +7,10 @@ requires-python = ">=3.11,<3.12"
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "--strict-markers"
-markers = ["integration: requires local PostgreSQL; isolated transactional fixtures"]
+markers = [
+  "integration: requires local PostgreSQL; isolated transactional fixtures",
+  "supabase_live: requires explicit authorization plus local Supabase test credentials",
+]
 
 [tool.ruff]
 target-version = "py311"

@@ -2,7 +2,7 @@
 
 Environment 是模拟环境唯一的对外入口（spec §5.1：环境状态只能查询，写入只能经 Procurement 执行器）。
 - 查询（类 ERP，返回纯 dict、每条带 simulated 标记）：当前日、订单、工单、库存（在库/预留/可用/在途）、采购单、运单、BOM。
-- 写入：submit_purchase_order（带幂等键）；先校验、再落写入日志、再作用于内存状态。
+- 写入：submit_purchase_order（带幂等键）；F05 起另有 postpone_work_order（只给计划员人工入口）；先校验、再落写入日志、再作用于内存状态。
 - 推进：advance() 推进一天（注入函数由 F04 挂入）。
 - 持久化（给了 store 时）：create 存第 0 天快照；每次 advance 后存当日"开盘"快照；每条写入先落日志再生效。
 - recover：最近快照 + 重放其后写入，恢复出与未崩溃时哈希相同的状态；load：从某日快照分叉成新运行，或不带 store 做预演。
@@ -126,6 +126,21 @@ class Environment:
         engine.validate_write(self.state, write)  # 先校验，不合法的写入不进日志
         self._record(write)  # 先落日志（崩溃后可重放）
         return engine.apply_write(self.state, write)  # 再作用于内存状态
+
+    # -----------------------------------------------------------------------
+    # postpone_work_order：计划员推迟工单开工日（F05）
+    # 功能：H5 计划员回复的唯一环境效果；只有 humans.desks.PlannerDesk 调用，Agent 没有对应工具（G8）。
+    # 依赖：engine.is_duplicate / validate_write / apply_write；与下单同一写入日志（崩溃后可重放）。
+    # 完成：校验不过抛 WriteRejected；有 store 时先落日志再生效。
+    # -----------------------------------------------------------------------
+    def postpone_work_order(self, *, wo_id: str, days: int, idempotency_key: str) -> dict:
+        write = {"kind": "postpone_work_order", "idempotency_key": idempotency_key,  # 组装写入
+                 "payload": {"wo_id": wo_id, "days": days}}  # 工单与天数
+        if engine.is_duplicate(self.state, write):  # 重复写入
+            return engine.apply_write(self.state, write)  # 返回原结果，不记日志
+        engine.validate_write(self.state, write)  # 先校验
+        self._record(write)  # 先落日志
+        return engine.apply_write(self.state, write)  # 再生效
 
     def _record(self, write: dict) -> None:
         if self.store is not None:  # 有存储才记日志
