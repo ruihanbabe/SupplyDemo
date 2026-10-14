@@ -47,6 +47,16 @@ class TenantRepository(Protocol):
     ) -> Result:
         """核验成员关系、设置事务局部 RLS 上下文并执行操作。"""
 
+    async def in_organization_as_member(
+        self,
+        actor_id: UUID,
+        organization_id: UUID,
+        operation: Callable[
+            [AsyncConnection[dict[str, object]], OrganizationMembership], Awaitable[Result]
+        ],
+    ) -> Result:
+        """在同一 RLS 事务中读取成员角色并执行需要业务授权的命令。"""
+
     async def select_organization(
         self, actor_id: UUID, organization_id: UUID
     ) -> OrganizationMembership:
@@ -68,6 +78,18 @@ class UnavailableTenantRepository:
         operation: Callable[[AsyncConnection[dict[str, object]]], Awaitable[Result]],
     ) -> Result:
         """不运行任何业务操作。"""
+        del actor_id, organization_id, operation
+        raise TenantConfigurationError("产品数据库未配置")
+
+    async def in_organization_as_member(
+        self,
+        actor_id: UUID,
+        organization_id: UUID,
+        operation: Callable[
+            [AsyncConnection[dict[str, object]], OrganizationMembership], Awaitable[Result]
+        ],
+    ) -> Result:
+        """未配置时不能返回伪造成员关系或执行授权命令。"""
         del actor_id, organization_id, operation
         raise TenantConfigurationError("产品数据库未配置")
 
@@ -145,6 +167,42 @@ class PostgresTenantRepository:
             return self._membership(row)
 
         return await self.in_organization(actor_id, organization_id, read_membership)
+
+    async def in_organization_as_member(
+        self,
+        actor_id: UUID,
+        organization_id: UUID,
+        operation: Callable[
+            [AsyncConnection[dict[str, object]], OrganizationMembership], Awaitable[Result]
+        ],
+    ) -> Result:
+        """角色读取和受限命令共用同一个已建立 RLS 上下文的事务。"""
+
+        async def authorized_operation(
+            connection: AsyncConnection[dict[str, object]],
+        ) -> Result:
+            membership = await self._current_membership(connection)
+            return await operation(connection, membership)
+
+        return await self.in_organization(actor_id, organization_id, authorized_operation)
+
+    async def _current_membership(
+        self, connection: AsyncConnection[dict[str, object]]
+    ) -> OrganizationMembership:
+        """从当前 RLS 视野读取唯一成员关系，不能相信请求提供的 role。"""
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                """
+                select o.id as organization_id, o.slug, o.display_name, m.role, m.scope
+                from app.organization_member m
+                join app.organization o on o.id = m.organization_id
+                limit 1
+                """
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            raise TenantAccessError("不是该组织成员")
+        return self._membership(row)
 
     @staticmethod
     def _membership(row: dict[str, object]) -> OrganizationMembership:

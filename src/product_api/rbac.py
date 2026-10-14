@@ -2,6 +2,11 @@
 
 from collections.abc import Iterable
 
+
+class CapabilityAccessError(Exception):
+    """当前组织成员缺少执行业务命令所需的 capability。"""
+
+
 ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
     "organization_admin": frozenset({"organization:read", "crm:read", "crm:propose", "supply:read", "supply:propose", "approval:review", "audit:read", "member:manage"}),
     "sales_manager": frozenset({"organization:read", "crm:read", "crm:propose", "supply:read"}),
@@ -27,3 +32,9 @@ def effective_capabilities(role: str, token_capabilities: Iterable[str] | None =
     if token_capabilities is None:
         return sorted(role_capabilities)
     return sorted(capability for capability in token_capabilities if capability in role_capabilities)
+
+
+def require_capability(role: str, required: str) -> None:
+    """拒绝角色能力之外的命令；短期令牌收窄在后续接入时置于此检查之前。"""
+    if required not in ROLE_CAPABILITIES.get(role, frozenset()):
+        raise CapabilityAccessError(f"角色 {role} 不具备 {required} 能力")

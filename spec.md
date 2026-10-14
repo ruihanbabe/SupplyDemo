@@ -163,11 +163,13 @@ Eval 覆盖结果正确性、过程合规性、成本/时延、恢复与重复�
 | 6 | F34 | Model Gateway / BYOK：组织凭证、Provider Adapter、预算、成本和审计。 |
 | 7 | F35 | SQL Durable Runtime：Mission/Run/Job、Worker、lease/reaper/retry、恢复与 PiRuntimeAdapter。 |
 | 8 | F42 | Harness 迁入：把旧模型、编排、上下文、子 Agent 策略接入 PiRuntimeAdapter 与 SQL checkpoint。 |
-| 9 | F36 | Specialist 与企业知识：CRM/采购 Specialist、文档权限、引用与记忆。 |
-| 10 | F37 | 人工决策、受控写入、发送账本与 WhatsApp/飞书渠道。 |
-| 11 | F41 | 受控副作用迁入：旧工具、权限、审批、污点与恢复统一接入 Proposal/Execution 链。 |
-| 12 | F33 | Workbench 与 SSE：运行时间线、审批收件箱、配额、断线回放。 |
-| 13 | F38 | Trace/Eval/交付：SQL Trace、Langfuse 可选接入、回放、隔离测试、Compose 演示。 |
+| 9 | F43 | 在途事实一致性：确定到货明细与库存快照的权威来源或显式对账关系，避免重复计入或长期 unknown；待 F42 Harness 完成后再启动。 |
+| 10 | F44 | 业务动作授权：将角色映射为 API capability 命令门禁；组织隔离仍由 F31 RLS 保障，scope/对象关系后续按实际业务需求引入。 |
+| 11 | F36 | Specialist 与企业知识：CRM/采购 Specialist、文档权限、引用与记忆。 |
+| 12 | F37 | 人工决策、受控写入、发送账本与 WhatsApp/飞书渠道。 |
+| 13 | F41 | 受控副作用迁入：旧工具、权限、审批、污点与恢复统一接入 Proposal/Execution 链。 |
+| 14 | F33 | Workbench 与 SSE：运行时间线、审批收件箱、配额、断线回放。 |
+| 15 | F38 | Trace/Eval/交付：SQL Trace、Langfuse 可选接入、回放、隔离测试、Compose 演示。 |
 
 实施时一次只激活一个 Feature；Contract 先经用户确认，再改 `features.json` 为 `in_progress`。每项完成必须跑对应离线与真实服务验证，并更新 HANDOFF。不得因本期困难删除表中能力；只能标注 `deferred` 并说明未完成的运行证据。
 

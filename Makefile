@@ -12,7 +12,7 @@ SRC         := src
 .DEFAULT_GOAL := help
 .PHONY: help setup status check compile lint test \
         services-up services-status services-smoke services-down freeze migrate test-integration \
-        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test trace-migrate trace-test crm-migrate crm-test gateway-migrate gateway-test runtime-migrate runtime-test
+        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test supply-api-check supply-api-integration-test trace-migrate trace-test crm-migrate crm-test gateway-migrate gateway-test runtime-migrate runtime-test
 
 help: ## 列出所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -57,7 +57,7 @@ lint: ## ① 静态契约：ruff 检查
 
 test: ## ② 离线测试：pytest，固定数据与 mock，不连服务也不访问供应商
 	@if [ ! -d tests ]; then echo ">> 尚无 tests/ 目录，test 跳过（不算通过）"; exit 0; fi; \
-	$(VPY) -m pytest -q -m "not integration" tests
+	$(VPY) -m pytest -q -m "not integration and not supabase_live" tests
 
 check: compile lint test ## ①② 两层的离线门禁（不证明真实服务与业务正确性）
 	@echo ">> check 完成：仅覆盖离线语法/lint/测试"
@@ -143,9 +143,18 @@ tenant-test: ## F31 真实 PostgreSQL RLS 验收（需先 tenant-migrate；事�
 supply-migrate: ## 应用 F39 供应链事实与时间线 schema（需先 tenant-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0002_f39_supply.sql
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0003_f39_supply_timeline.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0015_f39_supply_fact_corrections.sql
 
 supply-test: ## F39 真实 PostgreSQL 供应链 RLS 验收（需先 supply-migrate；事务结束后回滚 fixture）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f39_supply.sql
+
+supply-api-check: ## F39 Python 领域/API 离线契约与确定性计算验收
+	@$(VPY) -m compileall -q src/product_api tests/test_product_api_supply.py
+	@$(VENV)/bin/ruff check src/product_api tests/test_product_api_supply.py
+	@$(VPY) -m pytest -q tests/test_product_api.py tests/test_product_api_supply.py
+
+supply-api-integration-test: supply-migrate ## F39 Python API 本地 PostgreSQL 端到端验收（需服务已启动）
+	@$(VPY) -m pytest -q -m integration tests/test_product_api_supply_integration.py
 
 trace-migrate: ## 应用 F40 组织级 Trace schema（需先 supply-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0004_f40_trace.sql
@@ -172,6 +181,7 @@ gateway-test: ## F34 Gateway 组织隔离验收（需先 gateway-migrate）
 
 runtime-migrate: ## 应用 F35 Durable Runtime schema（需先 tenant-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0010_f35_runtime.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0014_f35_runtime_commands.sql
 
 runtime-test: ## F35 SQL 队列、租约与幂等验收（需先 runtime-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f35_runtime.sql

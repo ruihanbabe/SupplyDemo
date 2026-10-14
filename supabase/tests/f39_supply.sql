@@ -20,9 +20,9 @@ insert into app.inventory_position (organization_id, part_number, location_code,
 insert into app.supply_demand (organization_id, source_type, source_reference, line_key, part_number, required_qty) values
   ('11111111-1111-1111-1111-111111111111', 'manual', 'alpha-input', '1', 'PART-A', 12),
   ('22222222-2222-2222-2222-222222222222', 'manual', 'bravo-input', '1', 'PART-A', 1);
-insert into app.supply_receipt (organization_id, receipt_reference, part_number, expected_on, quantity, status) values
-  ('11111111-1111-1111-1111-111111111111', 'alpha-shipment', 'PART-A', current_date + 1, 4, 'in_transit'),
-  ('22222222-2222-2222-2222-222222222222', 'bravo-shipment', 'PART-A', current_date + 1, 2, 'in_transit');
+insert into app.supply_receipt (organization_id, receipt_reference, line_key, part_number, expected_on, quantity, status) values
+  ('11111111-1111-1111-1111-111111111111', 'alpha-shipment', '1', 'PART-A', current_date + 1, 4, 'in_transit'),
+  ('22222222-2222-2222-2222-222222222222', 'bravo-shipment', '1', 'PART-A', current_date + 1, 2, 'in_transit');
 
 set local role supplyagent_api;
 select app.set_request_context('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111');
@@ -37,6 +37,35 @@ select case when (select count(*) from app.supply_case) = 0
                  and (select count(*) from app.supply_demand) = 0
                  and (select count(*) from app.supply_receipt) = 0
             then 'ok: forged organization denied' else 'fail: forged organization leaked' end as result;
+
+select app.set_request_context('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111');
+insert into app.supply_case (organization_id, title, status, severity)
+values (app.current_organization_id(), 'Alpha API case', 'investigating', 'medium');
+insert into app.inventory_position (organization_id, part_number, location_code, on_hand_qty, reserved_qty, in_transit_qty, verified_at)
+values (app.current_organization_id(), 'PART-B', 'MAIN', 3, 1, null, clock_timestamp());
+insert into app.supply_demand (organization_id, source_type, source_reference, line_key, part_number, required_qty, required_on)
+values (app.current_organization_id(), 'manual', 'alpha-command', '1', 'PART-B', 4, current_date);
+insert into app.supply_receipt (organization_id, receipt_reference, line_key, part_number, expected_on, quantity, status)
+values (app.current_organization_id(), 'alpha-command-receipt', '1', 'PART-B', current_date + 1, 2, 'in_transit');
+select case when (select count(*) from app.supply_case) = 2
+                 and (select count(*) from app.inventory_position) = 2
+                 and (select count(*) from app.supply_demand) = 2
+                 and (select count(*) from app.supply_receipt) = 2
+            then 'ok: member may record supply facts' else 'fail: member fact write' end as result;
+
+-- 即使已建立 Alpha 上下文，成员也不能伪造 Bravo 的 organization_id。
+do $$
+begin
+  begin
+    insert into app.supply_case (organization_id, title, status, severity)
+    values ('22222222-2222-2222-2222-222222222222', 'Forged Bravo case', 'open', 'low');
+    raise exception 'fail: cross-organization insert unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
+end;
+$$;
+select 'ok: cross-organization insert denied by RLS' as result;
 
 reset role;
 rollback;

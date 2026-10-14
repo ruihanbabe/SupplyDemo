@@ -1,8 +1,8 @@
 # HANDOFF.md — SupplyAgent v0.5 交接
 
-> 更新：2026-10-09
+> 更新：2026-10-12
 >
-> 先读本文件、`AGENTS.md`、`spec.md`，再读当前 Feature 的 Contract。Feature 清单和状态只看 `features.json`。
+> 新会话先读本文件、`AGENTS.md`、`docs/handoffs/2026-10-12-f39-authorization-refactor.md`，再读当前 Feature 的 Contract。Feature 清单和状态只看 `features.json`。
 
 ## 1. 当前产品决策
 
@@ -40,9 +40,15 @@ CRM/客户/商机/渠道/多租户是产品能力；现有采购异常处置、�
 
 F31 的 Python/BFF 实现与真实 Auth 验证已完成，状态为等待用户验收：`src/product_api/` 提供可注入 `AuthVerifier`、RBAC、受限 `TenantRepository`、`/health`、`/v1/session` 与组织选择入口；Next API Route Handler 已全部改为只转发 Python，边界检查会拒绝它们导入数据库或领域实现。默认未配置 Supabase 时安全拒绝业务请求；本地 fixture 已验证 repository 在 `supplyagent_api` 角色和 `app.set_request_context` 同一事务内工作。2026-10-12 经用户授权的 `make api-live-auth-test` 已以真实 Supabase 测试用户验证 access token 登录、Python `/user` 重验、组织选择与跨组织拒绝；测试凭证只在本地 `.env`。F32/F39 的 Python 上游尚未实现，相关 BFF 入口不能当作已可用业务 API。
 
-F40 已启动并完成其 Trace SQL 地基：新 `app.trace_run`、`app.trace_event`、`app.trace_artifact` 使用组织 RLS、受限 SQL 函数、每 Run 哈希链和只追加触发器。Python Trace Repository、SSE、计量、Pi JSONL 映射及回放尚未实现，分别留给 F40、F33、F34/F35/F42、F38，不能当作 F40 已接通。
+F40 有未提交的 Python Trace Repository 与路由草稿，但尚无专门测试；不可称为完成或把它混入当前 F39 工作。F35 也有未提交的 SQL command migration 草稿；当前没有开始其 Python Runtime/Worker/Pi 实现。
 
-F32、F34、F35、F39、F40 的 PostgreSQL/RLS 基础仍在；对应 Python 服务尚未实现。F42 回到 Contract 草案，等待 Python Harness/PiRuntimeAdapter 从头实现。真实 Provider/BYOK、真实 Pi 子进程和渠道仍未接通。
+当前正在推进 F39 的**授权设计重构**与其最小的 F44 业务动作门禁，详细状态见 `docs/handoffs/2026-10-12-f39-authorization-refactor.md`。此前“F39 已完成、以 `SECURITY DEFINER` SQL 命令函数写入、并已通过本地 RLS/API 集成验收”的说法只是一段已被推翻的历史证据，不能作为当前验收依据。当前决定是：普通人工供应事实由 Python 在 F31 同一组织事务内作参数化 DML，PostgreSQL RLS 以已验证成员和当前组织作最终隔离；F44 要求 `supply:propose` 才能录入四类人工事实。Case scope 只接受受限的扁平业务上下文。离线检查已为 `make supply-api-check` 17 passed、`make check` 191 passed；本地 Docker/数据库当前不可用，所以新的迁移和真实 RLS/端到端验证均尚未运行。
+
+已新增 F43 Contract 草案，记录持续补货料件的在途聚合与逐笔到货明细可能导致缺料投影长期 unknown 的数据语义问题。用户明确要求先完成 F42 Harness，再由用户选择单一事实来源、互斥语义或显式对账方案；在此之前不得修改 F39 计算、schema 或 API 来猜测其关系。
+
+2026-10-14 用户确认先实施 F44 方案二：F39 的四类人工事实写入口必须在同一 F31 RLS 事务中读取成员角色并要求 `supply:propose`；组织 RLS 仍是跨组织隔离最终边界。F44 不新增数据库 schema、RLS policy 或前端授权逻辑，仓库/业务线 scope 与 Case 协作关系待真实业务需要后再设计。
+
+F32、F34、F35、F40 的 PostgreSQL/RLS 基础仍在；对应 Python 服务尚未实现。F42 回到 Contract 草案，等待 Python Harness/PiRuntimeAdapter 从头实现。真实 Provider/BYOK、真实 Pi 子进程和渠道仍未接通。
 
 不能跳过 F30/F31 直接做页面、渠道或真实模型调用：那会把单租户模拟 Harness 错接成带数据隔离和凭证风险的产品。
 
