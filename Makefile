@@ -12,7 +12,7 @@ SRC         := src
 .DEFAULT_GOAL := help
 .PHONY: help setup status check compile lint test \
         services-up services-status services-smoke services-down freeze migrate test-integration \
-        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test supply-api-check supply-api-integration-test trace-migrate trace-test crm-migrate crm-test gateway-migrate gateway-test runtime-migrate runtime-test
+        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test supply-api-check supply-api-integration-test trace-migrate trace-test f42-check f42-integration-test crm-migrate crm-test gateway-migrate gateway-test runtime-migrate runtime-test
 
 help: ## 列出所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -161,6 +161,14 @@ trace-migrate: ## 应用 F40 组织级 Trace schema（需先 supply-migrate）
 
 trace-test: ## F40 真实 PostgreSQL Trace 隔离、哈希链与只追加验收（需先 trace-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f40_trace.sql
+
+f42-check: ## F42 Python Harness / Node JSONL 协议离线验收
+	@$(VPY) -m compileall -q src/product_api tests/test_product_api_harness.py
+	@$(VENV)/bin/ruff check src/product_api/harness.py tests/test_product_api_harness.py tests/test_product_api_harness_integration.py
+	@$(VPY) -m pytest -q tests/test_product_api_harness.py
+
+f42-integration-test: trace-migrate ## F42 真实 Node sidecar + PostgreSQL Trace/RLS 验收（需服务已启动）
+	@$(VPY) -m pytest -q -m integration tests/test_product_api_harness_integration.py
 
 crm-migrate: ## 应用 F32 CRM schema（需先 trace-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0005_f32_crm.sql

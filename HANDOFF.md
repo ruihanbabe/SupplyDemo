@@ -42,13 +42,13 @@ F31 的 Python/BFF 实现与真实 Auth 验证已完成，状态为等待用户�
 
 F40 有未提交的 Python Trace Repository 与路由草稿，但尚无专门测试；不可称为完成或把它混入当前 F39 工作。F35 也有未提交的 SQL command migration 草稿；当前没有开始其 Python Runtime/Worker/Pi 实现。
 
-当前正在推进 F39 的**授权设计重构**与其最小的 F44 业务动作门禁，详细状态见 `docs/handoffs/2026-10-12-f39-authorization-refactor.md`。此前“F39 已完成、以 `SECURITY DEFINER` SQL 命令函数写入、并已通过本地 RLS/API 集成验收”的说法只是一段已被推翻的历史证据，不能作为当前验收依据。当前决定是：普通人工供应事实由 Python 在 F31 同一组织事务内作参数化 DML，PostgreSQL RLS 以已验证成员和当前组织作最终隔离；F44 要求 `supply:propose` 才能录入四类人工事实。Case scope 只接受受限的扁平业务上下文。离线检查已为 `make supply-api-check` 17 passed、`make check` 191 passed；本地 Docker/数据库当前不可用，所以新的迁移和真实 RLS/端到端验证均尚未运行。
+F39/F44 的**授权设计重构**与其最小业务动作门禁已经完成运行验证，详细状态见 `docs/handoffs/2026-10-14-f39-f44-to-f42-session-handoff.md` 与当前 Contract。普通人工供应事实由 Python 在 F31 同一组织事务内作参数化 DML，PostgreSQL RLS 以已验证成员和当前组织作最终隔离；F44 要求 `supply:propose` 才能录入四类人工事实。Case scope 只接受受限的扁平业务上下文。2026-10-14 已实际通过 `make services-smoke`、`make supply-migrate`、`make supply-test` 与 `make supply-api-integration-test`；它们仍等待用户验收，且不代表真实 ERP、供应商或采购执行器集成。
 
 已新增 F43 Contract 草案，记录持续补货料件的在途聚合与逐笔到货明细可能导致缺料投影长期 unknown 的数据语义问题。用户明确要求先完成 F42 Harness，再由用户选择单一事实来源、互斥语义或显式对账方案；在此之前不得修改 F39 计算、schema 或 API 来猜测其关系。
 
 2026-10-14 用户确认先实施 F44 方案二：F39 的四类人工事实写入口必须在同一 F31 RLS 事务中读取成员角色并要求 `supply:propose`；组织 RLS 仍是跨组织隔离最终边界。F44 不新增数据库 schema、RLS policy 或前端授权逻辑，仓库/业务线 scope 与 Case 协作关系待真实业务需要后再设计。
 
-F32、F34、F35、F40 的 PostgreSQL/RLS 基础仍在；对应 Python 服务尚未实现。F42 回到 Contract 草案，等待 Python Harness/PiRuntimeAdapter 从头实现。真实 Provider/BYOK、真实 Pi 子进程和渠道仍未接通。
+F42 的受控协议实现已完成并等待用户验收：Python `Harness`/`PiRuntimeAdapter` 用 v1 JSONL 驱动真实 Node fixture sidecar，工具只允许 `supply.impact`，事件与 checkpoint 写入 F40 Trace；`make f42-check`（6 passed）、`make f42-integration-test`（1 passed）、`make trace-test` 和 `make check`（197 passed，19 deselected）均已通过。fixture sidecar 不是真实 Pi 上游或模型调用；F32、F34、F35、F40 的完整产品服务、真实 Provider/BYOK 和渠道仍未接通。
 
 不能跳过 F30/F31 直接做页面、渠道或真实模型调用：那会把单租户模拟 Harness 错接成带数据隔离和凭证风险的产品。
 

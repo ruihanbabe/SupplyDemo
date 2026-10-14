@@ -572,7 +572,7 @@
       "necessity": "保留图中 CRM 核心对象，并与采购异常工作流建立可审计关联。",
       "depends_on": ["F31"],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F32.md",
       "note": "2026-10-12：CRM schema/RLS 保留；Python Repository、命令、Proposal 与 HTTP API 待从头实现并验证。"
     },
@@ -656,9 +656,9 @@
       "necessity": "保留 SupplyAgent 的确定性采购价值，同时阻止单租户 simenv 直接成为产品 API 或模型工具。",
       "depends_on": ["F30", "F31", "F03", "F10", "F21"],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F39.md",
-      "note": "2026-10-12：F39 正在从 SECURITY DEFINER 命令函数重构为 Python 参数化 DML + 成员级 RLS；细角色矩阵延后。离线 API/计算测试 13 项通过；重构后的本地 PostgreSQL 迁移、RLS 与端到端验证待 Docker/Colima 恢复后执行。`simenv` 仍只作测试/Eval。"
+      "note": "2026-10-14：F39 以 Python 参数化 DML + 成员级 RLS 实现；真实本地 PostgreSQL migration、RLS 与 Python API 端到端验证已通过。细角色矩阵延后；`simenv` 仍只作测试/Eval。等待用户验收。"
     },
     {
       "id": "F40",
@@ -668,7 +668,7 @@
       "necessity": "让已有事件、Artifact、计量和回放变成多租户产品审计事实，而不是单租户实验轨迹。",
       "depends_on": ["F30", "F31", "F06", "F17", "F18"],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F40.md",
       "note": "2026-10-12：Trace schema/RLS 保留；Python Repository、checkpoint、SSE 和回放服务待实现。"
     },
@@ -692,9 +692,9 @@
       "necessity": "复用现有 Agent 策略和证据分工，但由 Pi + SQL Worker 承担实际产品 turn 的生命周期。",
       "depends_on": ["F34", "F35", "F40", "F08", "F09", "F16", "F22", "F23"],
       "milestone": "M2",
-      "status": "contract_draft",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F42.md",
-      "note": "2026-10-12：Python Harness/PiRuntimeAdapter 与 Node Pi sidecar 的协议待从头实现并以 Python 合约测试验证。"
+      "note": "2026-10-14：受控 F42 Harness、v1 JSONL、只读工具白名单、F40 Trace/checkpoint 与真实 Node 子进程/本地 PostgreSQL 验证已通过，等待用户验收。固定 sidecar 不代表真实 Pi 上游、F34、F35 Worker、F33/F36/F41 已接通。"
     },
     {
       "id": "F43",
@@ -716,9 +716,9 @@
       "necessity": "将已展示的业务角色能力变为真实 API 命令约束，同时保持 F31 组织 RLS 为最终跨租户隔离边界。",
       "depends_on": ["F31", "F39"],
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F44.md",
-      "note": "2026-10-14：用户确认先实施方案二；F39 的 Case、库存、需求、到货人工写入要求 supply:propose。离线验收为 supply-api-check 17 passed、make check 191 passed；无 schema/RLS/前端改动，scope 与对象关系授权仍延后。真实 PostgreSQL API 集成待 Docker/Colima 可用。"
+      "note": "2026-10-14：F39 的四类人工写入口要求 supply:propose；离线与真实 PostgreSQL API 集成验证已通过。无新增 schema、角色级 RLS 或前端授权逻辑；scope 与对象关系授权仍延后。等待用户验收。"
     }
   ]
 }
