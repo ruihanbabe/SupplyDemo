@@ -8,6 +8,7 @@ create table if not exists app.trace_run (
   run_kind text not null check (run_kind in ('manual', 'api', 'worker', 'replay')),
   actor_id uuid not null,
   created_at timestamptz not null default now(),
+  -- 业务需要可变更
   next_event_sequence bigint not null default 1 check (next_event_sequence > 0),
   last_event_hash text check (last_event_hash is null or last_event_hash ~ '^[0-9a-f]{64}$')
 );
@@ -20,6 +21,7 @@ create table if not exists app.trace_artifact (
   artifact_key uuid not null,
   version integer not null check (version > 0),
   artifact_type text not null check (char_length(artifact_type) between 1 and 96),
+  -- 脱敏摘要, 不携带客户信息、密钥
   redacted_summary text not null check (char_length(redacted_summary) between 1 and 2000),
   redacted_payload jsonb not null default '{}'::jsonb check (jsonb_typeof(redacted_payload) = 'object'),
   content_hash text not null check (content_hash ~ '^[0-9a-f]{64}$'),
@@ -27,7 +29,7 @@ create table if not exists app.trace_artifact (
   created_at timestamptz not null default now(),
   unique (organization_id, artifact_key, version)
 );
-
+-- 事件流水, 必要时刻hash全部流水做验证
 create table if not exists app.trace_event (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references app.organization(id) on delete restrict,
@@ -109,18 +111,21 @@ begin
   if app.current_actor_id() is null or app.current_organization_id() is null then
     raise exception 'missing request context' using errcode = '42501';
   end if;
+
   if not exists (
     select 1 from app.trace_run where id = input_run_id
       and organization_id = app.current_organization_id()
   ) then
     raise exception 'run is outside organization context' using errcode = '42501';
   end if;
+
   if input_case_id is not null and not exists (
     select 1 from app.supply_case where id = input_case_id
       and organization_id = app.current_organization_id()
   ) then
     raise exception 'case is outside organization context' using errcode = '42501';
   end if;
+
   select coalesce(max(version), 0) + 1 into next_version
   from app.trace_artifact
   where organization_id = app.current_organization_id() and artifact_key = input_artifact_key;

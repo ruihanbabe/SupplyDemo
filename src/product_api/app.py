@@ -55,7 +55,6 @@ from product_api.trace import (
     TraceEvent,
     TraceRepository,
     UnavailableTraceRepository,
-    content_hash,
 )
 
 ORGANIZATION_COOKIE = "supplyagent_organization"
@@ -205,6 +204,13 @@ class BeginTraceRunRequest(OrganizationScopedRequest):
         validation_alias=AliasChoices("runKind", "run_kind"), pattern="^(manual|api|worker|replay)$"
     )
     case_id: UUID | None = Field(default=None, validation_alias=AliasChoices("caseId", "case_id"))
+
+
+class BeginSupplyRunRequest(OrganizationScopedRequest):
+    case_id: UUID = Field(validation_alias=AliasChoices("caseId", "case_id"))
+    part_number: str = Field(validation_alias=AliasChoices("partNumber", "part_number"), min_length=1, max_length=160)
+    idempotency_key: str = Field(validation_alias=AliasChoices("idempotencyKey", "idempotency_key"), min_length=1, max_length=120)
+    model_policy_id: UUID | None = Field(default=None, validation_alias=AliasChoices("modelPolicyId", "model_policy_id"))
 
 
 class TraceArtifactInput(OrganizationScopedRequest):
@@ -492,6 +498,53 @@ def create_app(
         )
         return {"ok": True, "data": {"runId": str(run_id)}}
 
+    @app.post("/v1/runtime/supply-runs")
+    async def begin_supply_run(
+        payload: BeginSupplyRunRequest,
+        identity: AuthenticatedIdentity = Depends(identity_from_request),  # noqa: B008
+        tenants: TenantRepository = Depends(repository),  # noqa: B008
+    ) -> dict[str, object]:
+        async def create(
+            connection: AsyncConnection[dict[str, object]], membership: OrganizationMembership,
+        ) -> tuple[UUID, UUID, UUID]:
+            require_capability(membership.role, "supply:read")
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "select * from app.begin_supply_runtime_run(%s,%s,%s,%s)",
+                    (payload.case_id, payload.part_number, payload.idempotency_key, payload.model_policy_id),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    raise RuntimeError("runtime run creation returned no IDs")
+                return row["mission_id"], row["run_id"], row["job_id"]
+
+        mission_id, run_id, job_id = await tenants.in_organization_as_member(
+            identity.user_id, payload.organization_id, create,
+        )
+        return {"ok": True, "data": {
+            "missionId": str(mission_id), "runId": str(run_id), "jobId": str(job_id),
+        }}
+
+    @app.post("/v1/runtime/jobs/{job_id}/cancel")
+    async def cancel_runtime_job(
+        job_id: UUID, payload: OrganizationScopedRequest,
+        identity: AuthenticatedIdentity = Depends(identity_from_request),  # noqa: B008
+        tenants: TenantRepository = Depends(repository),  # noqa: B008
+    ) -> dict[str, object]:
+        async def cancel(
+            connection: AsyncConnection[dict[str, object]], membership: OrganizationMembership,
+        ) -> bool:
+            require_capability(membership.role, "supply:propose")
+            async with connection.cursor() as cursor:
+                await cursor.execute("select app.cancel_runtime_job(%s) as cancelled", (job_id,))
+                row = await cursor.fetchone()
+                return bool(row and row["cancelled"])
+
+        cancelled = await tenants.in_organization_as_member(
+            identity.user_id, payload.organization_id, cancel,
+        )
+        return {"ok": True, "data": {"cancelled": cancelled}}
+
     @app.post("/v1/traces/artifacts")
     async def append_trace_artifact(
         payload: TraceArtifactInput,
@@ -499,7 +552,7 @@ def create_app(
         tenants: TenantRepository = Depends(repository),  # noqa: B008
         traces: TraceRepository = Depends(trace_repository_dependency),  # noqa: B008
     ) -> dict[str, object]:
-        """以 server-side 哈希追加一个版本化、脱敏 Artifact/checkpoint。"""
+        """追加版本化 Artifact；其完整内容指纹由 SQL 权威计算。"""
         _assert_redacted(payload.redacted_summary, payload.redacted_payload)
         artifact_id = await tenants.in_organization(
             identity.user_id,
@@ -512,7 +565,6 @@ def create_app(
                 payload.artifact_type,
                 payload.redacted_summary,
                 payload.redacted_payload,
-                content_hash(payload.redacted_payload),
             ),
         )
         return {"ok": True, "data": {"artifactId": str(artifact_id)}}
@@ -540,7 +592,7 @@ def create_app(
             ),
         )
         return {"ok": True, "data": {"eventId": str(event_id)}}
-
+    # SSE事件回放
     @app.get("/v1/traces/runs/{run_id}/events")
     async def stream_trace_events(
         run_id: UUID,

@@ -21,6 +21,7 @@ venv/
 
 # Next.js（依赖与构建产物可重建；package-lock.json 需提交）
 frontend/node_modules/
+pi_sidecar/node_modules/
 frontend/.next/
 
 # 本地运行数据与服务卷

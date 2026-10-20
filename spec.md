@@ -1,6 +1,6 @@
-# spec.md — SupplyAgent：AI Native CRM 与供应链处置系统
+# spec.md：SupplyAgent AI Native CRM 与供应链处置系统
 
-> 版本：v0.5（2026-10-10）
+> 版本：v0.6（2026-10-19）
 >
 > 本版按用户要求重基线：参考架构图中的功能全部保留为产品目标；现有 SupplyAgent 的采购、证据、审批和可复现 Harness 能力作为其中的供应链业务域。图是功能参考，不代表取得其源码、数据或品牌资产。
 
@@ -47,8 +47,8 @@ SupplyAgent 是一个多租户的 **AI Native CRM 与供应链处置系统**。�
 ### 0.4 文档与重基线规则
 
 - `spec.md` 是目标需求的唯一权威来源；`features.json` 是实现清单和状态的唯一权威来源；每个 `contracts/Fxx.md` 是单项边界与验收证据。
-- F01–F29 和其 Contract 是现有代码的历史实现证据，不因本次产品重基线自动变成 v0.4 已验收能力。复用前由 F30 逐项核验。
-- 新的 F30–F38 均为 `contract_draft`，未经用户确认不得开始对应实现。F05 的在途代码和现有工作树改动不属于本次文档改造。
+- F01 至 F29 和其 Contract 是现有代码的历史实现证据，不因本次产品重基线自动变成 v0.6 已验收能力。复用前由 F30 逐项核验。
+- Feature 是否可开工只看 `features.json` 和对应 Contract。一次只允许一个 Agentic Feature 处于 `in_progress`，其余能力即使已有 SQL 或历史代码，也必须按实际状态标为草案、延后或等待验收。
 
 ## 1. 产品对象、角色与数据边界
 
@@ -72,7 +72,9 @@ Next.js Web 工作台 / WhatsApp / 飞书事件
   -> Python API 身份、组织上下文、RBAC、请求校验
   -> 创建 Mission/Run 与 SQL Job（仅服务端）
   -> Durable Runtime Worker claim/lease/retry
-  -> Python PiRuntimeAdapter（受控 Node Pi sidecar）+ Specialist + Model Gateway
+  -> Python Product Harness（上下文、策略、工具、证据、编排）
+  -> AgentEnginePort -> PiRuntimeAdapter -> 受控 Node Pi sidecar
+  -> Model Gateway / Specialist / Tool Proxy
   -> MCP 工具代理（只读服务 / 受控提案）
   -> PostgreSQL + RLS + Redis + 私有文件/知识库
   -> 人工审批、发送前重校验、渠道 Adapter
@@ -87,27 +89,44 @@ Python API 是身份、组织上下文、RBAC、请求 schema、领域服务与 
 
 浏览器只调用 Next 的同源 BFF 路径；BFF 只转发允许的方法、路径、会话 cookie/authorization 和关联 ID 到 Python API，不能改变身份、组织、scope、请求体或权限结果。Python SSE 是 Event Log 的唯一读取投影；Next 仅流式转发，不缓存、不重排也不合成事件。这样保留当前前端构建与浏览器边界检查，同时把产品逻辑集中到 Python。
 
-### 2.2 Durable Runtime 与 Pi 执行拓扑
+### 2.2 Durable Runtime 只管理产品运行生命周期
 
-SQL 是 runs、sessions、agent_run_states、job_queue、event_log、审批和发送账本的事实来源。Worker 对 Job 使用 claim/lease/reaper/retry；重试、取消、恢复和幂等键均由代码实现。Runtime 从最新 checkpoint 和当前业务事实重建上下文，不信任过期内存。
+SQL 是 runs、sessions、agent_run_states、job_queue、event_log、审批和发送账本的事实来源。Worker 对 Job 使用 claim、lease、reaper 和 retry；重试、取消、恢复和幂等键均由 Python 实现。Runtime 从最新 checkpoint 和当前业务事实重建上下文，不信任进程内状态。
 
-Pi 不是业务 Runtime 的事实来源，而是某一次 Agent turn 的执行引擎。Python Worker 领取 Agent Job 后，由 Python `PiRuntimeAdapter` 管理受控的 Node Pi sidecar；二者使用版本化 JSONL IPC 传递启动、取消、模型、工具、压缩、错误和完成事件。Node sidecar 是上游 Pi 协议适配器，不实现业务规则、不访问 PostgreSQL、不拥有组织/渠道/Provider 凭证；Adapter 把已验证事件转写为 SQL Event Log/Artifact/checkpoint。恢复时，Python Worker 由 SQL checkpoint 重建 Pi 上下文，而不依赖本机 Pi JSONL 文件。
+Python Worker 领取 Agent Job 后调用 F42 定义的 `AgentEnginePort`。F35 负责何时开始、停止、重试和恢复一个 turn，F42 负责 turn 内的模型消息、工具调用和终止语义。这个分界让 Runtime 可以替换执行引擎，也避免把 Pi 的进程状态误当成产品状态。
 
-该拓扑保留了“主控管理会话、Pi 执行模型/工具循环”的优点，但不把桌面本地文件、固定并发值或 Pi 的本地 session 机制当作多租户业务事实。图形化投影见 diagram/supplyagent-v04/product-architecture.svg。
+### 2.3 Product Harness 拥有业务控制，Pi 只执行 Agent turn
 
-### 2.3 Model Gateway / BYOK
+Python Product Harness 负责组装 `ContextBundle`、任务和工具能力，执行组织权限与策略检查，路由模型请求，调用只读工具或创建 Proposal，保存证据与 Trace，并决定父子任务如何汇总。它通过稳定的 `AgentEnginePort` 调用执行引擎，不能依赖某个 Pi 类或 Node 内部对象。
+
+Pi Agent Core 作为首选 `AgentEnginePort` 实现，保留上游的消息循环、模型流式事件、工具调用与工具结果回送、取消和 turn 终止语义。Python `PiRuntimeAdapter` 管理受控 Node 子进程，双方通过版本化 JSONL 交换命令与事件。Node 不访问 PostgreSQL，不保存产品 checkpoint，不包含组织策略、工具授权或副作用实现，也不拥有 Provider、渠道和数据库凭证。
+
+| 模块 | 必须实现的职责 | 不得拥有的职责 |
+|---|---|---|
+| Python Product Harness | ContextBundle、任务图、工具注册与授权、模型路由、证据、Artifact、Proposal 策略、Specialist 编排 | Pi 内部会话对象、上游私有实现细节 |
+| AgentEnginePort | 启动 turn、投递模型/工具结果、流式事件、取消、错误分类、完成结果 | 租户、数据库、审批和渠道语义 |
+| Pi Node sidecar | 调用锁定版本的 Pi Agent Core，并把上游事件转换为 JSONL 协议 | SQL、长期记忆、业务规则、真实副作用和持久凭证 |
+| SQL Durable Runtime | Run/Job、claim/lease/retry、checkpoint、恢复和幂等 | turn 内推理和工具选择 |
+
+该拓扑不采用 Pi Coding Agent 的 shell、文件编辑、终端、桌面会话、扩展加载和本地 JSONL 恢复能力。以后若确需其中某项，必须建立单独 Contract、权限模型、消融开关和验收证据。若上游 Pi 只能通过维护私有 fork 才能满足端口，系统保留 `AgentEnginePort` 并评估替代引擎，不把 fork 变成产品前提。
+
+### 2.4 Model Gateway / BYOK
 
 模型调用必须经过 Gateway。Gateway 按组织选择 Provider/模型，读取隔离凭证，执行参数/Schema 校验、限流、预算预检、成本计量、审计与可选降级。它不等于全局承诺：每次调用只做组织级配额检查；具体预算策略写在配置和 Contract 中。
 
-### 2.4 Agent 与 Specialist
+### 2.5 Agent 与 Specialist
 
-主 Agent 是编排者，不是数据库操作者。它创建有界任务图并只拿摘要、引用和允许工具。Specialist 按职责隔离上下文：客户/商机事实、供应链影响、采购/报价、知识检索、替代验证、解释与合规复核。并行仅用于独立检索或 review；同一 Mission 对需要顺序一致性的写提案保持 `maxParallel=1`。
+Workbench 以“CRM 情报员、销售运营、客户沟通、CRM 主管”等 Mission 入口呈现能力，但这些名称不等于后台 Specialist 边界。主 Agent 是编排者，不是数据库操作者；它创建有界任务图，只拿 Claim 摘要、引用、未知、冲突和允许工具，并独占 Recommendation 与 `ProposalDraftArtifact` 汇总入口。
 
-### 2.5 知识、记忆与证据
+内部三个必需 Specialist 按业务判断责任划分：客户事实只返回有引用的 CRM 事实；商机诊断只解释事实对阶段、阻碍与承诺风险的影响；业务政策只返回允许、禁止、审批和证据要求。供应链风险与采购策略是由已验证业务关联启用的条件角色。SQL/BOM 查询、知识检索、报价采集、citation 校验、数值计算和文字格式化是工具或确定性服务，不因使用模型而成为 Specialist。
 
-知识库保存组织私有文档、Wiki、datasheet、版本、权限和 citations。检索默认使用全文检索；向量检索是可配置的增强，不替代引用校验。长期记忆只能由人工确认或确定性来源写入，模型只能提出候选。每项事实性输出都应能回链到版本化来源或业务记录。
+相互独立的只读调查和 review 可以并行；同一 Mission 只能有一个活动父汇总/ProposalDraft 写入路径，`proposalMaxParallel=1`。部分结果必须保留 `partial`、`needs_review` 或 `blocked` 质量标记，不能等同完整生产验收。F36 只形成不可执行的 ProposalDraft；真实 Proposal、审批和执行属于 F41。
 
-### 2.6 工具、提案与副作用
+### 2.6 知识、记忆与证据
+
+知识库保存组织私有文档、Wiki、datasheet、不可变版本、ACL 和 citations。检索先执行组织与文档权限过滤，默认使用全文检索；向量检索是可配置增强，不替代权限和引用校验。每项事实性 Claim 必须回链到业务记录或含来源类型、对象、版本、位置和片段哈希的知识引用；证据不足只能输出“无法确认”。长期记忆只能由人工确认或确定性来源写入，模型只能提出候选；来源更新或撤销后，相关 Claim、Recommendation 和记忆必须降级为待重验。
+
+### 2.7 工具、提案与副作用
 
 工具分为 R0 只读、R1 可补偿写/提案、R2 外部不可逆副作用。模型只拿到与当前执行者和 scope 匹配的工具集合。
 
@@ -116,7 +135,7 @@ Pi 不是业务 Runtime 的事实来源，而是某一次 Agent turn 的执行�
 - 受控变更：客户字段更新、商机更新、采购草稿、发送草稿，均先产生 Proposal。
 - 外部副作用：采购提交、WhatsApp/飞书发送必须由审批记录签发的令牌授权，并在提交前重校验权限、service revision、opt-out、草稿哈希和 send ledger。
 
-### 2.7 人工决策与渠道
+### 2.8 人工决策与渠道
 
 人工可批准、拒绝、要求恢复/重规划或编辑受权限允许的草稿。审批只是针对当前内容哈希的短期授权，不是永久运行许可。渠道层实现 WhatsApp adapter 和飞书内部协作 adapter：前者可将客户会话接入 Workbench，后者仅作内部事实/通知，均不得绕过审批或直接授予写权限。
 
@@ -126,20 +145,20 @@ Pi 不是业务 Runtime 的事实来源，而是某一次 Agent turn 的执行�
 
 采购流程的状态至少为：发现 → 诊断 → 影响分析 → 方案/报价 → 草稿 → 门控 → 审批等待 → 提交前重校验 → 提交/跟踪 → 关闭或升级。供应链和 CRM 都复用同一 Run、Artifact、Approval、Proposal、Trace 和 Audit 模型。
 
-### 3.1 旧实现迁入 v0.4 的规则
+### 3.1 旧实现迁入 v0.6 的规则
 
 旧模块不是按文件名直接接到 Web/Agent 上，而是按下表迁入新的服务边界。保留表示业务不变量仍有效；改造表示必须补组织上下文、SQL 产品状态或权限边界；测试后端表示只能服务固定样例、情景和 Eval，不能成为真实产品接口。
 
-| 旧 Feature / 模块群 | v0.4 处置 | 新职责与硬约束 | 迁移 Feature |
+| 旧 Feature / 模块群 | v0.6 处置 | 新职责与硬约束 | 迁移 Feature |
 |---|---|---|---|
 | F01、F02 | 保留 | Python 工程、硬件原始层和导入管线继续是供应链数据来源；不承载 CRM 用户数据。 | F39 |
 | F03、F04、F05 | 改造 + 测试后端 | simenv 保留为情景/Eval 后端；供应链领域服务对产品暴露组织范围的只读事实和受控命令，不能让模型直调模拟器。 | F39 |
 | F06、F17、F18 | 改造 | 事件、Artifact、计量和回放升级为 SQL 产品 Trace；所有记录带组织、Run 与操作者，SSE 只读此投影。 | F40 |
 | F07、F11、F12、F13、F15 | 改造 | 工具代理、能力、审批、污点、幂等恢复成为统一的 Tool / Proposal / Execution 边界；任何渠道或采购副作用必须走它。 | F41 |
-| F08、F09、F16、F22、F23 | 改造 | Python 中的模型/编排逻辑退为可复用策略和测试基线；实际产品 turn 由 F35 的 PiRuntimeAdapter 驱动，所有上下文和工具仍由服务端装配。 | F42 |
+| F08、F09、F16、F22、F23 | 改造 | Python 中的模型/编排逻辑退为可复用策略和测试基线；实际产品 turn 由 F42 的 `AgentEnginePort` 驱动，所有上下文和工具仍由 Product Harness 装配。 | F42 |
 | F10、F14、F21 | 改造 | Case、反馈、影响分析、比价与采购执行器变成供应链领域服务；与 CRM 对象只能通过受权限控制的关联读取。 | F39、F41 |
 | F19、F20 | 改造 | datasheet、术语、替代关系和 Skills 迁入组织知识边界，补 ACL、版本、citation 和失效传播。 | F36 |
-| F24–F29 | 不直接复用 | 尚未开工的旧 Web/Eval/交付计划不再按旧单租户假设实现；分别由 F33、F38 和本表的改造 Feature 取代。 | F33、F38 |
+| F24 至 F29 | 不直接复用 | 尚未开工的旧 Web/Eval/交付计划不再按旧单租户假设实现；分别由 F33、F38 和本表的改造 Feature 取代。 | F33、F38 |
 
 以下旧行为不得搬入产品路径：模型或浏览器直接调用 simenv、本机文件作为 Run 恢复事实、固定样例 Provider 冒充真实 BYOK、以及仅因 ready_for_review 就执行采购或发送。
 
@@ -151,23 +170,23 @@ Eval 覆盖结果正确性、过程合规性、成本/时延、恢复与重复�
 
 ## 5. Feature 划分与顺序
 
-现有 F01–F29 作为可复用资产，先由 F30 做兼容审计。新增 Feature 不取代其历史证据，而是把它们接入新的产品边界。
+现有 F01 至 F29 作为可复用资产，先由 F30 做兼容审计。新增 Feature 不取代其历史证据，而是把它们接入新的产品边界。
 
 | 顺序 | Feature | 目标 |
 |---|---|---|
-| 1 | F30 | v0.4 重基线与现有能力兼容审计，形成迁移清单，禁止未经核验宣称已实现。 |
+| 1 | F30 | 现有能力兼容审计，形成迁移清单，禁止未经核验宣称已实现。 |
 | 2 | F31 | 多租户身份、组织隔离、RBAC/RLS、服务端 API 与审计上下文。 |
 | 3 | F39 | 供应链领域迁入：把旧模拟内核、Case 与确定性采购组件放入组织范围服务，同时保留 simenv 作 Eval 后端。 |
 | 4 | F40 | 产品 Trace 迁入：把旧 Session、Artifact、计量、回放接到组织级 SQL Trace 与 SSE 投影。 |
 | 5 | F32 | CRM 业务域：客户、联系人、商机、会话、Kanban 与 CRM Proposal。 |
-| 6 | F34 | Model Gateway / BYOK：组织凭证、Provider Adapter、预算、成本和审计。 |
-| 7 | F35 | SQL Durable Runtime：Mission/Run/Job、Worker、lease/reaper/retry、恢复与 PiRuntimeAdapter。 |
-| 8 | F42 | Harness 迁入：把旧模型、编排、上下文、子 Agent 策略接入 PiRuntimeAdapter 与 SQL checkpoint。 |
+| 6 | F42 | 建立 Product Harness 与 `AgentEnginePort`，把现有受控协议夹具替换为锁定版本的真实 Pi Agent Core；先用确定性 Replay 模型验证工具循环、取消、失败和 Trace。 |
+| 7 | F34 | Model Gateway / BYOK：将真实模型调用接入 F42 的模型端口，补组织凭证、Provider Adapter、预算、成本和审计。 |
+| 8 | F35 | SQL Durable Runtime：Mission/Run/Job、Worker、lease/reaper/retry 和恢复，通过 `AgentEnginePort` 驱动 F42，不接触 Pi 内部状态。 |
 | 9 | F43 | 在途事实一致性：确定到货明细与库存快照的权威来源或显式对账关系，避免重复计入或长期 unknown；待 F42 Harness 完成后再启动。 |
 | 10 | F44 | 业务动作授权：将角色映射为 API capability 命令门禁；组织隔离仍由 F31 RLS 保障，scope/对象关系后续按实际业务需求引入。 |
 | 11 | F36 | Specialist 与企业知识：CRM/采购 Specialist、文档权限、引用与记忆。 |
-| 12 | F37 | 人工决策、受控写入、发送账本与 WhatsApp/飞书渠道。 |
-| 13 | F41 | 受控副作用迁入：旧工具、权限、审批、污点与恢复统一接入 Proposal/Execution 链。 |
+| 12 | F41 | 受控副作用迁入：旧工具、权限、审批、污点与恢复统一接入 Proposal/Execution 链。 |
+| 13 | F37 | 人工决策、受控写入、发送账本与 WhatsApp/飞书渠道。 |
 | 14 | F33 | Workbench 与 SSE：运行时间线、审批收件箱、配额、断线回放。 |
 | 15 | F38 | Trace/Eval/交付：SQL Trace、Langfuse 可选接入、回放、隔离测试、Compose 演示。 |
 

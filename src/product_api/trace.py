@@ -7,7 +7,6 @@ Redis、浏览器或本地文件当作 Run 的权威记录；每次调用都由 
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,6 +38,8 @@ class TraceArtifact:
     """某个稳定 artifact_key 的一个不可变、脱敏版本。"""
 
     id: UUID
+    run_id: UUID
+    case_id: UUID | None
     artifact_key: UUID
     version: int
     artifact_type: str
@@ -80,7 +81,6 @@ class TraceRepository(Protocol):
         artifact_type: str,
         redacted_summary: str,
         redacted_payload: dict[str, object],
-        content_hash: str,
     ) -> UUID: ...
 
     async def append_event(
@@ -97,6 +97,17 @@ class TraceRepository(Protocol):
     async def get_run(
         self, connection: AsyncConnection[dict[str, object]], run_id: UUID
     ) -> TraceRun | None: ...
+
+    async def get_artifact(
+        self, connection: AsyncConnection[dict[str, object]], artifact_id: UUID
+    ) -> TraceArtifact | None: ...
+
+    async def list_artifacts(
+        self,
+        connection: AsyncConnection[dict[str, object]],
+        run_id: UUID,
+        artifact_key: UUID | None = None,
+    ) -> list[TraceArtifact]: ...
 
     async def list_events(
         self,
@@ -135,6 +146,21 @@ class UnavailableTraceRepository:
         del connection, run_id
         raise TraceAccessError("Trace 服务未配置")
 
+    async def get_artifact(
+        self, connection: AsyncConnection[dict[str, object]], artifact_id: UUID
+    ) -> TraceArtifact | None:
+        del connection, artifact_id
+        raise TraceAccessError("Trace 服务未配置")
+
+    async def list_artifacts(
+        self,
+        connection: AsyncConnection[dict[str, object]],
+        run_id: UUID,
+        artifact_key: UUID | None = None,
+    ) -> list[TraceArtifact]:
+        del connection, run_id, artifact_key
+        raise TraceAccessError("Trace 服务未配置")
+
     async def list_events(
         self,
         connection: AsyncConnection[dict[str, object]],
@@ -170,11 +196,10 @@ class PostgresTraceRepository:
         artifact_type: str,
         redacted_summary: str,
         redacted_payload: dict[str, object],
-        content_hash: str,
     ) -> UUID:
         return await self._command(
             connection,
-            "select app.append_trace_artifact(%s, %s, %s, %s, %s, %s::jsonb, %s) as id",
+            "select app.append_trace_artifact(%s, %s, %s, %s, %s, %s::jsonb) as id",
             (
                 run_id,
                 case_id,
@@ -182,7 +207,6 @@ class PostgresTraceRepository:
                 artifact_type,
                 redacted_summary,
                 canonical_json(redacted_payload),
-                content_hash,
             ),
         )
 
@@ -242,6 +266,38 @@ class PostgresTraceRepository:
             rows = await cursor.fetchall()
         return [self._event(row) for row in rows]
 
+    async def get_artifact(
+        self, connection: AsyncConnection[dict[str, object]], artifact_id: UUID
+    ) -> TraceArtifact | None:
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                """select id, run_id, case_id, artifact_key, version, artifact_type, redacted_summary,
+                          redacted_payload, content_hash, created_at
+                   from app.trace_artifact where id = %s""",
+                (artifact_id,),
+            )
+            row = await cursor.fetchone()
+        return self._artifact(row) if row else None
+
+    async def list_artifacts(
+        self,
+        connection: AsyncConnection[dict[str, object]],
+        run_id: UUID,
+        artifact_key: UUID | None = None,
+    ) -> list[TraceArtifact]:
+        query = """select id, run_id, case_id, artifact_key, version, artifact_type, redacted_summary,
+                          redacted_payload, content_hash, created_at
+                   from app.trace_artifact where run_id = %s"""
+        values: tuple[object, ...] = (run_id,)
+        if artifact_key is not None:
+            query += " and artifact_key = %s"
+            values += (artifact_key,)
+        query += " order by artifact_key, version"
+        async with connection.cursor() as cursor:
+            await cursor.execute(query, values)
+            rows = await cursor.fetchall()
+        return [self._artifact(row) for row in rows]
+
     async def verify_chain(
         self, connection: AsyncConnection[dict[str, object]], run_id: UUID
     ) -> bool:
@@ -297,12 +353,25 @@ class PostgresTraceRepository:
             row["occurred_at"],
         )
 
+    @staticmethod
+    def _artifact(row: dict[str, object]) -> TraceArtifact:
+        payload = row["redacted_payload"]
+        if not isinstance(payload, dict):
+            raise TypeError("trace_artifact.redacted_payload 必须是对象")
+        return TraceArtifact(
+            UUID(str(row["id"])),
+            UUID(str(row["run_id"])),
+            UUID(str(row["case_id"])) if row["case_id"] else None,
+            UUID(str(row["artifact_key"])),
+            int(row["version"]),
+            str(row["artifact_type"]),
+            str(row["redacted_summary"]),
+            payload,
+            str(row["content_hash"]),
+            row["created_at"],
+        )
+
 
 def canonical_json(value: dict[str, object]) -> str:
     """统一 Artifact 哈希与数据库 JSON 输入的字段顺序，避免等值对象出现不同摘要。"""
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-
-
-def content_hash(redacted_payload: dict[str, object]) -> str:
-    """内容摘要由 Python 重算；调用者不能伪造 Artifact 的完整性声明。"""
-    return hashlib.sha256(canonical_json(redacted_payload).encode("utf-8")).hexdigest()

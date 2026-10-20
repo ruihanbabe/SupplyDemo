@@ -24,6 +24,7 @@ pathspec==1.1.1
 pluggy==1.6.0
 psycopg==3.3.4
 psycopg-binary==3.3.4
+pypdf==6.19.0
 pydantic==2.13.4
 pydantic-settings==2.15.0
 pydantic_core==2.46.4

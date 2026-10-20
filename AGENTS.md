@@ -14,7 +14,7 @@
 | `make setup` / `make status` | 建虚拟环境、装依赖 / 查环境状态 |
 | `make check` | 离线门禁：compile + lint + 离线测试 |
 | `make services-up` / `make services-smoke` / `make services-down` | 起停本地 PostgreSQL + Redis，并做连通性冒烟 |
-| `make migrate` | alembic 升级到 head |
+| `make migrate` | 旧单租户 schema 的 alembic 升级；产品 `app` schema 使用各 Feature 的 `*-migrate` 目标 |
 | `make test-integration` | 连本地真实服务的集成测试（需先 `services-up`） |
 | `make build-parts` | 从 `data/hardware/raw` 原理图重建 `hw_part`（先做 MANIFEST 校验） |
 | `make fetch-hardware` / `make prune-hardware` | 联网拉取原理图 / 裁剪非电子件（改动原始层，需用户同意） |
@@ -26,7 +26,7 @@ Makefile 约定：目标要么真的做事，要么明确报"尚未具备"，不
 - 全局边界 G1–G8（spec §0.4）约束所有代码，尤其：凭证不进模型上下文（G1）、写操作需审批令牌（G2）、数值不由 LLM 生成（G4）、业务参数不硬编码（G7）、不碰排产（G8）。
 - 外部调用（G5）：分销商 API 不批量查；付费模型调用、批量真实调用须先获用户授权。
 - 原始层 `data/hardware/raw/**` 只读，由 MANIFEST 哈希校验；`hw_part` 是派生表，只能由 `make build-parts` 重建。
-- 数据库 schema 只通过 alembic 迁移改动；新表归属见各 Feature Contract。
+- 旧单租户 schema 只通过 alembic 迁移改动；多租户产品 `app` schema 使用按编号排序的 `supabase/migrations/*.sql`，并由各 Feature 的 `*-migrate` 目标应用。两套历史不得交叉管理同一张表；新表归属见各 Feature Contract。
 - 新组件须通过准入四问（spec §0.3）并带消融开关。
 
 ## 协作规则

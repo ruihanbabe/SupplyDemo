@@ -12,7 +12,7 @@ SRC         := src
 .DEFAULT_GOAL := help
 .PHONY: help setup status check compile lint test \
         services-up services-status services-smoke services-down freeze migrate test-integration \
-        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test supply-api-check supply-api-integration-test trace-migrate trace-test f42-check f42-integration-test crm-migrate crm-test gateway-migrate gateway-test runtime-migrate runtime-test
+        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test supply-api-check supply-api-integration-test trace-migrate trace-test trace-integration-test f42-check f42-integration-test crm-migrate crm-test gateway-migrate gateway-test gateway-check gateway-integration-test gateway-run runtime-migrate runtime-test runtime-check runtime-integration-test runtime-worker f36-check knowledge-migrate knowledge-test
 
 help: ## 列出所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -158,9 +158,14 @@ supply-api-integration-test: supply-migrate ## F39 Python API 本地 PostgreSQL 
 
 trace-migrate: ## 应用 F40 组织级 Trace schema（需先 supply-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0004_f40_trace.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0016_f40_trace_hardening.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0017_f40_artifact_read_and_hash.sql
 
 trace-test: ## F40 真实 PostgreSQL Trace 隔离、哈希链与只追加验收（需先 trace-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f40_trace.sql
+
+trace-integration-test: trace-migrate ## F40 真实 PostgreSQL Case 隔离与 Artifact 并发版本验收
+	@$(VPY) -m pytest -q -m integration tests/test_product_api_trace_integration.py
 
 f42-check: ## F42 Python Harness / Node JSONL 协议离线验收
 	@$(VPY) -m compileall -q src/product_api tests/test_product_api_harness.py
@@ -181,15 +186,51 @@ crm-migrate: ## 应用 F32 CRM schema（需先 trace-migrate）
 crm-test: ## F32 真实 PostgreSQL CRM RLS 与 Proposal 验收（需先 crm-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f32_crm.sql
 
+crm-facts-integration-test: crm-migrate ## F36 P3 经 F32 读取商机事实的 PostgreSQL/RLS 验收
+	@PYTHONPATH=src $(VPY) -m pytest -q -m integration tests/test_product_api_crm_integration.py
+
 gateway-migrate: ## 应用 F34 Gateway schema（需先 trace-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0009_f34_gateway.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0018_f34_budget_reservations.sql
 
 gateway-test: ## F34 Gateway 组织隔离验收（需先 gateway-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f34_gateway.sql
 
-runtime-migrate: ## 应用 F35 Durable Runtime schema（需先 tenant-migrate）
+gateway-check: ## F34 HTTP 能力、Pi 接入和 Provider 适配器的离线验证（HTTP 回环需本机端口权限）
+	@$(VPY) -m compileall -q src/product_api tests/test_product_api_gateway.py
+	@$(VENV)/bin/ruff check src/product_api/gateway.py src/product_api/harness.py tests/test_product_api_gateway.py tests/test_product_api_gateway_integration.py
+	@$(VPY) -m pytest -q tests/test_product_api_gateway.py
+
+gateway-integration-test: gateway-migrate ## F34 PostgreSQL/RLS 预算预留与计量验收
+	@$(VPY) -m pytest -q -m integration tests/test_product_api_gateway_integration.py
+
+gateway-run: ## 启动仅绑定本机的 F34 HTTP Gateway（需配置签名密钥与受限数据库）
+	@PYTHONPATH=src $(VENV)/bin/uvicorn product_api.gateway:create_default_model_gateway_app --factory --env-file .env --host 127.0.0.1 --port 8001
+
+runtime-migrate: ## 应用 F35 Durable Runtime schema（需先 gateway-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0010_f35_runtime.sql
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0014_f35_runtime_commands.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0019_f35_worker_lifecycle.sql
 
 runtime-test: ## F35 SQL 队列、租约与幂等验收（需先 runtime-migrate）
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f35_runtime.sql
+
+runtime-check: ## F35 Worker 端口与失败映射离线检查
+	@$(VENV)/bin/ruff check src/product_api/runtime.py src/product_api/worker_main.py tests/test_product_api_runtime.py
+	@PYTHONPATH=src $(VPY) -m pytest -q tests/test_product_api_runtime.py
+
+runtime-integration-test: ## 克隆本地测试库验证 F35 SQL/RLS/Pi/Trace 后删除隔离克隆
+	@PYTHONPATH=src $(VPY) -m pytest -q -m integration tests/test_product_api_runtime_integration.py
+
+runtime-worker: ## 启动单组织 F35 Worker；需显式配置 Worker 身份和数据库
+	@PYTHONPATH=src $(VPY) -m product_api.worker_main
+
+f36-check: ## F36 Specialist、知识、CRM 事实读取与质量门禁
+	@$(VENV)/bin/ruff check src/product_api/crm.py src/product_api/specialists.py src/product_api/specialist_runner.py src/product_api/knowledge.py src/product_api/knowledge_import.py tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
+	@PYTHONPATH=src $(VPY) -m pytest -q tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
+
+knowledge-migrate: tenant-migrate ## 应用 F36 P1 组织知识、ACL、版本与 Citation schema
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0020_f36_knowledge.sql
+
+knowledge-test: ## F36 P1 PostgreSQL/RLS/ACL/Citation 验收（需先 knowledge-migrate）
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/tests/f36_knowledge.sql

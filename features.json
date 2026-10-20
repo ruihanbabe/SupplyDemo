@@ -1,7 +1,7 @@
 {
-  "version": 3,
-  "updated": "2026-10-14",
-  "notes": "v0.5 已把产品重基线为 AI Native CRM 与供应链处置系统。F01–F29 是历史实现资产，不自动代表 v0.5 已验收；F30 先逐项兼容审计。2026-10-12 用户确认删除须由 Python 重做的旧 Next/TypeScript 服务实现及其测试：Next 只作薄前端/BFF，Python API/Worker/Harness 是主产品实现，Node 只可作无状态 Pi sidecar。",
+  "version": 4,
+  "updated": "2026-10-20",
+  "notes": "v0.6 将 Agentic 开发重心固定为 Python Product Harness + 可替换 AgentEnginePort。Pi Agent Core 是首选 turn 执行引擎，Node 只作无状态 sidecar；Python/SQL 继续拥有租户、上下文、工具、模型网关、运行恢复、副作用和审计。F42 等待用户验收；下一个 Agentic Feature 须由用户确认 Contract 后单独激活，规划顺序为 F34、F35、F36、F41、F37、F33 和 F38。",
   "status_values": [
     "not_started",
     "contract_draft",
@@ -568,13 +568,13 @@
       "id": "F32",
       "name": "CRM 业务域：客户、联系人、商机、会话、Kanban 与受控提案",
       "type": "深度",
-      "spec": ["§1.2", "§2.6"],
+      "spec": ["§1.2", "§2.7"],
       "necessity": "保留图中 CRM 核心对象，并与采购异常工作流建立可审计关联。",
       "depends_on": ["F31"],
       "milestone": "M1",
-      "status": "awaiting_acceptance",
+      "status": "deferred",
       "contract": "contracts/F32.md",
-      "note": "2026-10-12：CRM schema/RLS 保留；Python Repository、命令、Proposal 与 HTTP API 待从头实现并验证。"
+      "note": "2026-10-20：完整 CRM 仍 deferred。为 F36 P3 已实现受限只读 PostgresCrmFactRepository：仅在 F31 RLS/scope 事务内按服务端 opportunity ID 返回最小客户/联系人展示名/会话/任务事实及版本化引用；真实 PostgreSQL 测试通过跨组织和同组织 scope 拒绝。写命令、Kanban、Proposal 与 HTTP API 仍未实现。"
     },
     {
       "id": "F33",
@@ -584,57 +584,57 @@
       "necessity": "保留图中的工作台、可视化和 Event-ID 回放，成为真人参与入口。",
       "depends_on": ["F31", "F32", "F35", "F36", "F37", "F06", "F17"],
       "milestone": "M4",
-      "status": "in_progress",
+      "status": "deferred",
       "contract": "contracts/F33.md",
-      "note": "2026-10-10：Next 保持 Workbench/BFF；业务读取、审批命令与 SSE 迁至 Python API。"
+      "note": "2026-10-19：延后到 Harness、Runtime、审批与 SSE 读取接口稳定之后；Next 仅保留薄 Workbench/BFF。"
     },
     {
       "id": "F34",
       "name": "组织级 Model Gateway / BYOK、预算、成本与审计",
       "type": "深度",
-      "spec": ["§0.3", "§2.3", "§4"],
+      "spec": ["§0.3", "§2.4", "§4"],
       "necessity": "保留图中的 Gateway/BYOK；把现有模型适配层置于组织、凭证和预算边界内。",
       "depends_on": ["F31", "F08", "F17"],
       "milestone": "M2",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F34.md",
-      "note": "2026-10-12：Gateway/Replay/计量待由 Python Worker/API 从头实现；真实 Provider/BYOK 仍需 G5 授权。"
+      "note": "2026-10-19：用户选择单 Run 短期 HTTP 能力；Python Gateway、Pi HTTP 模型端口、OpenAI Adapter、SQL 预算预留/计量已通过离线与本地 PostgreSQL/RLS 验证。F35 Worker 已接线并通过 Replay 全链路；真实付费 Provider 验证仍需 G5 授权。"
     },
     {
       "id": "F35",
-      "name": "SQL Durable Runtime、PiRuntimeAdapter、独立 Worker/cron 与可恢复队列",
+      "name": "SQL Durable Runtime、独立 Worker/cron 与可恢复队列",
       "type": "深度",
       "spec": ["§2.2", "§3", "§4"],
       "necessity": "保留图中的 SQL job、claim/lease/reaper/retry 和独立 Worker；HTTP 不承担 Agent 执行。",
       "depends_on": ["F30", "F31", "F06", "F09", "F15"],
       "milestone": "M2",
-      "status": "in_progress",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F35.md",
-      "note": "2026-10-12：SQL schema 保留；Runtime/Worker/PiRuntimeAdapter 待由 Python 实现，Node 仅作 Pi JSONL sidecar。"
+      "note": "2026-10-19：HTTP 幂等入队、单组织专用身份 Worker、SQL 租约/代次/reaper/重试/取消、F40 持久 checkpoint、F42 AgentEnginePort 已接线。隔离克隆库通过真实 Pi Replay 全链路；部署重启和真实付费 Provider 尚未验证。"
     },
     {
       "id": "F36",
       "name": "统一 Agent Specialist、企业知识/Wiki/RAG、引用与长期记忆",
       "type": "深度",
-      "spec": ["§2.4", "§2.5", "§3"],
+      "spec": ["§2.5", "§2.6", "§3"],
       "necessity": "保留图中的 Agent Harness、Specialist 与知识底座，并复用采购验证链路。",
-      "depends_on": ["F31", "F34", "F35", "F19", "F20", "F22", "F23"],
+      "depends_on": ["F31", "F32", "F34", "F35", "F39", "F40", "F42", "F19", "F20", "F22", "F23"],
       "milestone": "M3",
-      "status": "contract_draft",
+      "status": "in_progress",
       "contract": "contracts/F36.md",
-      "note": "2026-10-10：Specialist、知识权限与记忆确认预定由 Python Harness 实现；Node 只可作 Pi sidecar。"
+      "note": "2026-10-20：P0/P1 已实现，真实 PostgreSQL knowledge-test 通过。P2a 实现 R0 工具、参数 schema、受限 output、服务端 scope/ID 与 Citation 门禁；P2b 用真实 pi-agent-core Replay 验证 supply_risk 结构化返回。P2c 第一切片已将 F35 Job、F40 tool_result/specialist_result 与 Citation ID/版本/哈希重验接通，runtime-integration-test 通过。P3 首条 F32 只读事实接线已验证；无真实 Provider，且多 Specialist、独立 review、父汇总和 Mission Worker 接线尚未实现。"
     },
     {
       "id": "F37",
       "name": "人工决策、受控写入、发送账本与 WhatsApp/飞书渠道",
       "type": "深度",
-      "spec": ["§0.3", "§2.6", "§2.7"],
+      "spec": ["§0.3", "§2.7", "§2.8"],
       "necessity": "保留图中动作分级、审批发送、渠道事件和内部协作，且不绕过 SupplyAgent 审批约束。",
       "depends_on": ["F31", "F32", "F35", "F36", "F12"],
       "milestone": "M3",
       "status": "contract_draft",
       "contract": "contracts/F37.md",
-      "note": "2026-10-10：审批、渠道 webhook 与执行 Adapter 预定由 Python API/Worker 实现；真实渠道连接与发送仍须另获 G5 授权。"
+      "note": "2026-10-19：等待 F41 建立统一 Proposal/Execution 边界。渠道 webhook、SendLedger 和执行 Adapter 尚未实现，真实连接与发送仍须另获 G5 授权。"
     },
     {
       "id": "F38",
@@ -646,7 +646,7 @@
       "milestone": "M4",
       "status": "contract_draft",
       "contract": "contracts/F38.md",
-      "note": "2026-10-10：交付拓扑预定为 Next web、Python API、Python worker 与可选 Node Pi sidecar。"
+      "note": "2026-10-19：已有离线门禁和部分 F40/F42 本地集成路径；完整 Compose、故障注入、全回放、Langfuse、Workbench 与产品演示尚未实现。"
     },
     {
       "id": "F39",
@@ -670,31 +670,31 @@
       "milestone": "M1",
       "status": "awaiting_acceptance",
       "contract": "contracts/F40.md",
-      "note": "2026-10-12：Trace schema/RLS 保留；Python Repository、checkpoint、SSE 和回放服务待实现。"
+      "note": "2026-10-15：Trace Repository/checkpoint 已由 F42 接入；0016 加固函数 ACL、Run 游标、Case 一致性、Artifact 并发版本和链尾验证，并通过真实 PostgreSQL 验证。Event-ID SSE、F34 计量与全回放仍待实现。"
     },
     {
       "id": "F41",
       "name": "受控副作用迁入：工具、权限、Proposal、审批令牌、执行账本与恢复",
       "type": "深度",
-      "spec": ["§2.6", "§2.7", "§3.1"],
+      "spec": ["§2.7", "§2.8", "§3.1"],
       "necessity": "把已有采购门控扩展为 CRM 更新、采购提交和渠道发送的统一不可绕过边界。",
-      "depends_on": ["F31", "F35", "F37", "F07", "F11", "F12", "F13", "F15"],
+      "depends_on": ["F31", "F35", "F42", "F07", "F11", "F12", "F13", "F15"],
       "milestone": "M3",
       "status": "contract_draft",
       "contract": "contracts/F41.md",
-      "note": "2026-10-10：统一 Execution 链预定由 Python API/Worker 实现；旧 F14 的反馈与 F21 的采购执行器在本 Feature 一并接入。"
+      "note": "2026-10-19：现有审批和证据门控只是历史资产，统一多租户 Proposal/Execution 尚未实现。F42 当前只允许 R0 只读工具，F41 验收前不开放 Agent 写入或外部副作用。"
     },
     {
       "id": "F42",
-      "name": "Harness 迁入：旧模型/编排/上下文/子 Agent 策略接入 PiRuntimeAdapter",
+      "name": "Python Product Harness 与可替换的 Pi Agent Engine",
       "type": "深度",
-      "spec": ["§2.2", "§2.4", "§3.1"],
-      "necessity": "复用现有 Agent 策略和证据分工，但由 Pi + SQL Worker 承担实际产品 turn 的生命周期。",
-      "depends_on": ["F34", "F35", "F40", "F08", "F09", "F16", "F22", "F23"],
+      "spec": ["§2.2", "§2.3", "§2.5", "§3.1"],
+      "necessity": "保留 Pi Core 的成熟 turn 循环，同时让 Python/SQL 继续拥有产品上下文、工具、策略、证据和运行事实，并维持执行引擎可替换。",
+      "depends_on": ["F31", "F39", "F40", "F08", "F09", "F16", "F22", "F23"],
       "milestone": "M2",
       "status": "awaiting_acceptance",
       "contract": "contracts/F42.md",
-      "note": "2026-10-14：受控 F42 Harness、v1 JSONL、只读工具白名单、F40 Trace/checkpoint 与真实 Node 子进程/本地 PostgreSQL 验证已通过，等待用户验收。固定 sidecar 不代表真实 Pi 上游、F34、F35 Worker、F33/F36/F41 已接通。"
+      "note": "2026-10-19：P0–P3 均有验证：锁定 @mariozechner/pi-agent-core 0.73.1，以无外部 Provider Replay 完成多轮 Pi→Python supply.impact→Pi 往返、流式脱敏 Trace、取消及模型/工具/退出/超时失败分类；第二最小引擎与 Pi lockfile 一致性测试证明端口可替换。等待用户验收。"
     },
     {
       "id": "F43",

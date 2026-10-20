@@ -13,6 +13,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
 from product_api.harness import (
+    PI_CORE_ENGINE,
     Harness,
     HarnessContext,
     PiRuntimeAdapter,
@@ -73,15 +74,19 @@ async def _scenario(database_url: str) -> None:
                 HarnessContext(organization_id, uuid4(), None, "验证受控 F42 turn", ("supply:PART-A",)),
                 SqlTraceSink(connection, traces, trace_run_id, None),
             )
-            assert result.status == "completed" and result.event_count == 3
+            assert result.status == "completed" and result.event_count == 5
             assert await traces.verify_chain(connection, trace_run_id)
             events = await traces.list_events(connection, trace_run_id, None)
             assert [event.event_type for event in events] == [
                 "pi.turn_started",
                 "pi.tool_call",
+                "pi.tool_call",
+                "pi.model_delta",
                 "pi.turn_completed",
             ]
+            assert events[0].metadata == {"engine": PI_CORE_ENGINE}
             assert all("part" not in event.metadata for event in events)
+            assert events[3].metadata == {"length": 49}
             assert await traces.verify_chain(connection, trace_run_id)
             await connection.rollback()
     finally:

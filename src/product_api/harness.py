@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import os
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -17,12 +18,14 @@ from uuid import UUID, uuid4
 
 from psycopg import AsyncConnection
 
-from product_api.trace import TraceRepository, content_hash
+from product_api.trace import TraceRepository
 
 PROTOCOL_VERSION = 1
 MAX_JSONL_BYTES = 16_384
+PI_CORE_ENGINE = "pi-agent-core@0.73.1"
 _SECRET_FIELD = re.compile(r"(?:authorization|cookie|credential|password|secret|token)", re.IGNORECASE)
 _SAFE_CALL_ID = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
+_FAILURE_CODES = frozenset({"model_failed", "tool_failed", "sidecar_exited", "timeout"})
 
 
 class HarnessProtocolError(Exception):
@@ -33,15 +36,26 @@ class HarnessToolError(Exception):
     """Sidecar 请求了未允许、格式不合法或失败的工具。"""
 
 
+class HarnessTurnError(HarnessProtocolError):
+    """可被 F35 映射的稳定 turn 失败分类。"""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
 ToolHandler = Callable[[dict[str, object]], object | Awaitable[object]]
+ToolArgumentValidator = Callable[[dict[str, object]], None]
 
 
 @dataclass(frozen=True)
 class ToolDefinition:
-    """Python 授权的一个精确、只读工具名。"""
+    """Python 授权的一个精确 R0 工具及其参数校验器。"""
 
     name: str
     handler: ToolHandler
+    validator: ToolArgumentValidator | None = None
+    risk_level: str = "r0"
 
 
 @dataclass(frozen=True)
@@ -63,18 +77,28 @@ class HarnessContext:
 
 @dataclass(frozen=True)
 class TurnResult:
-    """仅返回协议状态与被调用的受控工具，不回传模型正文。"""
+    """返回协议状态和可选结构化结果；永不返回未解析的模型正文。"""
 
     turn_id: UUID
     status: str
     tool_calls: tuple[str, ...]
     event_count: int
+    output: dict[str, object] | None = None
 
 
 class TraceSink(Protocol):
     """Adapter 所需的最小审计写口；调用方决定其 SQL 事务范围。"""
 
     async def record(self, event_type: str, metadata: dict[str, object], sequence: int) -> None: ...
+
+
+class AgentEnginePort(Protocol):
+    """The turn-level boundary consumed by the durable Worker."""
+
+    async def run_turn(
+        self, context: HarnessContext, tools: ToolRegistry, trace: TraceSink,
+        cancel_event: asyncio.Event | None = None,
+    ) -> TurnResult: ...
 
 
 @dataclass
@@ -117,7 +141,6 @@ class SqlTraceSink:
             "pi_checkpoint",
             f"Pi checkpoint {sequence}: {event_type}",
             checkpoint,
-            content_hash(checkpoint),
         )
         await self._traces.append_event(
             self._connection,
@@ -135,9 +158,18 @@ class ToolRegistry:
 
     def __init__(self, tools: tuple[ToolDefinition, ...]) -> None:
         names = [tool.name for tool in tools]
-        if not names or len(names) != len(set(names)) or any(name != "supply.impact" for name in names):
-            raise ValueError("F42 当前只允许唯一的只读 supply.impact 工具")
-        self._tools = {tool.name: tool.handler for tool in tools}
+        if (
+            not names
+            or len(names) > 16
+            or len(names) != len(set(names))
+            or any(not re.fullmatch(r"[a-z][a-z0-9_.-]{1,95}", name) for name in names)
+        ):
+            raise ValueError("工具名必须是 1–16 个唯一的受限标识")
+        if any(tool.risk_level != "r0" for tool in tools):
+            raise ValueError("F42/F36 当前只允许 R0 只读工具")
+        if any(tool.name != "supply.impact" and tool.validator is None for tool in tools):
+            raise ValueError("非历史 supply.impact 工具必须提供显式参数校验器")
+        self._tools = {tool.name: tool for tool in tools}
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -146,37 +178,64 @@ class ToolRegistry:
     async def execute(self, name: str, arguments: object) -> object:
         if name not in self._tools or not isinstance(arguments, dict):
             raise HarnessToolError("工具不在当前白名单或参数不是对象")
+        tool = self._tools[name]
+        validator = tool.validator or self._validate_supply_impact
+        try:
+            validator(arguments)
+        except HarnessToolError:
+            raise
+        except (TypeError, ValueError) as error:
+            raise HarnessToolError("工具参数校验失败") from error
+        result = tool.handler(arguments)
+        return await result if inspect.isawaitable(result) else result
+
+    @staticmethod
+    def _validate_supply_impact(arguments: dict[str, object]) -> None:
         if set(arguments) - {"partNumber", "asOf"}:
             raise HarnessToolError("supply.impact 参数不在固定 schema 内")
         if not isinstance(arguments.get("partNumber"), str) or not arguments["partNumber"]:
             raise HarnessToolError("supply.impact 必须提供 partNumber")
         if "asOf" in arguments and not isinstance(arguments["asOf"], str):
             raise HarnessToolError("supply.impact.asOf 必须是字符串")
-        result = self._tools[name](arguments)
-        return await result if inspect.isawaitable(result) else result
 
 
 class PiRuntimeAdapter:
     """管理一次短生命周期 Node JSONL 子进程，任何协议偏差都会终止它。"""
 
-    def __init__(self, command: tuple[str, ...], *, timeout_seconds: float = 5.0) -> None:
+    def __init__(
+        self, command: tuple[str, ...], *, timeout_seconds: float = 5.0,
+        gateway_url: str | None = None, gateway_capability: str | None = None,
+    ) -> None:
         if not command:
             raise ValueError("Pi sidecar command 不能为空")
+        if (gateway_url is None) != (gateway_capability is None):
+            raise ValueError("Gateway 地址与单 Run 能力必须同时配置")
         self._command = command
         self._timeout_seconds = timeout_seconds
+        self._gateway_url = gateway_url
+        self._gateway_capability = gateway_capability
 
     async def run_turn(
-        self, context: HarnessContext, tools: ToolRegistry, trace: TraceSink
+        self,
+        context: HarnessContext,
+        tools: ToolRegistry,
+        trace: TraceSink,
+        cancel_event: asyncio.Event | None = None,
     ) -> TurnResult:
+        child_environment = {key: os.environ[key] for key in ("PATH", "LANG", "TZ") if key in os.environ}
+        if self._gateway_url is not None:
+            child_environment["SUPPLYAGENT_GATEWAY_URL"] = self._gateway_url
+            child_environment["SUPPLYAGENT_GATEWAY_CAPABILITY"] = self._gateway_capability or ""
         process = await asyncio.create_subprocess_exec(
             *self._command,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=child_environment,
         )
         assert process.stdin and process.stdout
         turn_id, sequence, calls = uuid4(), 0, []
-        expected = "turn.started"
+        expected, reported_failure = "turn.started", False
         try:
             await self._write(
                 process,
@@ -190,7 +249,12 @@ class PiRuntimeAdapter:
                 },
             )
             while True:
-                event = await self._read(process)
+                event = await self._read_or_cancel(process, cancel_event)
+                if event is None:
+                    await self._cancel(process, turn_id)
+                    sequence += 1
+                    await trace.record("pi.turn_cancelled", {"code": "cancelled"}, sequence)
+                    return TurnResult(turn_id, "cancelled", tuple(calls), sequence)
                 sequence += 1
                 event_type = self._validate_event(event, turn_id, expected)
                 metadata = self._event_metadata(event)
@@ -199,7 +263,12 @@ class PiRuntimeAdapter:
                     expected = "tool.call_or_complete"
                 elif event_type == "tool.call":
                     call_id, name = str(event["callId"]), str(event["name"])
-                    result = await tools.execute(name, event["arguments"])
+                    result = await self._execute_or_cancel(tools, name, event["arguments"], cancel_event)
+                    if result is None:
+                        await self._cancel(process, turn_id)
+                        sequence += 1
+                        await trace.record("pi.turn_cancelled", {"code": "cancelled"}, sequence)
+                        return TurnResult(turn_id, "cancelled", tuple(calls), sequence)
                     calls.append(name)
                     await self._write(
                         process,
@@ -214,19 +283,76 @@ class PiRuntimeAdapter:
                 elif event_type == "turn.completed":
                     await self._close_stdin(process)
                     await self._wait(process)
-                    return TurnResult(turn_id, "completed", tuple(calls), sequence)
+                    output = event.get("output")
+                    return TurnResult(
+                        turn_id,
+                        "completed",
+                        tuple(calls),
+                        sequence,
+                        output if isinstance(output, dict) else None,
+                    )
+                elif event_type == "turn.cancelled":
+                    await self._close_stdin(process)
+                    await self._wait(process)
+                    return TurnResult(turn_id, "cancelled", tuple(calls), sequence)
+                elif event_type == "model.delta":
+                    continue
                 else:
-                    raise HarnessProtocolError("sidecar 报告失败")
+                    reported_failure = True
+                    raise HarnessTurnError(str(event["code"]))
+        except HarnessToolError:
+            await trace.record("pi.turn_failed", {"code": "tool_failed"}, sequence + 1)
+            raise HarnessTurnError("tool_failed")
+        except HarnessTurnError as error:
+            if not reported_failure:
+                await trace.record("pi.turn_failed", {"code": error.code}, sequence + 1)
+            raise
         except BaseException:
             await self._terminate(process)
             raise
+        finally:
+            if process.returncode is None:
+                await self._terminate(process)
+
+    async def _read_or_cancel(
+        self, process: asyncio.subprocess.Process, cancel_event: asyncio.Event | None
+    ) -> dict[str, object] | None:
+        if cancel_event is None:
+            return await self._read(process)
+        read_task = asyncio.create_task(self._read(process))
+        cancel_task = asyncio.create_task(cancel_event.wait())
+        done, pending = await asyncio.wait({read_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        return None if cancel_task in done else read_task.result()
+
+    @staticmethod
+    async def _execute_or_cancel(
+        tools: ToolRegistry,
+        name: str,
+        arguments: object,
+        cancel_event: asyncio.Event | None,
+    ) -> object | None:
+        if cancel_event is None:
+            return await tools.execute(name, arguments)
+        execute_task = asyncio.create_task(tools.execute(name, arguments))
+        cancel_task = asyncio.create_task(cancel_event.wait())
+        done, pending = await asyncio.wait({execute_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        return None if cancel_task in done else execute_task.result()
 
     async def _read(self, process: asyncio.subprocess.Process) -> dict[str, object]:
         assert process.stdout
-        line = await asyncio.wait_for(process.stdout.readline(), timeout=self._timeout_seconds)
+        try:
+            line = await asyncio.wait_for(process.stdout.readline(), timeout=self._timeout_seconds)
+        except TimeoutError as error:
+            raise HarnessTurnError("timeout") from error
         if not line:
             stderr = (await process.stderr.read()).decode("utf-8", "replace") if process.stderr else ""
-            raise HarnessProtocolError(f"sidecar 在完成前退出：{stderr[:200]}")
+            raise HarnessTurnError("sidecar_exited") from RuntimeError(stderr[:200])
         if len(line) > MAX_JSONL_BYTES:
             raise HarnessProtocolError("sidecar JSONL 行超限")
         try:
@@ -248,6 +374,17 @@ class PiRuntimeAdapter:
         await process.stdin.drain()
 
     @staticmethod
+    async def _cancel(process: asyncio.subprocess.Process, turn_id: UUID) -> None:
+        try:
+            await PiRuntimeAdapter._write(
+                process,
+                {"protocolVersion": PROTOCOL_VERSION, "type": "turn.cancel", "turnId": str(turn_id)},
+            )
+        except (BrokenPipeError, ConnectionResetError):
+            # The sidecar may close stdin immediately after emitting turn.cancelled.
+            pass
+
+    @staticmethod
     async def _close_stdin(process: asyncio.subprocess.Process) -> None:
         if process.stdin and not process.stdin.is_closing():
             process.stdin.close()
@@ -256,7 +393,7 @@ class PiRuntimeAdapter:
     async def _wait(self, process: asyncio.subprocess.Process) -> None:
         code = await asyncio.wait_for(process.wait(), timeout=self._timeout_seconds)
         if code != 0:
-            raise HarnessProtocolError(f"sidecar 异常退出：{code}")
+            raise HarnessTurnError("sidecar_exited")
 
     async def _terminate(self, process: asyncio.subprocess.Process) -> None:
         if process.returncode is None:
@@ -273,7 +410,15 @@ class PiRuntimeAdapter:
         if event.get("protocolVersion") != PROTOCOL_VERSION or event.get("turnId") != str(turn_id):
             raise HarnessProtocolError("sidecar 协议版本或 turn 标识不匹配")
         if event_type == "turn.started" and expected == "turn.started":
-            PiRuntimeAdapter._exact(event, {"protocolVersion", "type", "turnId"})
+            PiRuntimeAdapter._exact_one_of(
+                event,
+                (
+                    {"protocolVersion", "type", "turnId"},
+                    {"protocolVersion", "type", "turnId", "engine"},
+                ),
+            )
+            if "engine" in event and event["engine"] != PI_CORE_ENGINE:
+                raise HarnessProtocolError("sidecar Pi Core 版本不匹配")
             return str(event_type)
         if event_type == "tool.call" and expected == "tool.call_or_complete":
             PiRuntimeAdapter._exact(event, {"protocolVersion", "type", "turnId", "callId", "name", "arguments"})
@@ -281,12 +426,32 @@ class PiRuntimeAdapter:
                 raise HarnessProtocolError("tool callId 非法")
             return str(event_type)
         if event_type == "turn.completed" and expected == "tool.call_or_complete":
-            PiRuntimeAdapter._exact(event, {"protocolVersion", "type", "turnId", "status"})
+            PiRuntimeAdapter._exact_one_of(
+                event,
+                (
+                    {"protocolVersion", "type", "turnId", "status"},
+                    {"protocolVersion", "type", "turnId", "status", "output"},
+                ),
+            )
             if event.get("status") != "completed":
                 raise HarnessProtocolError("turn.completed 状态非法")
+            if "output" in event and not isinstance(event["output"], dict):
+                raise HarnessProtocolError("turn.completed output 必须是对象")
+            return str(event_type)
+        if event_type == "model.delta" and expected == "tool.call_or_complete":
+            PiRuntimeAdapter._exact(event, {"protocolVersion", "type", "turnId", "delta"})
+            if not isinstance(event["delta"], str) or not event["delta"]:
+                raise HarnessProtocolError("model.delta 非法")
+            return str(event_type)
+        if event_type == "turn.cancelled" and expected in {"turn.started", "tool.call_or_complete", "turn.cancelled"}:
+            PiRuntimeAdapter._exact(event, {"protocolVersion", "type", "turnId", "code"})
+            if event["code"] != "cancelled":
+                raise HarnessProtocolError("turn.cancelled 状态非法")
             return str(event_type)
         if event_type == "turn.failed" and expected in {"turn.started", "tool.call_or_complete"}:
             PiRuntimeAdapter._exact(event, {"protocolVersion", "type", "turnId", "code"})
+            if event["code"] not in _FAILURE_CODES:
+                raise HarnessProtocolError("turn.failed 状态非法")
             return str(event_type)
         raise HarnessProtocolError("sidecar 事件不在允许顺序中")
 
@@ -296,8 +461,16 @@ class PiRuntimeAdapter:
             raise HarnessProtocolError("sidecar 事件含未知或缺失字段")
 
     @staticmethod
+    def _exact_one_of(event: Mapping[str, object], allowed: tuple[set[str], ...]) -> None:
+        if set(event) not in allowed:
+            raise HarnessProtocolError("sidecar 事件含未知或缺失字段")
+
+    @staticmethod
     def _event_metadata(event: Mapping[str, object]) -> dict[str, object]:
-        return {key: event[key] for key in ("callId", "name", "code") if key in event}
+        metadata = {key: event[key] for key in ("callId", "name", "code", "engine") if key in event}
+        if event.get("type") == "model.delta":
+            metadata["length"] = len(str(event["delta"]))
+        return metadata
 
     @staticmethod
     def _reject_secret_fields(value: object) -> None:
@@ -314,9 +487,11 @@ class PiRuntimeAdapter:
 class Harness:
     """F42 的最小组装器：只把确定性上下文和 Python 白名单交给 Adapter。"""
 
-    def __init__(self, adapter: PiRuntimeAdapter, tools: ToolRegistry) -> None:
+    def __init__(self, adapter: AgentEnginePort, tools: ToolRegistry) -> None:
         self._adapter = adapter
         self._tools = tools
 
-    async def execute(self, context: HarnessContext, trace: TraceSink) -> TurnResult:
-        return await self._adapter.run_turn(context, self._tools, trace)
+    async def execute(
+        self, context: HarnessContext, trace: TraceSink, cancel_event: asyncio.Event | None = None
+    ) -> TurnResult:
+        return await self._adapter.run_turn(context, self._tools, trace, cancel_event)

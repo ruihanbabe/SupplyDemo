@@ -1,0 +1,39 @@
+{
+  "dataset": "supplyagent-f36-demo-v1",
+  "purpose": "A clearly labelled synthetic CRM and procurement investigation corpus for local F36 acceptance. It is not a customer record, supplier quotation, or purchase authorization.",
+  "documents": [
+    {
+      "file": "hackrf-one-product-context.md",
+      "title": "HackRF One product and BOM provenance",
+      "document_kind": "product_supply",
+      "source_kind": "official",
+      "source_urls": [
+        "https://github.com/greatscottgadgets/hackrf/tree/7f96cc8e3fa625c4263a71ba8dd44d1f6110e4fa/hardware/hackrf-one",
+        "https://github.com/greatscottgadgets/hackrf/blob/main/docs/source/list_of_hardware_revisions.rst"
+      ]
+    },
+    {
+      "file": "sky13453-official-summary.md",
+      "title": "Skyworks SKY13453-385LF official fact summary",
+      "document_kind": "product_supply",
+      "source_kind": "official",
+      "source_urls": [
+        "https://www.skyworksinc.com/-/media/SkyWorks/Documents/Products/1901-2000/SKY13453-385LF_202830G.pdf"
+      ]
+    },
+    {
+      "file": "synthetic-commercial-policy.md",
+      "title": "Northstar RF commercial and delivery policy",
+      "document_kind": "business_policy",
+      "source_kind": "synthetic",
+      "source_urls": []
+    },
+    {
+      "file": "synthetic-opportunity-facts.md",
+      "title": "Northstar RF demo opportunity facts",
+      "document_kind": "crm_context",
+      "source_kind": "synthetic",
+      "source_urls": []
+    }
+  ]
+}
