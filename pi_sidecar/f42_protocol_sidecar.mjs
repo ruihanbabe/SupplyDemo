@@ -117,7 +117,7 @@ function replayStream(start) {
   queueMicrotask(() => {
     if (options.signal.aborted) return;
     stream.push({ type: "start", partial: message });
-    if (toolResultCount === 2) {
+    if (toolResultCount === requiredCalls) {
       stream.push({ type: "text_start", contentIndex: 0, partial: message });
       stream.push({ type: "text_delta", contentIndex: 0, delta: message.content[0].text, partial: message });
       stream.push({ type: "text_end", contentIndex: 0, content: message.content[0].text, partial: message });

@@ -23,13 +23,21 @@ from product_api.harness import (
     TraceSink,
 )
 from product_api.knowledge import PostgresKnowledgeRepository
+from product_api.mission_runtime import DurableMissionRunner
 from product_api.specialist_runner import (
     SpecialistResultError,
     SpecialistRunner,
     validate_knowledge_search,
     validate_no_arguments,
 )
-from product_api.specialists import Citation, SpecialistAssignment, SpecialistResult, SpecialistRole
+from product_api.specialists import (
+    Citation,
+    IndependentReview,
+    ParentRecommendation,
+    SpecialistAssignment,
+    SpecialistResult,
+    SpecialistRole,
+)
 from product_api.supply import PostgresSupplyRepository, calculate_impact
 from product_api.tenant import TenantRepository
 from product_api.trace import PostgresTraceRepository
@@ -54,7 +62,10 @@ class WorkerPolicy:
     retry_seconds: int
 
     def __post_init__(self) -> None:
-        if not 1 <= self.lease_seconds <= 3600 or not 0 < self.heartbeat_seconds < self.lease_seconds:
+        if (
+            not 1 <= self.lease_seconds <= 3600
+            or not 0 < self.heartbeat_seconds < self.lease_seconds
+        ):
             raise ValueError("heartbeat must be shorter than the valid lease")
         if not 1 <= self.max_attempts <= 20 or not 0 <= self.retry_seconds <= 86400:
             raise ValueError("invalid Worker retry policy")
@@ -81,7 +92,9 @@ class RuntimeStore(Protocol):
     async def complete(self, job: RuntimeJob) -> bool: ...
     async def fail(self, job: RuntimeJob, code: str, policy: WorkerPolicy) -> bool: ...
     async def status(self, job: RuntimeJob) -> str: ...
-    async def supply_impact(self, job: RuntimeJob, arguments: dict[str, object]) -> dict[str, object]: ...
+    async def supply_impact(
+        self, job: RuntimeJob, arguments: dict[str, object]
+    ) -> dict[str, object]: ...
     async def crm_opportunity_facts(
         self, job: RuntimeJob, arguments: dict[str, object]
     ) -> dict[str, object]: ...
@@ -96,32 +109,53 @@ class DurableTraceSink:
     """Each event commits independently, so a killed turn retains its audit trail."""
 
     def __init__(
-        self, tenants: TenantRepository, identity: WorkerIdentity,
-        traces: PostgresTraceRepository, job: RuntimeJob,
+        self,
+        tenants: TenantRepository,
+        identity: WorkerIdentity,
+        traces: PostgresTraceRepository,
+        job: RuntimeJob,
+        write_lock: asyncio.Lock,
     ) -> None:
         self._tenants = tenants
         self._identity = identity
         self._traces = traces
         self._job = job
+        self._write_lock = write_lock
 
     async def record(self, event_type: str, metadata: dict[str, object], sequence: int) -> None:
         async def operation(connection: AsyncConnection[dict[str, object]]) -> None:
             checkpoint = {
-                "protocolVersion": 1, "sequence": sequence, "eventType": event_type,
-                "attempt": self._job.generation, "callId": metadata.get("callId"),
+                "protocolVersion": 1,
+                "sequence": sequence,
+                "eventType": event_type,
+                "attempt": self._job.generation,
+                "callId": metadata.get("callId"),
             }
             artifact_id = await self._traces.append_artifact(
-                connection, self._job.trace_run_id, self._job.case_id, uuid4(),
-                "pi_checkpoint", f"Worker checkpoint {self._job.generation}/{sequence}", checkpoint,
+                connection,
+                self._job.trace_run_id,
+                self._job.case_id,
+                uuid4(),
+                "pi_checkpoint",
+                f"Worker checkpoint {self._job.generation}/{sequence}",
+                checkpoint,
             )
             await self._traces.append_event(
-                connection, self._job.trace_run_id, self._job.case_id,
-                event_type, f"Worker event {event_type}", metadata, artifact_id,
+                connection,
+                self._job.trace_run_id,
+                self._job.case_id,
+                event_type,
+                f"Worker event {event_type}",
+                metadata,
+                artifact_id,
             )
 
-        await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
-        )
+        async with self._write_lock:
+            await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
 
 
 class PostgresRuntimeStore:
@@ -132,12 +166,18 @@ class PostgresRuntimeStore:
         self._supply = PostgresSupplyRepository()
         self._crm = PostgresCrmFactRepository()
         self._knowledge = PostgresKnowledgeRepository()
+        self._trace_write_lock = asyncio.Lock()
 
     async def begin_supply(
-        self, case_id: UUID, part_number: str, key: str,
+        self,
+        case_id: UUID,
+        part_number: str,
+        key: str,
         model_policy_id: UUID | None = None,
     ) -> tuple[UUID, UUID, UUID]:
-        async def operation(connection: AsyncConnection[dict[str, object]]) -> tuple[UUID, UUID, UUID]:
+        async def operation(
+            connection: AsyncConnection[dict[str, object]],
+        ) -> tuple[UUID, UUID, UUID]:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     "select * from app.begin_supply_runtime_run(%s,%s,%s,%s)",
@@ -149,7 +189,9 @@ class PostgresRuntimeStore:
                 return row["mission_id"], row["run_id"], row["job_id"]
 
         return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
+            self._identity.actor_id,
+            self._identity.organization_id,
+            operation,
         )
 
     async def cancel(self, job_id: UUID) -> bool:
@@ -168,13 +210,14 @@ class PostgresRuntimeStore:
                 claimed = await cursor.fetchone()
                 if claimed is None:
                     return None
+
                 async def reject_claim() -> None:
                     await cursor.execute(
                         "select app.fail_runtime_job(%s,%s,%s,'protocol_failed',1,0)",
                         (claimed["id"], self._identity.owner, claimed["attempts"]),
                     )
 
-                if claimed["kind"] != "agent_turn":
+                if claimed["kind"] not in {"agent_turn", "opportunity_next_action"}:
                     await reject_claim()
                     return None
                 await cursor.execute(
@@ -188,63 +231,109 @@ class PostgresRuntimeStore:
                     await reject_claim()
                     return None
                 refs = row["context_ref"]
-                if not isinstance(refs, dict) or set(refs) != {"caseId", "partNumber", "modelPolicyId"}:
+                expected = {"caseId", "partNumber", "modelPolicyId"}
+                if claimed["kind"] == "opportunity_next_action":
+                    expected.add("opportunityId")
+                if not isinstance(refs, dict) or set(refs) != expected:
                     await reject_claim()
                     return None
                 try:
-                    case_id = UUID(str(refs["caseId"]))
+                    case_id = UUID(str(refs["caseId"])) if refs["caseId"] else None
                     policy_id = UUID(str(refs["modelPolicyId"])) if refs["modelPolicyId"] else None
+                    opportunity_id = (
+                        UUID(str(refs["opportunityId"]))
+                        if claimed["kind"] == "opportunity_next_action"
+                        else None
+                    )
                 except ValueError:
                     await reject_claim()
                     return None
                 part_number = refs["partNumber"]
-                if not isinstance(part_number, str) or not 1 <= len(part_number) <= 160:
+                if part_number is not None and (
+                    not isinstance(part_number, str) or not 1 <= len(part_number) <= 160
+                ):
                     await reject_claim()
                     return None
-                await cursor.execute(
-                    "select 1 from app.supply_case where id=%s and scope->'partNumbers' ? %s",
-                    (case_id, part_number),
-                )
-                if await cursor.fetchone() is None:
+                if claimed["kind"] == "agent_turn" and (case_id is None or part_number is None):
                     await reject_claim()
                     return None
+                if case_id is not None:
+                    await cursor.execute(
+                        "select 1 from app.supply_case where id=%s and scope->'partNumbers' ? %s",
+                        (case_id, part_number),
+                    )
+                    if await cursor.fetchone() is None:
+                        await reject_claim()
+                        return None
+                if opportunity_id is not None:
+                    await cursor.execute(
+                        "select 1 from app.crm_opportunity where id=%s and supply_case_id is not distinct from %s",
+                        (opportunity_id, case_id),
+                    )
+                    if await cursor.fetchone() is None:
+                        await reject_claim()
+                        return None
                 if not await self._traces.verify_chain(connection, row["trace_run_id"]):
                     await reject_claim()
                     return None
                 artifacts = await self._traces.list_artifacts(connection, row["trace_run_id"])
                 checkpoints = [
-                    item for item in artifacts if item.artifact_type == "pi_checkpoint"
+                    item
+                    for item in artifacts
+                    if item.artifact_type == "pi_checkpoint"
                     and item.redacted_payload.get("protocolVersion") == 1
                 ]
                 last = max(checkpoints, key=lambda item: item.created_at) if checkpoints else None
                 sequence = int(last.redacted_payload["sequence"]) if last else 0
                 return RuntimeJob(
-                    claimed["id"], row["mission_id"], claimed["run_id"], row["trace_run_id"],
-                    case_id, part_number, policy_id, claimed["attempts"], sequence,
+                    claimed["id"],
+                    row["mission_id"],
+                    claimed["run_id"],
+                    row["trace_run_id"],
+                    case_id,
+                    part_number,
+                    policy_id,
+                    claimed["attempts"],
+                    sequence,
+                    opportunity_id,
                 )
 
         return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
+            self._identity.actor_id,
+            self._identity.organization_id,
+            operation,
         )
 
     async def heartbeat(self, job: RuntimeJob, lease_seconds: int) -> bool:
-        return bool(await self._scalar(
-            "select app.heartbeat_runtime_job(%s,%s,%s,%s) as value",
-            (job.id, self._identity.owner, job.generation, lease_seconds),
-        ))
+        return bool(
+            await self._scalar(
+                "select app.heartbeat_runtime_job(%s,%s,%s,%s) as value",
+                (job.id, self._identity.owner, job.generation, lease_seconds),
+            )
+        )
 
     async def complete(self, job: RuntimeJob) -> bool:
-        return bool(await self._scalar(
-            "select app.complete_runtime_job(%s,%s,%s) as value",
-            (job.id, self._identity.owner, job.generation),
-        ))
+        return bool(
+            await self._scalar(
+                "select app.complete_runtime_job(%s,%s,%s) as value",
+                (job.id, self._identity.owner, job.generation),
+            )
+        )
 
     async def fail(self, job: RuntimeJob, code: str, policy: WorkerPolicy) -> bool:
-        return bool(await self._scalar(
-            "select app.fail_runtime_job(%s,%s,%s,%s,%s,%s) as value",
-            (job.id, self._identity.owner, job.generation, code,
-             policy.max_attempts, policy.retry_seconds),
-        ))
+        return bool(
+            await self._scalar(
+                "select app.fail_runtime_job(%s,%s,%s,%s,%s,%s) as value",
+                (
+                    job.id,
+                    self._identity.owner,
+                    job.generation,
+                    code,
+                    policy.max_attempts,
+                    policy.retry_seconds,
+                ),
+            )
+        )
 
     async def status(self, job: RuntimeJob) -> str:
         async def operation(connection: AsyncConnection[dict[str, object]]) -> str:
@@ -256,10 +345,14 @@ class PostgresRuntimeStore:
                 return str(row["status"])
 
         return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
+            self._identity.actor_id,
+            self._identity.organization_id,
+            operation,
         )
 
-    async def supply_impact(self, job: RuntimeJob, arguments: dict[str, object]) -> dict[str, object]:
+    async def supply_impact(
+        self, job: RuntimeJob, arguments: dict[str, object]
+    ) -> dict[str, object]:
         if job.part_number is None or job.case_id is None:
             raise HarnessToolError("job 没有服务端绑定的 supply scope")
         if arguments["partNumber"] != job.part_number:
@@ -275,7 +368,9 @@ class PostgresRuntimeStore:
                 "partNumber": job.part_number,
                 "asOf": as_of.isoformat(),
                 "projectedAvailableQty": _decimal_text(impact.projected_available_qty),
-                "firstShortageOn": impact.first_shortage_on.isoformat() if impact.first_shortage_on else None,
+                "firstShortageOn": impact.first_shortage_on.isoformat()
+                if impact.first_shortage_on
+                else None,
                 "unknowns": impact.unknowns,
             }
             artifact_id = await self._traces.append_artifact(
@@ -310,9 +405,12 @@ class PostgresRuntimeStore:
                 },
             }
 
-        return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
-        )
+        async with self._trace_write_lock:
+            return await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
 
     async def knowledge_search(
         self, job: RuntimeJob, arguments: dict[str, object]
@@ -343,13 +441,19 @@ class PostgresRuntimeStore:
                 ],
             }
             return await self._record_tool_result(
-                connection, job, "knowledge.search", payload,
+                connection,
+                job,
+                "knowledge.search",
+                payload,
                 uuid5(NAMESPACE_URL, f"supplyagent:{job.id}:knowledge:{arguments['query']}"),
             )
 
-        return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
-        )
+        async with self._trace_write_lock:
+            return await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
 
     async def mission_claims(
         self,
@@ -369,19 +473,27 @@ class PostgresRuntimeStore:
                     or artifact.artifact_type != "specialist_result"
                 ):
                     raise HarnessToolError("input artifact is outside the Mission scope")
-                artifacts.append({
-                    "artifactId": str(artifact.id),
-                    "role": artifact.redacted_payload.get("role"),
-                    "claims": artifact.redacted_payload.get("claims", []),
-                })
+                artifacts.append(
+                    {
+                        "artifactId": str(artifact.id),
+                        "role": artifact.redacted_payload.get("role"),
+                        "claims": artifact.redacted_payload.get("claims", []),
+                    }
+                )
             return await self._record_tool_result(
-                connection, job, "mission.claims", {"results": artifacts},
+                connection,
+                job,
+                "mission.claims",
+                {"results": artifacts},
                 uuid5(NAMESPACE_URL, f"supplyagent:{job.id}:mission-claims"),
             )
 
-        return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
-        )
+        async with self._trace_write_lock:
+            return await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
 
     async def mission_tools(
         self,
@@ -390,27 +502,36 @@ class PostgresRuntimeStore:
         input_artifact_ids: tuple[UUID, ...],
     ) -> tuple[ToolDefinition, ...]:
         if role is SpecialistRole.CUSTOMER_FACTS:
-            return (ToolDefinition(
-                "crm.opportunity_facts",
-                lambda arguments: self.crm_opportunity_facts(job, arguments),
-                validate_no_arguments,
-            ),)
+            return (
+                ToolDefinition(
+                    "crm.opportunity_facts",
+                    lambda arguments: self.crm_opportunity_facts(job, arguments),
+                    validate_no_arguments,
+                ),
+            )
         if role is SpecialistRole.BUSINESS_POLICY:
-            return (ToolDefinition(
-                "knowledge.search",
-                lambda arguments: self.knowledge_search(job, arguments),
-                validate_knowledge_search,
-            ),)
+            return (
+                ToolDefinition(
+                    "knowledge.search",
+                    lambda arguments: self.knowledge_search(job, arguments),
+                    validate_knowledge_search,
+                ),
+            )
         if role is SpecialistRole.SUPPLY_RISK:
-            return (ToolDefinition(
-                "supply.impact", lambda arguments: self.supply_impact(job, arguments),
-            ),)
+            return (
+                ToolDefinition(
+                    "supply.impact",
+                    lambda arguments: self.supply_impact(job, arguments),
+                ),
+            )
         if role in {SpecialistRole.OPPORTUNITY_DIAGNOSIS, SpecialistRole.PROCUREMENT_STRATEGY}:
-            return (ToolDefinition(
-                "mission.claims",
-                lambda arguments: self.mission_claims(job, input_artifact_ids, arguments),
-                validate_no_arguments,
-            ),)
+            return (
+                ToolDefinition(
+                    "mission.claims",
+                    lambda arguments: self.mission_claims(job, input_artifact_ids, arguments),
+                    validate_no_arguments,
+                ),
+            )
         raise RuntimeStateError("unsupported Specialist role")
 
     async def _record_tool_result(
@@ -422,22 +543,33 @@ class PostgresRuntimeStore:
         artifact_key: UUID,
     ) -> dict[str, object]:
         artifact_id = await self._traces.append_artifact(
-            connection, job.trace_run_id, job.case_id, artifact_key, "tool_result",
-            f"{tool_name} result recorded", payload,
+            connection,
+            job.trace_run_id,
+            job.case_id,
+            artifact_key,
+            "tool_result",
+            f"{tool_name} result recorded",
+            payload,
         )
         artifact = await self._traces.get_artifact(connection, artifact_id)
         if artifact is None:
             raise RuntimeStateError("persisted tool result is not readable")
         await self._traces.append_event(
-            connection, job.trace_run_id, job.case_id, "tool.result_recorded",
+            connection,
+            job.trace_run_id,
+            job.case_id,
+            "tool.result_recorded",
             "Read-only tool result recorded",
-            {"tool": tool_name, "artifactVersion": artifact.version}, artifact.id,
+            {"tool": tool_name, "artifactVersion": artifact.version},
+            artifact.id,
         )
         return {
             **payload,
             "citation": {
-                "sourceKind": "trace_artifact", "sourceId": str(artifact.id),
-                "version": str(artifact.version), "locator": "redacted_payload",
+                "sourceKind": "trace_artifact",
+                "sourceId": str(artifact.id),
+                "version": str(artifact.version),
+                "locator": "redacted_payload",
                 "fragmentHash": artifact.content_hash,
             },
         }
@@ -471,14 +603,21 @@ class PostgresRuntimeStore:
                 ],
                 "conversations": [
                     {
-                        "id": str(item.id), "channel": item.channel, "summary": item.summary,
-                        "version": item.version, "updatedAt": item.updated_at.isoformat(),
+                        "id": str(item.id),
+                        "channel": item.channel,
+                        "summary": item.summary,
+                        "version": item.version,
+                        "updatedAt": item.updated_at.isoformat(),
                     }
                     for item in facts.conversations
                 ],
                 "tasks": [
-                    {"id": str(item.id), "title": item.title, "status": item.status,
-                     "version": item.version}
+                    {
+                        "id": str(item.id),
+                        "title": item.title,
+                        "status": item.status,
+                        "version": item.version,
+                    }
                     for item in facts.tasks
                 ],
             }
@@ -514,9 +653,12 @@ class PostgresRuntimeStore:
                 },
             }
 
-        return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
-        )
+        async with self._trace_write_lock:
+            return await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
 
     async def citation_valid(self, job: RuntimeJob, citation: Citation) -> bool:
         if citation.source_kind != "trace_artifact" or citation.locator != "redacted_payload":
@@ -538,13 +680,15 @@ class PostgresRuntimeStore:
                 and artifact.content_hash == citation.fragment_hash
             )
 
-        return bool(await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
-        ))
+        return bool(
+            await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
+        )
 
-    async def persist_specialist_result(
-        self, job: RuntimeJob, result: SpecialistResult
-    ) -> UUID:
+    async def persist_specialist_result(self, job: RuntimeJob, result: SpecialistResult) -> UUID:
         if (
             result.organization_id != self._identity.organization_id
             or result.mission_id != job.mission_id
@@ -576,12 +720,106 @@ class PostgresRuntimeStore:
             )
             return artifact_id
 
-        return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
+        async with self._trace_write_lock:
+            return await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
+
+    async def persist_review(self, job: RuntimeJob, review: IndependentReview) -> UUID:
+        return await self._persist_mission_artifact(
+            job,
+            uuid5(NAMESPACE_URL, f"supplyagent:{job.id}:review:{review.target_artifact_id}"),
+            "specialist_review",
+            "Independent citation review saved",
+            {
+                "targetArtifactKey": str(review.target_artifact_id),
+                "reviewer": review.reviewer,
+                "verdict": review.verdict.value,
+                "issues": list(review.issues),
+            },
         )
 
+    async def persist_specialist_failure(
+        self, job: RuntimeJob, role: SpecialistRole, code: str
+    ) -> UUID:
+        return await self._persist_mission_artifact(
+            job,
+            uuid5(NAMESPACE_URL, f"supplyagent:{job.id}:failure:{role.value}"),
+            "specialist_failure",
+            f"{role.value} failed",
+            {"role": role.value, "code": code},
+        )
+
+    async def persist_parent_recommendation(
+        self, job: RuntimeJob, recommendation: ParentRecommendation
+    ) -> UUID:
+        payload: dict[str, object] = {
+            "missionId": str(recommendation.mission_id),
+            "quality": recommendation.quality.value,
+            "recommendation": recommendation.recommendation,
+            "missingRoles": [role.value for role in recommendation.missing_roles],
+            "issues": list(recommendation.issues),
+            "claimIds": [str(claim.claim_id) for claim in recommendation.claims],
+            "proposalDraft": None,
+        }
+        if recommendation.proposal_draft is not None:
+            payload["proposalDraft"] = {
+                "executable": False,
+                "sourceArtifactKeys": [
+                    str(item) for item in recommendation.proposal_draft.source_artifact_ids
+                ],
+                "claimIds": [str(item) for item in recommendation.proposal_draft.claim_ids],
+            }
+        return await self._persist_mission_artifact(
+            job,
+            uuid5(NAMESPACE_URL, f"supplyagent:{job.id}:parent-recommendation"),
+            "parent_recommendation",
+            "Serial parent recommendation saved",
+            payload,
+        )
+
+    async def _persist_mission_artifact(
+        self,
+        job: RuntimeJob,
+        artifact_key: UUID,
+        artifact_type: str,
+        summary: str,
+        payload: dict[str, object],
+    ) -> UUID:
+        async def operation(connection: AsyncConnection[dict[str, object]]) -> UUID:
+            artifact_id = await self._traces.append_artifact(
+                connection,
+                job.trace_run_id,
+                job.case_id,
+                artifact_key,
+                artifact_type,
+                summary,
+                payload,
+            )
+            await self._traces.append_event(
+                connection,
+                job.trace_run_id,
+                job.case_id,
+                f"{artifact_type}.saved",
+                summary,
+                {"artifactType": artifact_type},
+                artifact_id,
+            )
+            return artifact_id
+
+        async with self._trace_write_lock:
+            return await self._tenants.in_organization(
+                self._identity.actor_id,
+                self._identity.organization_id,
+                operation,
+            )
+
     def trace_sink(self, job: RuntimeJob) -> TraceSink:
-        return DurableTraceSink(self._tenants, self._identity, self._traces, job)
+        return DurableTraceSink(
+            self._tenants, self._identity, self._traces, job, self._trace_write_lock
+        )
 
     async def _scalar(self, query: str, params: tuple[object, ...]) -> object:
         async def operation(connection: AsyncConnection[dict[str, object]]) -> object:
@@ -593,7 +831,9 @@ class PostgresRuntimeStore:
                 return row["value"]
 
         return await self._tenants.in_organization(
-            self._identity.actor_id, self._identity.organization_id, operation,
+            self._identity.actor_id,
+            self._identity.organization_id,
+            operation,
         )
 
 
@@ -602,8 +842,11 @@ EngineFactory = Callable[[RuntimeJob], AgentEnginePort]
 
 class DurableWorker:
     def __init__(
-        self, store: RuntimeStore, identity: WorkerIdentity,
-        policy: WorkerPolicy, engine_factory: EngineFactory,
+        self,
+        store: RuntimeStore,
+        identity: WorkerIdentity,
+        policy: WorkerPolicy,
+        engine_factory: EngineFactory,
     ) -> None:
         self._store = store
         self._identity = identity
@@ -618,8 +861,16 @@ class DurableWorker:
         cancel = asyncio.Event()
         heartbeat = asyncio.create_task(self._keep_lease(job, cancel))
         try:
+            if job.opportunity_id is not None:
+                await DurableMissionRunner(
+                    self._store, self._identity.organization_id, self._engine_factory
+                ).run(job, cancel)
+                if not await self._store.complete(job):
+                    raise RuntimeStateError("job lease lost before completion")
+                return True
             task = "Investigate the current supply impact for this authorized part: " + json.dumps(
-                {"partNumber": job.part_number}, ensure_ascii=False,
+                {"partNumber": job.part_number},
+                ensure_ascii=False,
             )
             assignment = SpecialistAssignment(
                 self._identity.organization_id,
@@ -629,9 +880,12 @@ class DurableWorker:
                 (job.case_id,),
                 ("supply.impact",),
             )
-            tools = (ToolDefinition(
-                "supply.impact", lambda arguments: self._store.supply_impact(job, arguments),
-            ),)
+            tools = (
+                ToolDefinition(
+                    "supply.impact",
+                    lambda arguments: self._store.supply_impact(job, arguments),
+                ),
+            )
             result = await SpecialistRunner(
                 self._engine_factory(job),
                 tools,

@@ -213,6 +213,17 @@ class BeginSupplyRunRequest(OrganizationScopedRequest):
     model_policy_id: UUID | None = Field(default=None, validation_alias=AliasChoices("modelPolicyId", "model_policy_id"))
 
 
+class BeginOpportunityRunRequest(OrganizationScopedRequest):
+    opportunity_id: UUID = Field(validation_alias=AliasChoices("opportunityId", "opportunity_id"))
+    idempotency_key: str = Field(
+        validation_alias=AliasChoices("idempotencyKey", "idempotency_key"),
+        min_length=1, max_length=120,
+    )
+    model_policy_id: UUID | None = Field(
+        default=None, validation_alias=AliasChoices("modelPolicyId", "model_policy_id")
+    )
+
+
 class TraceArtifactInput(OrganizationScopedRequest):
     """仅接收调用方已经脱敏后的 checkpoint 或其他 Artifact 投影。"""
 
@@ -516,6 +527,33 @@ def create_app(
                 row = await cursor.fetchone()
                 if row is None:
                     raise RuntimeError("runtime run creation returned no IDs")
+                return row["mission_id"], row["run_id"], row["job_id"]
+
+        mission_id, run_id, job_id = await tenants.in_organization_as_member(
+            identity.user_id, payload.organization_id, create,
+        )
+        return {"ok": True, "data": {
+            "missionId": str(mission_id), "runId": str(run_id), "jobId": str(job_id),
+        }}
+
+    @app.post("/v1/runtime/opportunity-runs")
+    async def begin_opportunity_run(
+        payload: BeginOpportunityRunRequest,
+        identity: AuthenticatedIdentity = Depends(identity_from_request),  # noqa: B008
+        tenants: TenantRepository = Depends(repository),  # noqa: B008
+    ) -> dict[str, object]:
+        async def create(
+            connection: AsyncConnection[dict[str, object]], membership: OrganizationMembership,
+        ) -> tuple[UUID, UUID, UUID]:
+            require_capability(membership.role, "crm:read")
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "select * from app.begin_opportunity_runtime_run(%s,%s,%s)",
+                    (payload.opportunity_id, payload.idempotency_key, payload.model_policy_id),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    raise RuntimeError("opportunity runtime run creation returned no IDs")
                 return row["mission_id"], row["run_id"], row["job_id"]
 
         mission_id, run_id, job_id = await tenants.in_organization_as_member(

@@ -12,7 +12,7 @@ SRC         := src
 .DEFAULT_GOAL := help
 .PHONY: help setup status check compile lint test \
         services-up services-status services-smoke services-down freeze migrate test-integration \
-        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test supply-api-check supply-api-integration-test trace-migrate trace-test trace-integration-test f42-check f42-integration-test crm-migrate crm-test gateway-migrate gateway-test gateway-check gateway-integration-test gateway-run runtime-migrate runtime-test runtime-check runtime-integration-test runtime-worker f36-check knowledge-migrate knowledge-test
+        web-install web-check api-check api-integration-test api-live-auth-test api-run tenant-migrate tenant-test supply-migrate supply-test supply-api-check supply-api-integration-test trace-migrate trace-test trace-integration-test f42-check f42-integration-test crm-migrate crm-test gateway-migrate gateway-test gateway-check gateway-integration-test gateway-run runtime-migrate runtime-test runtime-check runtime-integration-test runtime-worker f36-check f36-migrate f36-integration-test knowledge-migrate knowledge-test
 
 help: ## 列出所有可用目标
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -226,8 +226,14 @@ runtime-worker: ## 启动单组织 F35 Worker；需显式配置 Worker 身份和
 	@PYTHONPATH=src $(VPY) -m product_api.worker_main
 
 f36-check: ## F36 Specialist、知识、CRM 事实读取与质量门禁
-	@$(VENV)/bin/ruff check src/product_api/crm.py src/product_api/specialists.py src/product_api/specialist_runner.py src/product_api/knowledge.py src/product_api/knowledge_import.py tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
-	@PYTHONPATH=src $(VPY) -m pytest -q tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
+	@$(VENV)/bin/ruff check src/product_api/crm.py src/product_api/specialists.py src/product_api/specialist_runner.py src/product_api/mission_runtime.py src/product_api/knowledge.py src/product_api/knowledge_import.py tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_mission_runtime.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
+	@PYTHONPATH=src $(VPY) -m pytest -q tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_mission_runtime.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
+
+f36-migrate: runtime-migrate crm-migrate knowledge-migrate ## 应用 F36 Durable Mission schema
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0021_f36_mission.sql
+
+f36-integration-test: f36-migrate ## F36 多 Specialist Mission、F40 Artifact 与 RLS 验收
+	@PYTHONPATH=src $(VPY) -m pytest -q -m integration tests/test_product_api_mission_integration.py
 
 knowledge-migrate: tenant-migrate ## 应用 F36 P1 组织知识、ACL、版本与 Citation schema
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0020_f36_knowledge.sql
