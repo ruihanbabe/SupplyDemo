@@ -1,8 +1,8 @@
 # HANDOFF.md：SupplyAgent v0.6 交接
 
-> 更新：2026-10-20
+> 更新：2026-10-21
 >
-> 新会话先读本文件、`AGENTS.md`、`contracts/F42.md`，再按需读取 `spec.md` 对应节。Feature 清单和状态只看 `features.json`。
+> 新会话先读本文件、`AGENTS.md`、下一 Feature Contract，再按需读取 `spec.md` 对应节。Feature 清单和状态只看 `features.json`。
 
 ## 1. 当前产品决策
 
@@ -39,13 +39,13 @@ CRM/客户/商机/渠道/多租户是产品能力；现有采购异常处置、�
 
 因此 F31 至 F42 的 Contract 已逐一加入该架构约束。2026-10-12 已删除须由 Python 重做的 Next/TypeScript 服务实现与对应测试；SQL migration、RLS 与表基础保留，但不能被误称为 Python 产品实现已经完成。
 
-F36 已由用户确认 Contract 并进入 `in_progress`。已确定双层职责：Workbench 的 CRM 情报员、销售运营、客户沟通和 CRM 主管是 Mission 入口；后台以客户事实、商机诊断、业务政策为必需 Specialist，供应链风险和采购策略按真实业务条件启用。父 Agent 只汇总结构化 Claim/Citation/未知/冲突和 review，独占不可执行 `ProposalDraftArtifact` 的生成；F41 仍拥有真实 Proposal、审批和执行。
+F36 已于 2026-10-21 完成 P0–P3 并获用户验收。双层职责保持不变：Workbench 的 CRM 情报员、销售运营、客户沟通和 CRM 主管是 Mission 入口；后台以客户事实、商机诊断、业务政策为必需 Specialist，供应链风险和采购策略按真实业务条件启用。父 Agent 只汇总结构化 Claim/Citation/未知/冲突和 review，独占不可执行 `ProposalDraftArtifact` 的生成；F41 仍拥有真实 Proposal、审批和执行。
 
 F36 P0 已实现 `src/product_api/specialists.py` 的角色、任务图、Claim/Citation、组织与 Mission scope、独立 Review、Mission 质量门禁和父 Agent 汇总。P1 已实现 Markdown/TXT/PDF 本地解析、组织公开/指定角色 ACL、官方/synthetic 来源、不可变版本与 Chunk、全文检索、Citation 校验、新版本自动过期旧引用、版本撤销和整篇撤回。公开来源目录在 `docs/research/F36-public-knowledge-sources.md`，三份演示文档在 `data/knowledge/demo/`。`make knowledge-migrate` 可重复执行，`make knowledge-test` 在真实 PostgreSQL/RLS 中通过。
 
 F36 P2a 已实现 `SpecialistRunner`：Assignment 的工具集必须与实际 F42 注册表完全一致，工具必须是带显式参数校验器的 R0；Agent Engine 只能返回 16 KiB 内的结构化 output，组织、Mission、角色和 ID 由服务端重建，无效 Citation 会把 Claim 降级为 `rejected`。P2b 已让锁定版本的真实 Pi Agent 完成两次 Python 只读工具调用，将最终 JSON 文本通过通用 JSONL `output` 返回，再由 Python 校验为 `supply_risk` SpecialistResult。
 
-F36 Durable Mission 已接通：`opportunity_next_action` 由 F35 Worker 编排必需 Specialist、条件供应风险、独立 review 与唯一父汇总，且只生成不可执行 ProposalDraft。P3 的受限 CRM 读取、F39 供应事实和长期记忆也已接线：模型只能创建 candidate，人工确认/撤销和确定性来源写入都在 F40 留 Event；知识更新或撤销会使关联 confirmed 记忆降为 pending_revalidation。`make f36-integration-test` 在隔离 PostgreSQL/RLS 克隆库验证 Mission、Artifact/Event 链与记忆生命周期。证据仍是确定性 Replay 与本地服务，不代表真实 Provider、部署恢复或用户验收。
+F36 Durable Mission 已接通：`opportunity_next_action` 由 F35 Worker 编排必需 Specialist、条件供应风险、独立 review 与唯一父汇总，且只生成不可执行 ProposalDraft。P3 的受限 CRM 读取、F39 供应事实和长期记忆也已接线：模型只能创建 candidate，人工确认/撤销和确定性来源写入都在 F40 留 Event；知识更新或撤销会使关联 confirmed 记忆降为 pending_revalidation。`make f36-integration-test` 在隔离 PostgreSQL/RLS 克隆库验证 Mission、Artifact/Event 链与记忆生命周期。证据仍是确定性 Replay 与本地服务，不代表真实 Provider 或生产部署恢复。
 
 2026-10-20 用户确认以明确标记的模拟企业/客户/商机/政策完成 F36 portfolio demo；现有
 HackRF One 图纸、MANIFEST 和派生 BOM 是产品来源，首批关键料为 Skyworks
@@ -53,14 +53,13 @@ HackRF One 图纸、MANIFEST 和派生 BOM 是产品来源，首批关键料为 
 复核，不能批量采集或把凭证/完整响应落库。`data/knowledge/demo/` 已提供首批两份官方
 摘要和两份 synthetic 文档。F36 P3 已实现 F32 的受限只读 `PostgresCrmFactRepository`：
 只在 F31 同一 RLS/scope 事务内按机会 ID 返回最小 CRM 事实和版本化引用，不返回联系人
-邮箱，不实现 CRM 写入或 HTTP 路由。`make f36-check` 为 32 passed；启动 Colima 后的
-`make crm-facts-integration-test` 为 1 passed，验证正常读取、跨组织拒绝和同组织
-scope 拒绝。下一单元是把该事实快照作为客户事实 Specialist 的受控 R0 工具接入
-F35/F42 Mission，而不是扩大 F32。
+邮箱，不实现 CRM 写入或 HTTP 路由。该事实快照已作为客户事实 Specialist 的受控 R0
+工具接入 F35/F42 Mission；长期记忆生命周期也已完成。F36 的当前验收证据见本文件
+第 5 节，不扩大为完整 F32 CRM、F41 Proposal/Execution 或外部副作用。
 
 F31 的 Python/BFF 实现与真实 Auth 验证已完成，状态为等待用户验收：`src/product_api/` 提供可注入 `AuthVerifier`、RBAC、受限 `TenantRepository`、`/health`、`/v1/session` 与组织选择入口；Next API Route Handler 已全部改为只转发 Python，边界检查会拒绝它们导入数据库或领域实现。默认未配置 Supabase 时安全拒绝业务请求；本地 fixture 已验证 repository 在 `supplyagent_api` 角色和 `app.set_request_context` 同一事务内工作。2026-10-12 经用户授权的 `make api-live-auth-test` 已以真实 Supabase 测试用户验证 access token 登录、Python `/user` 重验、组织选择与跨组织拒绝；测试凭证只在本地 `.env`。F32 的 Python CRM 服务尚未实现，相关 BFF 入口不能当作已可用业务 API。
 
-F40 的 Python Trace Repository 已由 F42 和 F35 的真实集成测试使用；`0016_f40_trace_hardening.sql` 收紧 `SECURITY DEFINER` 函数 ACL、Run 游标、Case 一致性、Artifact 并发版本与链尾验证。`0017_f40_artifact_read_and_hash.sql` 将 Artifact 指纹改为 SQL 权威生成，并补 RLS 读取路径；不含对象存储一致性校验。F40 全回放尚未实现。F34 已补 SQL 预算预留/计量；F35 已补 Python Runtime/Worker 并等待验收。
+F40 的 Python Trace Repository 已由 F42 和 F35 的真实集成测试使用；`0016_f40_trace_hardening.sql` 收紧 `SECURITY DEFINER` 函数 ACL、Run 游标、Case 一致性、Artifact 并发版本与链尾验证。`0017_f40_artifact_read_and_hash.sql` 将 Artifact 指纹改为 SQL 权威生成，并补 RLS 读取路径；有限 Event-ID SSE 历史回放与 F34 计量已经接线。F40 等待用户验收；F33 实时订阅及 F38 全量回放/Eval 尚未实现。F35 已于 2026-10-21 获用户验收。
 
 F39/F44 的**授权设计重构**与其最小业务动作门禁已经完成运行验证，详细状态见 `docs/handoffs/2026-10-14-f39-f44-to-f42-session-handoff.md` 与当前 Contract。普通人工供应事实由 Python 在 F31 同一组织事务内作参数化 DML，PostgreSQL RLS 以已验证成员和当前组织作最终隔离；F44 要求 `supply:propose` 才能录入四类人工事实。Case scope 只接受受限的扁平业务上下文。2026-10-14 已实际通过 `make services-smoke`、`make supply-migrate`、`make supply-test` 与 `make supply-api-integration-test`；它们仍等待用户验收，且不代表真实 ERP、供应商或采购执行器集成。
 
@@ -74,11 +73,14 @@ F42 P0 至 P3 已完成并等待用户验收。P0 是 fixture 协议基线；P1 
 
 2026-10-19 本轮依序完成 F34 与 F35 核心实现：F34 采用用户选择的单 Run 短期 HTTP 能力，Python Gateway 持有策略、凭证、预算和计量；F35 用每组织专用 `maintainer` + `runtimeWorker: true` 成员身份领取 SQL Job，Python Worker 通过 F42 `AgentEnginePort` 驱动 Pi，并逐事件提交 F40 Trace。`make gateway-check` 4 passed、`make gateway-test` 通过、`make gateway-integration-test` 1 passed；`make runtime-check` 2 passed、`make runtime-test` 通过、`make runtime-integration-test` 1 passed。后者在隔离克隆库验证 HTTP 幂等入队→真实 Pi Replay→当前事实工具→持久 Trace/验链→Job 完成，并验证旧格式 Job 安全失败。未做真实付费 Provider 调用；真实部署的进程重启/cron 运维未演练。`make check` 本轮编译/lint 通过，离线测试为 23 failed、187 passed、21 deselected：22 项由既有 Skill 文件删除导致，1 项因沙箱禁止回环端口；该 F34 项在获准本机环境的 `make gateway-check` 中通过。提交门禁仍未全绿，未提交。
 
-F42、F34、F35 完成当前实现后，F36 正按 P0 责任边界 → P1 组织知识/citation → P2 Specialist Runtime → P3 CRM/供应领域接线推进；之后才是 F41 Proposal/Execution、F37 渠道、F33 Workbench/SSE，最后由 F38 完成故障注入、回放、Eval 和 Compose 交付。每个 Feature 仍须先确认 Contract，再进入 `in_progress`。
+F35/F36 已完成并获用户验收，当前没有 `in_progress` Feature。下一 Agentic Feature 是 F41 Proposal/Execution，但其 Contract 仍是草案，须先获用户确认；之后才是 F37 渠道、F33 Workbench/实时 SSE，最后由 F38 完成故障注入、全量回放、Eval 和 Compose 交付。
 
 不能跳过 F30/F31 直接做页面、渠道或真实模型调用：那会把单租户模拟 Harness 错接成带数据隔离和凭证风险的产品。
 
 ## 5. 本轮验证
+
+- 2026-10-21：`make f36-check` 为 37 passed；`make f36-integration-test` 为 1 passed，在本地健康 PostgreSQL/Redis 环境和隔离 PostgreSQL/RLS 克隆库验证完整 Mission、Artifact/Event 链与长期记忆生命周期。该证据不代表真实 Provider/BYOK、生产部署恢复、渠道或供应商调用。
+- 2026-10-21：进度收尾后的 `make check` 全绿：251 passed、24 deselected；仅有 2 条既有 Starlette/AnyIO 弃用警告。
 
 - 2026-10-20：`make f36-check` 通过，结果为 7 passed；覆盖 Citation 门禁、必需/条件 Specialist、任务图阶段、跨组织/跨 Mission 拒绝、独立 review、partial/needs_review/blocked 和不可执行 ProposalDraft。此证据仅代表 F36 P0，不代表 P1 Wiki/RAG、真实 Pi Specialist turn、数据库/RLS 或 F32/F41 接线。
 - 2026-10-20：F36 P1 加入后，`make f36-check` 为 19 passed；`make knowledge-migrate` 连续执行两次通过，`make knowledge-test` 在真实 PostgreSQL 中通过角色 ACL、跨组织拒绝、全文检索、哈希校验、新版本过期、撤销/撤回和内容不可变测试。此证据不代表 P2 Pi Specialist turn、F32 CRM 或 F41 Proposal 已接通。
@@ -88,7 +90,7 @@ F42、F34、F35 完成当前实现后，F36 正按 P0 责任边界 → P1 组织
 - 2026-10-20：P2a/P2b 后全仓 `make check` 的 compile 和 lint 通过，测试为 22 failed、219 passed、22 deselected。失败仍全部由工作树中已删除的四个旧 `skills/*/SKILL.md` 引起；本轮未恢复、改写或跳过这些测试。
 - 2026-10-20：加入 F36 P1 后，全仓 `make check` 的 compile 和 lint 通过，测试为 22 failed、207 passed、22 deselected。22 项失败均发生在既有测试加载已删除的 `skills/part_analyst/SKILL.md` 等四个 Skill 文件时；本轮未恢复、改写或绕过这些用户工作树删除。
 
-- `features.json` 可被 `jq` 解析，且当前只有 F36 为 `in_progress`。
+- `features.json` 可被 `jq` 解析；2026-10-21 收尾后没有 `in_progress` Feature。
 - 仓库当前没有 `check-punctuation.sh`；中文标点仅作人工 review，不得声称脚本门禁已执行。
 - `git diff --check` 对本轮文档通过；全工作树仍有 `supabase/migrations/0004_f40_trace.sql` 的既有行尾空格。
 - `make f42-check` 通过，结果为 6 passed。

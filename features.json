@@ -1,7 +1,7 @@
 {
   "version": 4,
   "updated": "2026-10-21",
-  "notes": "v0.6 将 Agentic 开发重心固定为 Python Product Harness + 可替换 AgentEnginePort。Pi Agent Core 是首选 turn 执行引擎，Node 只作无状态 sidecar；Python/SQL 继续拥有租户、上下文、工具、模型网关、运行恢复、副作用和审计。F42 等待用户验收；下一个 Agentic Feature 须由用户确认 Contract 后单独激活，规划顺序为 F34、F35、F36、F41、F37、F33 和 F38。",
+  "notes": "v0.6 将 Agentic 开发重心固定为 Python Product Harness + 可替换 AgentEnginePort。Pi Agent Core 是首选 turn 执行引擎，Node 只作无状态 sidecar；Python/SQL 继续拥有租户、上下文、工具、模型网关、运行恢复、副作用和审计。F35/F36 已在本地确定性 Replay 与 PostgreSQL/RLS 证据边界获用户验收；下一 Agentic Feature 为仍待用户确认 Contract 的 F41，之后才是 F37、F33 和 F38。",
   "status_values": [
     "not_started",
     "contract_draft",
@@ -57,7 +57,7 @@
         "F01"
       ],
       "milestone": "M1",
-      "status": "done",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F03.md",
       "note": "五小步完成（2026-09-29）：make check 48 过、test-integration 6 过、sim-run SEED=42 两次逐字相同；待用户验收"
     },
@@ -608,7 +608,7 @@
       "necessity": "保留图中的 SQL job、claim/lease/reaper/retry 和独立 Worker；HTTP 不承担 Agent 执行。",
       "depends_on": ["F30", "F31", "F06", "F09", "F15"],
       "milestone": "M2",
-      "status": "awaiting_acceptance",
+      "status": "done",
       "contract": "contracts/F35.md",
       "note": "2026-10-21：用户验收本地确定性 Mission 证据。HTTP 幂等入队、单组织专用身份 Worker、SQL 租约/代次/reaper/重试/取消、F40 持久 checkpoint、F42 AgentEnginePort 已接线；完整 F36 Mission 由同一 Worker 编排。隔离克隆库通过真实 Pi Replay 全链路；部署重启、cron 运维和真实付费 Provider 尚未验证。"
     },
@@ -620,9 +620,9 @@
       "necessity": "保留图中的 Agent Harness、Specialist 与知识底座，并复用采购验证链路。",
       "depends_on": ["F31", "F32", "F34", "F35", "F39", "F40", "F42", "F19", "F20", "F22", "F23"],
       "milestone": "M3",
-      "status": "in_progress",
+      "status": "done",
       "contract": "contracts/F36.md",
-  "note": "2026-10-21：P0–P3 实现完成，等待用户验收。P2c 的 opportunity_next_action 由 F35/F42 执行多 Specialist、独立 review 与唯一不可执行 ProposalDraft 父汇总，真实 PostgreSQL/RLS 克隆库集成通过。P3 的受限 CRM/F39 读取和长期记忆已接线：candidate 需人工确认，确定性来源可 confirmed，撤销与知识版本更新会降级为待重验，全部状态转换写 F40 Event。证据为本地确定性 Pi Replay 与 PostgreSQL/RLS，不代表真实 Provider、部署或最终用户验收。"
+      "note": "2026-10-21：用户验收 P0–P3 的本地确定性证据。opportunity_next_action 由 F35/F42 执行多 Specialist、独立 review 与唯一不可执行 ProposalDraft 父汇总；受限 CRM/F39 读取和长期记忆生命周期已接线，真实 PostgreSQL/RLS 克隆库集成通过。该验收不代表真实 Provider、生产部署或 F41 Proposal/Execution 已完成。"
     },
     {
       "id": "F37",
@@ -670,7 +670,7 @@
       "milestone": "M1",
       "status": "awaiting_acceptance",
       "contract": "contracts/F40.md",
-      "note": "2026-10-15：Trace Repository/checkpoint 已由 F42 接入；0016 加固函数 ACL、Run 游标、Case 一致性、Artifact 并发版本和链尾验证，并通过真实 PostgreSQL 验证。Event-ID SSE、F34 计量与全回放仍待实现。"
+      "note": "2026-10-21：Trace Repository/checkpoint、SQL 权威 Artifact 哈希、F34 计量、F35/F42 事件映射和有限 Event-ID SSE 历史回放均已实现并通过离线及本地 PostgreSQL/RLS 验证，等待用户验收。F33 实时订阅和 F38 全量回放/Eval 不属于本 Feature 的已完成证据。"
     },
     {
       "id": "F41",
