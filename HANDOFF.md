@@ -45,7 +45,7 @@ F36 P0 已实现 `src/product_api/specialists.py` 的角色、任务图、Claim/
 
 F36 P2a 已实现 `SpecialistRunner`：Assignment 的工具集必须与实际 F42 注册表完全一致，工具必须是带显式参数校验器的 R0；Agent Engine 只能返回 16 KiB 内的结构化 output，组织、Mission、角色和 ID 由服务端重建，无效 Citation 会把 Claim 降级为 `rejected`。P2b 已让锁定版本的真实 Pi Agent 完成两次 Python 只读工具调用，将最终 JSON 文本通过通用 JSONL `output` 返回，再由 Python 校验为 `supply_risk` SpecialistResult。
 
-F36 P2c 的第一个持久切片已接通：F35 Worker 先把两次 `supply.impact` 写为 F40 `tool_result` Artifact，Pi 返回的 Citation 由 Python 重新比对同 Trace/Case 的 Artifact ID、版本和哈希，然后写入 `specialist_result` Artifact，最后完成 SQL Job。`make runtime-integration-test` 在隔离克隆库验证了两个工具 Artifact、一个 Specialist Artifact 和 8 条 Event。`make f36-check` 为 30 passed，`make f42-check` 为 14 passed，`make runtime-check` 为 2 passed。该证据仍是无外部 Provider 的确定性 Replay；多 Specialist、独立 review、部分/失败结果汇合和父 Agent 汇总尚未实现。F32 Python CRM 服务仍是后续真实客户事实接线的明确缺口。
+F36 Durable Mission 已接通：`opportunity_next_action` 由 F35 Worker 编排必需 Specialist、条件供应风险、独立 review 与唯一父汇总，且只生成不可执行 ProposalDraft。P3 的受限 CRM 读取、F39 供应事实和长期记忆也已接线：模型只能创建 candidate，人工确认/撤销和确定性来源写入都在 F40 留 Event；知识更新或撤销会使关联 confirmed 记忆降为 pending_revalidation。`make f36-integration-test` 在隔离 PostgreSQL/RLS 克隆库验证 Mission、Artifact/Event 链与记忆生命周期。证据仍是确定性 Replay 与本地服务，不代表真实 Provider、部署恢复或用户验收。
 
 2026-10-20 用户确认以明确标记的模拟企业/客户/商机/政策完成 F36 portfolio demo；现有
 HackRF One 图纸、MANIFEST 和派生 BOM 是产品来源，首批关键料为 Skyworks

@@ -226,11 +226,12 @@ runtime-worker: ## 启动单组织 F35 Worker；需显式配置 Worker 身份和
 	@PYTHONPATH=src $(VPY) -m product_api.worker_main
 
 f36-check: ## F36 Specialist、知识、CRM 事实读取与质量门禁
-	@$(VENV)/bin/ruff check src/product_api/crm.py src/product_api/specialists.py src/product_api/specialist_runner.py src/product_api/mission_runtime.py src/product_api/knowledge.py src/product_api/knowledge_import.py tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_mission_runtime.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
-	@PYTHONPATH=src $(VPY) -m pytest -q tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_mission_runtime.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py
+	@$(VENV)/bin/ruff check src/product_api/crm.py src/product_api/specialists.py src/product_api/specialist_runner.py src/product_api/mission_runtime.py src/product_api/knowledge.py src/product_api/knowledge_import.py src/product_api/memory.py tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_mission_runtime.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py tests/test_product_api_memory.py
+	@PYTHONPATH=src $(VPY) -m pytest -q tests/test_product_api_crm.py tests/test_product_api_specialists.py tests/test_product_api_specialist_runner.py tests/test_product_api_mission_runtime.py tests/test_product_api_knowledge.py tests/test_product_api_knowledge_import.py tests/test_product_api_memory.py
 
 f36-migrate: runtime-migrate crm-migrate knowledge-migrate ## 应用 F36 Durable Mission schema
 	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0021_f36_mission.sql
+	@$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -U $${SUPPLYAGENT_PG_USER:-postgres} -d $${SUPPLYAGENT_PG_DB:-supplyagent} < supabase/migrations/0022_f36_memory.sql
 
 f36-integration-test: f36-migrate ## F36 多 Specialist Mission、F40 Artifact 与 RLS 验收
 	@PYTHONPATH=src $(VPY) -m pytest -q -m integration tests/test_product_api_mission_integration.py

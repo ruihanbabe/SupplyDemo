@@ -23,6 +23,7 @@ from product_api.knowledge import (
     PostgresKnowledgeRepository,
     SourceKind,
 )
+from product_api.memory import PostgresLongTermMemoryRepository
 from product_api.runtime import DurableWorker, PostgresRuntimeStore, WorkerIdentity, WorkerPolicy
 from product_api.tenant import PostgresTenantRepository
 from product_api.trace import PostgresTraceRepository
@@ -114,7 +115,7 @@ async def _run_in_clone(database_url: str) -> None:
             SourceKind.SYNTHETIC,
             None,
         )
-        await knowledge.publish_version(
+        version_id = await knowledge.publish_version(
             connection,
             document_id,
             "demo-v1",
@@ -128,8 +129,11 @@ async def _run_in_clone(database_url: str) -> None:
                 ),
             ),
         )
+        return document_id, version_id
 
-    await tenants.in_organization(actor_id, organization_id, publish_policy)
+    policy_document_id, policy_version_id = await tenants.in_organization(
+        actor_id, organization_id, publish_policy
+    )
 
     class FixedAuth:
         async def verify_access_token(self, access_token: str) -> AuthenticatedIdentity:
@@ -193,3 +197,73 @@ async def _run_in_clone(database_url: str) -> None:
         organization_id,
         lambda connection: PostgresTraceRepository().verify_chain(connection, trace_run_id),
     )
+
+    memory = PostgresLongTermMemoryRepository()
+    traces = PostgresTraceRepository()
+
+    async def propose_and_confirm(connection):
+        trace_id = await traces.begin_run(connection, "api", None)
+        memory_id = await memory.propose(
+            connection,
+            {"fact": "synthetic delivery updates need approval"},
+            {"kind": "knowledge_version", "documentId": str(policy_document_id)},
+            trace_id,
+            source_version_id=policy_version_id,
+        )
+        await memory.confirm(connection, memory_id, trace_id)
+        return trace_id, memory_id
+
+    memory_trace_id, memory_id = await tenants.in_organization(
+        actor_id, organization_id, propose_and_confirm
+    )
+
+    async def publish_replacement(connection):
+        return await knowledge.publish_version(
+            connection,
+            policy_document_id,
+            "demo-v2",
+            "synthetic:NRF-COMM-1.1",
+            "Approval remains required before an update.",
+            (
+                KnowledgeChunkInput(
+                    0, "section:approval", "Approval remains required before an update."
+                ),
+            ),
+        )
+
+    await tenants.in_organization(actor_id, organization_id, publish_replacement)
+
+    async def inspect_memory(connection):
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                "select status from app.long_term_memory where id=%s", (memory_id,)
+            )
+            assert (await cursor.fetchone())["status"] == "pending_revalidation"
+            await cursor.execute(
+                "select count(*) as count from app.trace_event where event_type='memory.pending_revalidation'"
+            )
+            assert (await cursor.fetchone())["count"] == 1
+        events = await traces.list_events(connection, memory_trace_id, None)
+        assert [event.event_type for event in events] == ["memory.candidate", "memory.confirmed"]
+
+    await tenants.in_organization(actor_id, organization_id, inspect_memory)
+
+    async def revoke_memory(connection):
+        await memory.revoke(connection, memory_id, memory_trace_id)
+
+    await tenants.in_organization(actor_id, organization_id, revoke_memory)
+
+    async def inspect_revocation(connection):
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                "select status from app.long_term_memory where id=%s", (memory_id,)
+            )
+            assert (await cursor.fetchone())["status"] == "revoked"
+        events = await traces.list_events(connection, memory_trace_id, None)
+        assert [event.event_type for event in events] == [
+            "memory.candidate",
+            "memory.confirmed",
+            "memory.revoked",
+        ]
+
+    await tenants.in_organization(actor_id, organization_id, inspect_revocation)

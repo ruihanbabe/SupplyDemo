@@ -622,7 +622,7 @@
       "milestone": "M3",
       "status": "in_progress",
       "contract": "contracts/F36.md",
-      "note": "2026-10-20：P0/P1 已实现，真实 PostgreSQL knowledge-test 通过。P2a 实现 R0 工具、参数 schema、受限 output、服务端 scope/ID 与 Citation 门禁；P2b 用真实 pi-agent-core Replay 验证 supply_risk 结构化返回。P2c 第一切片已将 F35 Job、F40 tool_result/specialist_result 与 Citation ID/版本/哈希重验接通，runtime-integration-test 通过。P3 首条 F32 只读事实接线已验证；无真实 Provider，且多 Specialist、独立 review、父汇总和 Mission Worker 接线尚未实现。"
+  "note": "2026-10-21：P0–P3 实现完成，等待用户验收。P2c 的 opportunity_next_action 由 F35/F42 执行多 Specialist、独立 review 与唯一不可执行 ProposalDraft 父汇总，真实 PostgreSQL/RLS 克隆库集成通过。P3 的受限 CRM/F39 读取和长期记忆已接线：candidate 需人工确认，确定性来源可 confirmed，撤销与知识版本更新会降级为待重验，全部状态转换写 F40 Event。证据为本地确定性 Pi Replay 与 PostgreSQL/RLS，不代表真实 Provider、部署或最终用户验收。"
     },
     {
       "id": "F37",
