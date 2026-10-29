@@ -50,4 +50,6 @@
 
 ## 续接
 
+基线已提交并推送至 `origin/spec-v0.2-harness-reset`，提交为 `18093823a6122e8a37e4a4e1cb8b306c2d39dab2`；推送后已通过 `git ls-remote` 独立核对一致。已有 6 个本地提交一并推送。远端 Actions API 本次返回该分支运行列表为空，不宣称远端 CI 通过。推送后本地仅保留 `.claude/settings.local.json` 原有未暂存修改；该文件未包含在基线提交中。
+
 下一项是迁移 TODO 的阶段二：核对固定 AgentScope 版本及依赖，通过公开接口验证一条只读调查链。当前授权止于记录计划和保存远端基线；本轮不开始迁移实现。
