@@ -23,6 +23,7 @@ venv/
 frontend/node_modules/
 pi_sidecar/node_modules/
 frontend/.next/
+*.tsbuildinfo
 
 # 本地运行数据与服务卷
 .runtime/
@@ -35,6 +36,3 @@ frontend/.next/
 
 # Claude Code 个人配置
 .claude/settings.local.json
-
-# F19 真实 datasheet 原文（版权，不入 git）
-data/datasheets/

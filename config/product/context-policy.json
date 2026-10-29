@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "inputCap": 24576,
+  "safetyRatio": 0.1,
+  "reasoningReserve": 0,
+  "shrinkRatio": 0.8,
+  "summaryRatio": 0.9,
+  "summaryTarget": 0.6,
+  "partitions": {"rules": 12, "task": 18, "working": 12, "recent": 18, "evidence": 30, "memory": 10},
+  "maxTransferBytes": 1048576,
+  "chunkBytes": 8192,
+  "maxChunks": 128
+}

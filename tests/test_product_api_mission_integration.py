@@ -63,6 +63,12 @@ async def _scenario(source: str) -> None:
 
 
 async def _run_in_clone(database_url: str) -> None:
+    async with await AsyncConnection.connect(database_url) as migration_db:
+        migration = (Path(__file__).resolve().parents[1] / "supabase/migrations/0030_f51_tool_execution.sql").read_text()
+        await migration_db.execute(migration)
+        await migration_db.execute(migration)
+        await migration_db.execute((Path(__file__).resolve().parents[1] / "supabase/migrations/0031_f51_tool_resources.sql").read_text())
+        await migration_db.execute((Path(__file__).resolve().parents[1] / "supabase/migrations/0042_runtime_attempt_guard.sql").read_text())
     organization_id, actor_id, worker_id = uuid4(), uuid4(), uuid4()
     async with await AsyncConnection.connect(database_url) as connection:
         async with connection.cursor() as cursor:
@@ -160,7 +166,7 @@ async def _run_in_clone(database_url: str) -> None:
         PostgresRuntimeStore(tenants, identity),
         identity,
         WorkerPolicy(60, 5, 2, 0),
-        lambda _: PiRuntimeAdapter(("node", str(SIDECAR)), timeout_seconds=15),
+        lambda _: PiRuntimeAdapter(("node", str(SIDECAR)), timeout_seconds=15, protocol_version=2),
     )
     assert await worker.run_once()
 

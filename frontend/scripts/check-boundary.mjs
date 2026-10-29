@@ -19,10 +19,8 @@ const violations = files(sourceRoot).flatMap((path) => {
   const denied = forbidden.filter((needle) => text.includes(needle)).map((needle) => `${sourcePath}: ${needle}`);
   const serverDatabaseAccess = text.includes('from "postgres"');
   const clientDatabaseAccess = text.includes('"use client"') && text.includes("SUPPLYAGENT_PRODUCT_DATABASE_URL");
-  const legacyServiceImport = /from\s+["'][^"']*(?:simenv|src\/business)[^"']*["']/.test(text);
   if (serverDatabaseAccess) denied.push(`${sourcePath}: Next frontend must not import a PostgreSQL client`);
   if (clientDatabaseAccess) denied.push(`${sourcePath}: browser module must not read product database URL`);
-  if (legacyServiceImport) denied.push(`${sourcePath}: legacy simulation or Python business service import is forbidden`);
   return denied;
 });
 

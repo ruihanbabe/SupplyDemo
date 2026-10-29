@@ -1,0 +1,23 @@
+# Optional F48 backend; immutable upstream source, install only via make f48-setup.
+mem0ai @ https://github.com/mem0ai/mem0/archive/26cdefb46600c0fa5953c4b5ee5003c125539fc4.zip#sha256=4e8aa24e3b71130d0740659e8e8bbfaf36e41a32089ea8d6a84aa8d178ed70d3
+protobuf==6.33.6
+openai==3.37.0
+httpx2==2.16.0
+httpcore2==2.16.0
+jiter==0.18.0
+posthog==7.75.11
+requests==2.34.2
+charset-normalizer==3.5.2
+urllib3==2.8.0
+backoff==2.2.1
+distro==1.9.0
+pytz==2026.5
+qdrant-client==1.20.0
+portalocker==4.4.1
+grpcio==1.85.0
+h2==4.4.1
+hpack==4.2.0
+hyperframe==6.1.0
+numpy==2.4.6
+truststore==0.10.5
+sniffio==1.3.1

@@ -1,6 +1,6 @@
 # spec.md：SupplyAgent AI Native CRM 与供应链处置系统
 
-> 版本：v0.6（2026-10-19）
+> 版本：v0.6（2026-10-23 整理）
 >
 > 本版按用户要求重基线：参考架构图中的功能全部保留为产品目标；现有 SupplyAgent 的采购、证据、审批和可复现 Harness 能力作为其中的供应链业务域。图是功能参考，不代表取得其源码、数据或品牌资产。
 
@@ -20,10 +20,10 @@ SupplyAgent 是一个多租户的 **AI Native CRM 与供应链处置系统**。�
 |---|---|
 | CRM 与 Agent 工作台 | 客户、商机、Kanban、任务、案子、运行时间线、React 工作台 |
 | API 与租户身份 | Route Handlers、组织/成员/RBAC、scope/role、RLS、SSE 回放 |
-| 服务端信任边界 | Next 服务层、SQL 持久化、独立 Worker/cron；模型和页面都不直连数据库 |
+| 服务端信任边界 | Next 薄展示/BFF、Python 业务层、SQL 持久化、独立 Worker/cron；模型和页面都不直连数据库 |
 | 模型网关 / BYOK | 组织凭证隔离、Provider Adapter、模型调用、预算/成本/审计 |
 | Agent Harness | 任务图、工具循环、上下文重建、取消/恢复、提案策略、父子 Agent 汇总 |
-| Durable Runtime | runs、sessions、agent_run_states、job_queue、event_log、claim/lease/reaper/retry |
+| Durable Runtime | Mission/Run/Job、角色执行记录、Trace、claim/lease/reaper/retry |
 | 事实、记忆与恢复 | 版本化业务事实、组织策略、checkpoint、运行恢复时重读业务边界 |
 | Specialist 协作 | 客户事实、商机、采购、供应链、知识检索、Verifier/Explainer；独立 review 可并行 |
 | 企业知识 / Wiki / RAG | 私有文件、版本、权限、citations、全文检索与可选向量检索 |
@@ -47,8 +47,10 @@ SupplyAgent 是一个多租户的 **AI Native CRM 与供应链处置系统**。�
 ### 0.4 文档与重基线规则
 
 - `spec.md` 是目标需求的唯一权威来源；`features.json` 是实现清单和状态的唯一权威来源；每个 `contracts/Fxx.md` 是单项边界与验收证据。
-- F01 至 F29 和其 Contract 是现有代码的历史实现证据，不因本次产品重基线自动变成 v0.6 已验收能力。复用前由 F30 逐项核验。
+- 产品范围、验收和依赖只由 F30 及以后的 Feature Contract 定义。遗留 Alembic 迁移仅为历史数据库维护记录，不是当前产品能力或复用依据。
 - Feature 是否可开工只看 `features.json` 和对应 Contract。一次只允许一个 Agentic Feature 处于 `in_progress`，其余能力即使已有 SQL 或历史代码，也必须按实际状态标为草案、延后或等待验收。
+
+业务规则唯一正文见 [business-logic.md](business-logic.md)，跨模块数据约定见 [data-contract.md](data-contract.md)。本文件保留目标与架构，实施状态由 features.json 管理。
 
 ## 1. 产品对象、角色与数据边界
 
@@ -83,6 +85,8 @@ Next.js Web 工作台 / WhatsApp / 飞书事件
 
 ### 2.1 API 与工作台
 
+当前交付入口与进程运行以 [Model Gateway 与 Worker 运行说明](docs/design/model-gateway-worker-contract.md) 为准；本节及 §2.8 的长期渠道目标保留后续实施。
+
 前端采用 Next.js / React 的工作台，至少提供客户、商机、供应链案子、Kanban、运行时间线、审批收件箱、知识文档和配额视图。Next 是薄展示层：负责页面渲染、浏览器会话承载和同源 BFF 转发，不承载领域规则、SQL Repository、Worker、Gateway 或 Agent Runtime。所有产品业务 HTTP 与 SSE 接口由 Python API 提供；API 在创建 Run/Mission 后只入队，不在 HTTP 请求内执行 Agent turn。
 
 Python API 是身份、组织上下文、RBAC、请求 schema、领域服务与 SQL 事务的唯一服务端实现。它逐请求验证 Supabase Auth access token，忽略客户端声称的 actor、角色或组织；选中组织仅可作为提示，Python 必须在同一数据库事务内重新验证成员关系并调用 `app.set_request_context`。Next 不签发可被 Python 信任的身份断言，也不持有 PostgreSQL service role。
@@ -91,11 +95,13 @@ Python API 是身份、组织上下文、RBAC、请求 schema、领域服务与 
 
 ### 2.2 Durable Runtime 只管理产品运行生命周期
 
-SQL 是 runs、sessions、agent_run_states、job_queue、event_log、审批和发送账本的事实来源。Worker 对 Job 使用 claim、lease、reaper 和 retry；重试、取消、恢复和幂等键均由 Python 实现。Runtime 从最新 checkpoint 和当前业务事实重建上下文，不信任进程内状态。
+当前 SQL 权威记录为 runtime_mission/runtime_run/runtime_job 与 trace_run/trace_event/trace_artifact，F45 追加私有 attempt/Observation；通用 session、Context 状态、审批和发送账本是后续契约，不能当成已实现表。Worker 对 Job 使用 claim、lease、reaper 和 retry；重试、取消、恢复和幂等键均由 Python 实现。Runtime 从最新 checkpoint 和当前业务事实重建上下文，不信任进程内状态。
 
 Python Worker 领取 Agent Job 后调用 F42 定义的 `AgentEnginePort`。F35 负责何时开始、停止、重试和恢复一个 turn，F42 负责 turn 内的模型消息、工具调用和终止语义。这个分界让 Runtime 可以替换执行引擎，也避免把 Pi 的进程状态误当成产品状态。
 
 ### 2.3 Product Harness 拥有业务控制，Pi 只执行 Agent turn
+
+当前身份、实际输入与持久记录对应见 [任务执行数据契约](data-contract.md)，已实现与未决设计分别标记。
 
 Python Product Harness 负责组装 `ContextBundle`、任务和工具能力，执行组织权限与策略检查，路由模型请求，调用只读工具或创建 Proposal，保存证据与 Trace，并决定父子任务如何汇总。它通过稳定的 `AgentEnginePort` 调用执行引擎，不能依赖某个 Pi 类或 Node 内部对象。
 
@@ -116,15 +122,17 @@ Pi Agent Core 作为首选 `AgentEnginePort` 实现，保留上游的消息循�
 
 ### 2.5 Agent 与 Specialist
 
-Workbench 以“CRM 情报员、销售运营、客户沟通、CRM 主管”等 Mission 入口呈现能力，但这些名称不等于后台 Specialist 边界。主 Agent 是编排者，不是数据库操作者；它创建有界任务图，只拿 Claim 摘要、引用、未知、冲突和允许工具，并独占 Recommendation 与 `ProposalDraftArtifact` 汇总入口。
-
-内部三个必需 Specialist 按业务判断责任划分：客户事实只返回有引用的 CRM 事实；商机诊断只解释事实对阶段、阻碍与承诺风险的影响；业务政策只返回允许、禁止、审批和证据要求。供应链风险与采购策略是由已验证业务关联启用的条件角色。SQL/BOM 查询、知识检索、报价采集、citation 校验、数值计算和文字格式化是工具或确定性服务，不因使用模型而成为 Specialist。
-
-相互独立的只读调查和 review 可以并行；同一 Mission 只能有一个活动父汇总/ProposalDraft 写入路径，`proposalMaxParallel=1`。部分结果必须保留 `partial`、`needs_review` 或 `blocked` 质量标记，不能等同完整生产验收。F36 只形成不可执行的 ProposalDraft；真实 Proposal、审批和执行属于 F41。
+业务场景与固定角色/工具分工见 business-logic BL01/BL03。Harness 负责有界编排，Pi 不拥有领域状态；具体交接与结果质量见 data-contract DC03/DC05/DC06/DC08。动态 Planner/冲突裁决是后续目标。
 
 ### 2.6 知识、记忆与证据
 
-知识库保存组织私有文档、Wiki、datasheet、不可变版本、ACL 和 citations。检索先执行组织与文档权限过滤，默认使用全文检索；向量检索是可配置增强，不替代权限和引用校验。每项事实性 Claim 必须回链到业务记录或含来源类型、对象、版本、位置和片段哈希的知识引用；证据不足只能输出“无法确认”。长期记忆只能由人工确认或确定性来源写入，模型只能提出候选；来源更新或撤销后，相关 Claim、Recommendation 和记忆必须降级为待重验。
+知识提供正式版本化资料；长期记忆提供有来源/时间/范围的偏好、历史决策、任务过程与经确认经验；正式业务状态由领域服务维护。业务规则正文见 [BL08/BL09/BL13](business-logic.md)，身份/版本/加工/删除与请求接受约定见 [DC18–DC21](data-contract.md#dc18-会话消息工作状态与提交水位f52-目标)。
+
+F48 主选 Mem0 OSS，复用唯一有效记忆语义检索，默认发布带来源的通用过程摘要，稳定命题抽取按需使用；PostgreSQL 保存准确摘要/确认记忆版本、来源与当前权限/生命周期，Mem0 是可重建投影。候选加工、确认发布、异步对账、软忘记/硬删除和离线巩固由 Python 管理。后端不能满足隔离/擦除等验收时按同业务样本重评，不并存多套有效索引。
+
+F52 管 Conversation、近期完整消息单元、Working State/checkpoint、每次模型请求的 ContextSnapshot、分区预算、渐进读取与 Compaction。Python 决定可发送投影，Pi 保留消息/工具循环并在每次模型请求前交接准备；Gateway 最终校验并记录实际请求。commit 代表来源/状态及待加工水位持久化，不等于长期记忆已可检索；Compaction 摘要不自动成为确认记忆。
+
+开发顺序与验收分别见 [F51](contracts/F51.md) → [F52](contracts/F52.md) → [F48](contracts/F48.md)。F52 可在空 MemoryPort 下独立使用；F48 对接其来源提交与注入 Interface，无反向依赖。模块接口见 [Memory](src/product_api/MEMORY_RUNTIME.md)、[Context](src/product_api/CONTEXT_RUNTIME.md)，传输见 [Pi Context 协议](pi_sidecar/CONTEXT_PROTOCOL.md)。当前仍只有已有最小 Harness、角色启动快照与旧 F36 记忆生命周期，上述新能力尚未实现。
 
 ### 2.7 工具、提案与副作用
 
@@ -135,32 +143,23 @@ Workbench 以“CRM 情报员、销售运营、客户沟通、CRM 主管”等 M
 - 受控变更：客户字段更新、商机更新、采购草稿、发送草稿，均先产生 Proposal。
 - 外部副作用：采购提交、WhatsApp/飞书发送必须由审批记录签发的令牌授权，并在提交前重校验权限、service revision、opt-out、草稿哈希和 send ledger。
 
+F51 已实现待验收的工具机制采用分离的 ToolRegistry、ToolRuntime 和 ToolScheduler。Registry 管声明、精确别名、可用性与角色绑定；Runtime 管准备、授权/范围重验、领域执行及持久结果；Scheduler 管完整批次的顺序屏障、连续兼容组、资源准入、取消与结果归位。Mission 仍管理业务依赖、必需分支及汇总，不把这些职责下放工具调度。
+
+Python 是工具执行调度的唯一所有者；Pi 提交完整工具批次并按原身份消费结果，保留消息循环。声明中的副作用、并发兼容性和资源约束相互独立，调度不推导业务依赖图或一致快照。当前实施范围仍限 R0；R1/R2 与 MCP 的目标不因新机制而自动启用。业务策略见 [BL12](business-logic.md#bl12-工具绑定执行与失败策略f51-目标)，数据见 [DC15–DC17](data-contract.md#dc15-工具定义绑定与执行身份f51-目标)；接口与算法见 [Python 模块设计](src/product_api/TOOL_RUNTIME.md)，Pi 批次及版本协议见 [sidecar 文档](pi_sidecar/TOOL_PROTOCOL.md)。实施状态与分阶段验收见 [F51](contracts/F51.md)。
+
 ### 2.8 人工决策与渠道
 
 人工可批准、拒绝、要求恢复/重规划或编辑受权限允许的草稿。审批只是针对当前内容哈希的短期授权，不是永久运行许可。渠道层实现 WhatsApp adapter 和飞书内部协作 adapter：前者可将客户会话接入 Workbench，后者仅作内部事实/通知，均不得绕过审批或直接授予写权限。
 
 ## 3. 供应链领域的保留与改造
 
-现有 Environment、采购执行器、证据门控、审批令牌、污点追踪、回放、Eval 和模拟人工继续存在，但要适配组织上下文、Proposal 模型、统一事件日志和 Worker 生命周期。任何原有“单租户模拟器直调”接口都只能保留为测试后端或服务内部实现，不能成为 API/模型绕过 RLS 的入口。
+供应链能力必须在组织上下文、Proposal 模型、统一事件日志和 Worker 生命周期内重新实现。测试夹具或本地样例都不能成为 API、模型工具或绕过 RLS 的入口。
 
 采购流程的状态至少为：发现 → 诊断 → 影响分析 → 方案/报价 → 草稿 → 门控 → 审批等待 → 提交前重校验 → 提交/跟踪 → 关闭或升级。供应链和 CRM 都复用同一 Run、Artifact、Approval、Proposal、Trace 和 Audit 模型。
 
-### 3.1 旧实现迁入 v0.6 的规则
+### 3.1 供应链领域边界
 
-旧模块不是按文件名直接接到 Web/Agent 上，而是按下表迁入新的服务边界。保留表示业务不变量仍有效；改造表示必须补组织上下文、SQL 产品状态或权限边界；测试后端表示只能服务固定样例、情景和 Eval，不能成为真实产品接口。
-
-| 旧 Feature / 模块群 | v0.6 处置 | 新职责与硬约束 | 迁移 Feature |
-|---|---|---|---|
-| F01、F02 | 保留 | Python 工程、硬件原始层和导入管线继续是供应链数据来源；不承载 CRM 用户数据。 | F39 |
-| F03、F04、F05 | 改造 + 测试后端 | simenv 保留为情景/Eval 后端；供应链领域服务对产品暴露组织范围的只读事实和受控命令，不能让模型直调模拟器。 | F39 |
-| F06、F17、F18 | 改造 | 事件、Artifact、计量和回放升级为 SQL 产品 Trace；所有记录带组织、Run 与操作者，SSE 只读此投影。 | F40 |
-| F07、F11、F12、F13、F15 | 改造 | 工具代理、能力、审批、污点、幂等恢复成为统一的 Tool / Proposal / Execution 边界；任何渠道或采购副作用必须走它。 | F41 |
-| F08、F09、F16、F22、F23 | 改造 | Python 中的模型/编排逻辑退为可复用策略和测试基线；实际产品 turn 由 F42 的 `AgentEnginePort` 驱动，所有上下文和工具仍由 Product Harness 装配。 | F42 |
-| F10、F14、F21 | 改造 | Case、反馈、影响分析、比价与采购执行器变成供应链领域服务；与 CRM 对象只能通过受权限控制的关联读取。 | F39、F41 |
-| F19、F20 | 改造 | datasheet、术语、替代关系和 Skills 迁入组织知识边界，补 ACL、版本、citation 和失效传播。 | F36 |
-| F24 至 F29 | 不直接复用 | 尚未开工的旧 Web/Eval/交付计划不再按旧单租户假设实现；分别由 F33、F38 和本表的改造 Feature 取代。 | F33、F38 |
-
-以下旧行为不得搬入产品路径：模型或浏览器直接调用 simenv、本机文件作为 Run 恢复事实、固定样例 Provider 冒充真实 BYOK、以及仅因 ready_for_review 就执行采购或发送。
+供应链数据只通过组织范围的 Python 服务、SQL/RLS 与受控工具进入产品路径。模拟器、本地文件和旧数据库结构都不得作为产品 API、模型工具或 Run 恢复事实。评估、数据导入和外部渠道需要各自的已确认 Contract 与可执行验收。
 
 ## 4. 可观测性、评估与运行
 
@@ -170,13 +169,13 @@ Eval 覆盖结果正确性、过程合规性、成本/时延、恢复与重复�
 
 ## 5. Feature 划分与顺序
 
-现有 F01 至 F29 作为可复用资产，先由 F30 做兼容审计。新增 Feature 不取代其历史证据，而是把它们接入新的产品边界。
+F30 确立 v0.6 产品基线；后续 Feature 只依赖已定义的产品边界和可执行验收，不依赖已清理的旧实现。
 
 | 顺序 | Feature | 目标 |
 |---|---|---|
 | 1 | F30 | 现有能力兼容审计，形成迁移清单，禁止未经核验宣称已实现。 |
 | 2 | F31 | 多租户身份、组织隔离、RBAC/RLS、服务端 API 与审计上下文。 |
-| 3 | F39 | 供应链领域迁入：把旧模拟内核、Case 与确定性采购组件放入组织范围服务，同时保留 simenv 作 Eval 后端。 |
+| 3 | F39 | 供应链领域：组织范围的事实、确定性影响计算与受控 API。 |
 | 4 | F40 | 产品 Trace 迁入：把旧 Session、Artifact、计量、回放接到组织级 SQL Trace 与 SSE 投影。 |
 | 5 | F32 | CRM 业务域：客户、联系人、商机、会话、Kanban 与 CRM Proposal。 |
 | 6 | F42 | 建立 Product Harness 与 `AgentEnginePort`，把现有受控协议夹具替换为锁定版本的真实 Pi Agent Core；先用确定性 Replay 模型验证工具循环、取消、失败和 Trace。 |
@@ -189,6 +188,9 @@ Eval 覆盖结果正确性、过程合规性、成本/时延、恢复与重复�
 | 13 | F37 | 人工决策、受控写入、发送账本与 WhatsApp/飞书渠道。 |
 | 14 | F33 | Workbench 与 SSE：运行时间线、审批收件箱、配额、断线回放。 |
 | 15 | F38 | Trace/Eval/交付：SQL Trace、Langfuse 可选接入、回放、隔离测试、Compose 演示。 |
+| 16 | F51 | 工具声明/绑定、统一 Runtime、连续兼容组/共享容量及 Python 独占的 Pi v2 桥接已实现待验收；0030/0031 未应用业务库。 |
+| 17 | F52 | 会话/工作状态、每请求上下文装配、预算、压缩与私有分块协议；长期记忆关闭也可独立验收。 |
+| 18 | F48 | Mem0 候选加工/有效检索、来源版本治理、纠错遗忘、跨会话过程复用与离线巩固。 |
 
 实施时一次只激活一个 Feature；Contract 先经用户确认，再改 `features.json` 为 `in_progress`。每项完成必须跑对应离线与真实服务验证，并更新 HANDOFF。不得因本期困难删除表中能力；只能标注 `deferred` 并说明未完成的运行证据。
 

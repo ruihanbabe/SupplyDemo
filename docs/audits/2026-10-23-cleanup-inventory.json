@@ -1,0 +1,1511 @@
+{
+  "snapshot_date": "2026-10-23",
+  "scope": "working-tree files returned by rg --files --hidden; before creating audit outputs",
+  "file_count": 184,
+  "bytes": 1467441,
+  "preexisting_git_status_counts": {
+    " M": 23,
+    "M ": 7,
+    "MM": 5,
+    "D ": 209,
+    "??": 40
+  },
+  "excluded": [
+    ".git",
+    ".venv",
+    "node_modules",
+    ".next",
+    "Python/test/lint caches",
+    ".env and other ignored credentials",
+    ".claude/settings.local.json"
+  ],
+  "database_metadata": {
+    "app_tables": 29,
+    "public_legacy_tables": 12,
+    "public_migration_metadata_tables": 1,
+    "legacy_alembic_version": "0008",
+    "legacy_nonempty_table": "public.hw_part",
+    "legacy_nonempty_row_count": 117,
+    "pending_table_examples_absent": [
+      "app.action_proposal",
+      "app.intelligence_request",
+      "app.catalog_product",
+      "app.model_exchange"
+    ],
+    "notes": "Read-only catalog, dependency, privilege and count queries only. No business record bodies or secrets collected."
+  },
+  "files": [
+    {
+      "path": ".env.example",
+      "bytes": 5618,
+      "lines": 109,
+      "sha256": "5bf10cd08e1ac0df2d0b124c32b827b3c19ff02f7ddaddbeb94118c2918cc73d",
+      "review_item": "B08",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 531,
+      "lines": 37,
+      "sha256": "d905e4a751615ea12ed53110c899b8bccfa1a3c6ff3c636dd98f324c61920439",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 2846,
+      "lines": 38,
+      "sha256": "362aaf90b5c2ad4645164f02cf0af7a72d51df3b66ec9b25c25a8efdc38a1217",
+      "review_item": "B07",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "CODING_RULES.md",
+      "bytes": 11072,
+      "lines": 130,
+      "sha256": "d04b03f17fd64fa199ae939d1e0a3c04c94277f16e5dac13bc683e7fa0f72ce5",
+      "review_item": "A02",
+      "proposed_action": "delete_candidate"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 4759,
+      "lines": 42,
+      "sha256": "39cdda6e0ebdc98ad801c2f09bd370ba1f120b4c0dc153ddc59d4cd910525d60",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "Makefile",
+      "bytes": 20758,
+      "lines": 286,
+      "sha256": "e5c3a8131684cf3f57571979b6259d613c466b734b1bcdbe6081ec1e78455b0e",
+      "review_item": "B07",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "alembic.ini",
+      "bytes": 97,
+      "lines": 4,
+      "sha256": "c8dff3ed8c5474c2959696e1460714e7dbef8a5e982050a9fb177e08cedf53b3",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "alembic/env.py",
+      "bytes": 1206,
+      "lines": 37,
+      "sha256": "26a5b29ebc033898a52b2b963cd3f64c9a6c88064e5cedae2dc0c9e391c66a95",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/script.py.mako",
+      "bytes": 358,
+      "lines": 17,
+      "sha256": "d7558dcb7ce01d3e44830898336d3027de66e5ffdb1491c0cd27f6159b021902",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0001_baseline.py",
+      "bytes": 1445,
+      "lines": 42,
+      "sha256": "918f1dcfbbf16d0e9685de2a25a011bb35dfafb6445fd03555da77ed16bc9080",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0002_env.py",
+      "bytes": 3092,
+      "lines": 55,
+      "sha256": "435f12797721c05d737084a7153d670de2302994a6485a1aa4470404e574beac",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0003_session.py",
+      "bytes": 4946,
+      "lines": 77,
+      "sha256": "4a1911d59a49e0e68380c44285a8b39cf14e3c7f4ca7dbd5fd7e8177bc7b07dc",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0004_tool_record.py",
+      "bytes": 1917,
+      "lines": 37,
+      "sha256": "a49d7bb123d61617b27b16e27d0de9b5165874a6a842021e34cc8c8a37f88889",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0005_metering.py",
+      "bytes": 2643,
+      "lines": 44,
+      "sha256": "51ae9a14deb1b8c6e89aa800d0cf77fbdf11d5da717f3801e7bca4b75eb01554",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0006_roles.py",
+      "bytes": 2256,
+      "lines": 37,
+      "sha256": "7d73763e32953f730c148121ef14912920c840c63b712663582c0abec1926fc4",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0007_datasheet.py",
+      "bytes": 2846,
+      "lines": 50,
+      "sha256": "54062b411f6023ae0c7f0fc900b138b361af6a4137514597454b7b068acaa9c4",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "alembic/versions/0008_kb.py",
+      "bytes": 2821,
+      "lines": 47,
+      "sha256": "82baf6701951b12bc364122394436b3030c43b2aa064ec7e735f8c7962ddae56",
+      "review_item": null,
+      "proposed_action": "retain_legacy_migration_history"
+    },
+    {
+      "path": "business-scenarios.md",
+      "bytes": 16619,
+      "lines": 218,
+      "sha256": "f3dc37370a37a73f2be91d4305890a8f1cc60bdec043dc996ef9d9d3f1b87a15",
+      "review_item": "B05",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "compose.yaml",
+      "bytes": 1471,
+      "lines": 48,
+      "sha256": "02b1ccc61491d76133770627c4b2686d33349a3bc7a9f0fe75550640d96d2a52",
+      "review_item": "D02",
+      "proposed_action": "retain_optional_dependency_review"
+    },
+    {
+      "path": "config/product/followup-policy.json",
+      "bytes": 339,
+      "lines": 16,
+      "sha256": "a2ba2e49d80cc139ca0e4767eec5082bece6bf537cab98e0eb415a0607e46a5a",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F30.md",
+      "bytes": 1786,
+      "lines": 31,
+      "sha256": "7f104e03173bf11c7757df70d88bcbf231bd153bc5f39829134921e800769c5d",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F31.md",
+      "bytes": 2118,
+      "lines": 34,
+      "sha256": "c2cc58a3c9ea5958992b6a17bac901023939b1e4027fcf6047f8e8a824b036fa",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F32.md",
+      "bytes": 3050,
+      "lines": 54,
+      "sha256": "0326db95524ac6443be007e7e47b228305e307414dffed1037ba3b4663e6e354",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F33.md",
+      "bytes": 2201,
+      "lines": 35,
+      "sha256": "c352adc7d3e815bb3a683ef4b116287ac8e210d4dd38630bf51f9ac29d034a16",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F34.md",
+      "bytes": 4273,
+      "lines": 53,
+      "sha256": "7598c7307ddff77e10f57269493681a84707abebede2f8712be496a6ff8fd31b",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F35.md",
+      "bytes": 4553,
+      "lines": 41,
+      "sha256": "52806f328ed8ab6f1ae7f4c7b08ab970f3e733acba144319c6b0e3d0f39473ae",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F36.md",
+      "bytes": 10792,
+      "lines": 142,
+      "sha256": "82eb6b0f641c5b9b2446de88377507ee2898956a302cc4d0fb1387ae54acbfd7",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F37.md",
+      "bytes": 2338,
+      "lines": 35,
+      "sha256": "5ed32770f8b3e42b69aa515252e0bb0ee7e893e280b4f43b6f39ea392d34f2fa",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F38.md",
+      "bytes": 2579,
+      "lines": 38,
+      "sha256": "445a60f281747f3c9c1ffddfbb8a5f301a0de2ddf5bb086fdd388ba680601dcc",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F39.md",
+      "bytes": 3289,
+      "lines": 33,
+      "sha256": "41cdd997eaf2e3b188cdff6b63a17f803baa3814996cd4ec7c41b823740858ee",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F40.md",
+      "bytes": 3679,
+      "lines": 37,
+      "sha256": "57cc59a078a47ef8c1ccc241a4e7ac88e1da99132e11a91be19d0f5d406cb1e6",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F41.md",
+      "bytes": 2565,
+      "lines": 36,
+      "sha256": "cb993b7a70639c93eac3bfd8292b68eeba1c8646fe24d2db4013690d134924da",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F42.md",
+      "bytes": 7840,
+      "lines": 90,
+      "sha256": "5ed8e8187c71e15539fb8b168b9e9ba058cae7f72e56eb8391011a69a2723ccb",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F43.md",
+      "bytes": 2556,
+      "lines": 36,
+      "sha256": "3d90af298de0f5c2561e6212bbfefa63a796c0ebfa302137446f33d5586b8a5e",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F44.md",
+      "bytes": 2565,
+      "lines": 41,
+      "sha256": "fe02eb630634feef1c85158d2b56fe23e30d4868c7a3408ebd7ea7ec345a39eb",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F45.md",
+      "bytes": 8541,
+      "lines": 74,
+      "sha256": "983a482301b182b15c7d33cfdfabc2888e1eaf0be6c1e105174f733445d88a60",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F46.md",
+      "bytes": 8505,
+      "lines": 83,
+      "sha256": "193bdbda23cc33ad1607ed85aa11c4de18183516643362e9722816228f667928",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F47.md",
+      "bytes": 7294,
+      "lines": 58,
+      "sha256": "05891405e72cdce2c8a811a8d7f23cf395dc0ebefbb126a0eb68aa8a9bd062e1",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F48.md",
+      "bytes": 4480,
+      "lines": 39,
+      "sha256": "86c0e312d1390419d36d064d9817c1fa88ab19d4e90dee3f8ab619ad6c7352e4",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "contracts/F49.md",
+      "bytes": 8176,
+      "lines": 64,
+      "sha256": "b9a3f004ec6e629929c8c3e2553b955121ab760a157f0f2c85a506c0c90eba0e",
+      "review_item": "B06",
+      "proposed_action": "retain_contract_rewrite_stale_sections"
+    },
+    {
+      "path": "contracts/F50.md",
+      "bytes": 5299,
+      "lines": 46,
+      "sha256": "0e5b8e5b680cacbbd0ac9422ae07692a6a4e0f12b3c7de861e2a3252eb8516c3",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "data-contract.md",
+      "bytes": 19152,
+      "lines": 186,
+      "sha256": "773e62b5cf7fe7d01b19e777418466574b1b016b9f49030da9332c86148ac538",
+      "review_item": "B03",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "data/knowledge/demo/hackrf-one-product-context.md",
+      "bytes": 1453,
+      "lines": 30,
+      "sha256": "97639a7f020042872ce8c5e68395501abcc22b35184bf06e3c49f37709680f25",
+      "review_item": "B10",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "data/knowledge/demo/manifest.json",
+      "bytes": 1474,
+      "lines": 39,
+      "sha256": "6c9ed9e38ddaf0195df5a241e94e60f3388d2db45e89a8e3158144b2546575cc",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "data/knowledge/demo/sky13453-official-summary.md",
+      "bytes": 1224,
+      "lines": 26,
+      "sha256": "20d7e838dde3c36fd678dbaf576562d4b43f3e064b24efafe96ad7e229329e72",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "data/knowledge/demo/synthetic-commercial-policy.md",
+      "bytes": 1599,
+      "lines": 39,
+      "sha256": "3764cc393ae0bfd764e21c95e40f62917272ae8d1bbf2539dd9f3f1180dcb472",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "data/knowledge/demo/synthetic-opportunity-facts.md",
+      "bytes": 1557,
+      "lines": 33,
+      "sha256": "52c5d648737bca3f2a489f84da6c6eeeaa00c4c2b1205b38bf2635076a589d74",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "data/scenarios/electronics/initial.json",
+      "bytes": 3041,
+      "lines": 131,
+      "sha256": "b569ff01bff6b2425d4fa0d3942ddbcc4c50bdc44e811dbcfe3837131680719d",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "docs/design/model-gateway-worker-contract.md",
+      "bytes": 20881,
+      "lines": 162,
+      "sha256": "0b0ae53f50127b7a037ce09577f4d043ff1d80a46cc24f5cb2843bd57521027d",
+      "review_item": "B04",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "docs/handoffs/2026-10-12-f39-authorization-refactor.md",
+      "bytes": 6523,
+      "lines": 114,
+      "sha256": "949f3aa1035c1b00b92770b7dea31db5ea8c6d240ec4fc25b261af118bbc5bbc",
+      "review_item": "A03",
+      "proposed_action": "delete_candidate"
+    },
+    {
+      "path": "docs/handoffs/2026-10-14-f39-f44-to-f42-session-handoff.md",
+      "bytes": 6170,
+      "lines": 115,
+      "sha256": "65a9150d37197f8fe9f4c302ef7b95dfdd5aaf7d3bebfc499197ff2d826e2733",
+      "review_item": "A03",
+      "proposed_action": "delete_candidate"
+    },
+    {
+      "path": "docs/research/2026-10-22-memory-framework-comparison.md",
+      "bytes": 20260,
+      "lines": 148,
+      "sha256": "c1d78cb621fda81c24d2921f88b9c14de692b6e82ad5ace7a4b473fbe35fc375",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "docs/research/F36-public-knowledge-sources.md",
+      "bytes": 3841,
+      "lines": 29,
+      "sha256": "1339761209414c20476a683e7d1646794f569e2345d14b11facd204c8511a795",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "docs/scenarios/2026-10-23-electronics-business-stories.md",
+      "bytes": 20951,
+      "lines": 278,
+      "sha256": "844bda4906a75dc9c822164666cdeb1ef2a44285c4d34b7544cfc9b116751916",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "features.json",
+      "bytes": 16811,
+      "lines": 422,
+      "sha256": "f4302403fcef54df3c6e1d37c8e9b8d986689c45c6179a59ced0c7951cd355d1",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/.env.example",
+      "bytes": 321,
+      "lines": 6,
+      "sha256": "2fb1773062aa03313134a34b100ddbc93e703b9a7c9cfb3581654c8c1bc76ae5",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/DESIGN.md",
+      "bytes": 1263,
+      "lines": 28,
+      "sha256": "42d44d3ff8d1602f4f1e2f5fe99ad36e1cf55a46c657c74bf10414981272ede8",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/eslint.config.mjs",
+      "bytes": 224,
+      "lines": 7,
+      "sha256": "25e3a3d12ce11e534de4bcfadabff4458dcf63ebc982a261ae080f67936afbb5",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/index.html",
+      "bytes": 14799,
+      "lines": 321,
+      "sha256": "83adffd06a7a948c89b19784f88fe9dce0d60c95b767e7e10062d2d3d0371bd9",
+      "review_item": "A01",
+      "proposed_action": "delete_candidate"
+    },
+    {
+      "path": "frontend/next-env.d.ts",
+      "bytes": 288,
+      "lines": 7,
+      "sha256": "1862ac4bbbc5192d4bf562161df66ea547ed3e67173100656ab606ae9797db2b",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/next.config.ts",
+      "bytes": 228,
+      "lines": 8,
+      "sha256": "2444c6fee14223f18aeb2857e4f2ebcf77b1655ef85742f14169e83542b61d36",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "bytes": 221893,
+      "lines": 6360,
+      "sha256": "f411de823f015b5b7260114b1fda2e3cca6ecc123f6a7f47d1ff006fdda5daa3",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/package.json",
+      "bytes": 702,
+      "lines": 28,
+      "sha256": "bbc9306f8f625f2f8a75f04d2ef093e7a5810805935e61700a98ec0eb66f0661",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/scripts/check-boundary.mjs",
+      "bytes": 1934,
+      "lines": 36,
+      "sha256": "5befb85b02218d1bdc5fd2f1ddb7ccdea08e67f6fd0282b256857d5c62e29cea",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/health/route.ts",
+      "bytes": 93,
+      "lines": 3,
+      "sha256": "5f8e299a13840d5a51a271d6053077cfa97753926ca63302c6faa5499b8f23dd",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/v1/crm/actions/route.ts",
+      "bytes": 96,
+      "lines": 3,
+      "sha256": "40d133bc9644417356073a93eee1e0dfb9a87af5ecbd6562d8d1f57164f87896",
+      "review_item": "A04",
+      "proposed_action": "optional_delete_placeholder"
+    },
+    {
+      "path": "frontend/src/app/api/v1/crm/customers/route.ts",
+      "bytes": 96,
+      "lines": 3,
+      "sha256": "40d133bc9644417356073a93eee1e0dfb9a87af5ecbd6562d8d1f57164f87896",
+      "review_item": "A04",
+      "proposed_action": "optional_delete_placeholder"
+    },
+    {
+      "path": "frontend/src/app/api/v1/crm/interactions/route.ts",
+      "bytes": 96,
+      "lines": 3,
+      "sha256": "40d133bc9644417356073a93eee1e0dfb9a87af5ecbd6562d8d1f57164f87896",
+      "review_item": "A04",
+      "proposed_action": "optional_delete_placeholder"
+    },
+    {
+      "path": "frontend/src/app/api/v1/crm/opportunities/route.ts",
+      "bytes": 124,
+      "lines": 3,
+      "sha256": "fb3a1f04f0c43cd71747c1282ed829b7e96aecd8e8d842acda3be3f339f0b7fa",
+      "review_item": "A04",
+      "proposed_action": "optional_delete_placeholder"
+    },
+    {
+      "path": "frontend/src/app/api/v1/crm/proposals/route.ts",
+      "bytes": 96,
+      "lines": 3,
+      "sha256": "40d133bc9644417356073a93eee1e0dfb9a87af5ecbd6562d8d1f57164f87896",
+      "review_item": "A04",
+      "proposed_action": "optional_delete_placeholder"
+    },
+    {
+      "path": "frontend/src/app/api/v1/intelligence/opportunities/route.ts",
+      "bytes": 95,
+      "lines": 3,
+      "sha256": "4bd70f286057b605fda71187935df36462f4b1ec072486d3c5f7a987b0215927",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/v1/intelligence/runs/[runId]/route.ts",
+      "bytes": 95,
+      "lines": 3,
+      "sha256": "4bd70f286057b605fda71187935df36462f4b1ec072486d3c5f7a987b0215927",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/v1/intelligence/runs/route.ts",
+      "bytes": 95,
+      "lines": 2,
+      "sha256": "5acc1aeeeadcf0a02f8f16cf11b0d2987f142d2b935f7f7009f4cbef1810a3f7",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/v1/organizations/select/route.ts",
+      "bytes": 96,
+      "lines": 3,
+      "sha256": "40d133bc9644417356073a93eee1e0dfb9a87af5ecbd6562d8d1f57164f87896",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/v1/session/route.ts",
+      "bytes": 95,
+      "lines": 3,
+      "sha256": "4bd70f286057b605fda71187935df36462f4b1ec072486d3c5f7a987b0215927",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/v1/supply/[...path]/route.ts",
+      "bytes": 243,
+      "lines": 8,
+      "sha256": "c9b341acd7457be69b00cc5b95f142e1fda2a465f78fc169cfa026336bc911f1",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/api/v1/supply/impact/route.ts",
+      "bytes": 95,
+      "lines": 3,
+      "sha256": "4bd70f286057b605fda71187935df36462f4b1ec072486d3c5f7a987b0215927",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/globals.css",
+      "bytes": 6178,
+      "lines": 27,
+      "sha256": "d322c52cb42c5bfa2ee6d5dd0f32fe722cdbc9764c912f9ccf15b60ab9b41094",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/layout.tsx",
+      "bytes": 338,
+      "lines": 11,
+      "sha256": "045fcbeaeba3d5561c5fed8daa480ace5ff47ca1829422c8c19530b474755047",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/app/page.tsx",
+      "bytes": 13271,
+      "lines": 154,
+      "sha256": "9be4c1a3332031bcfcf8821e9fbf6ae826385c76c70e313cf11050a8d2159aa3",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/lib/bff/proxy.ts",
+      "bytes": 2558,
+      "lines": 67,
+      "sha256": "f54b3530d56084291ce0c45444f6d40b99b9cfb4586b106cbbdff42896b570dd",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/lib/supabase/browser.ts",
+      "bytes": 371,
+      "lines": 10,
+      "sha256": "891beebd6a11a95c8d18ab4fdddc7db018abacc2cab4287a0410fba3e2ab3dc0",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/lib/supabase/env.ts",
+      "bytes": 548,
+      "lines": 14,
+      "sha256": "7cad4cfbc2747c4b54c0accbf4b75363ab7d32264f51893ce3194fc0a9d02cff",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/src/lib/supabase/server.ts",
+      "bytes": 810,
+      "lines": 21,
+      "sha256": "4f2ada29d0bc30261cc6314c288236c8c4e3b362664ead715cb6d36de06ceb4e",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "bytes": 711,
+      "lines": 41,
+      "sha256": "949b2e65772823cfc97ff8c24c0f2cfd3676790bd9b2f49d31b17417725035a3",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "pi_sidecar/f42_protocol_sidecar.mjs",
+      "bytes": 9614,
+      "lines": 238,
+      "sha256": "0c67c25714667caa38612b87d5288afca4641b86d6d1fe16cebdf05388636b3b",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "pi_sidecar/package-lock.json",
+      "bytes": 52063,
+      "lines": 1375,
+      "sha256": "9bfbb1661664534d7c68a703df00bdf9cae579fe381755cec32bcd768a215703",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "pi_sidecar/package.json",
+      "bytes": 209,
+      "lines": 10,
+      "sha256": "a9c131fe5d4af071e596dc90c0556a05aef59ed1b2f6a7621fcffdee82ab3e63",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "pyproject.toml",
+      "bytes": 493,
+      "lines": 18,
+      "sha256": "6508c630e9ee5f208115c6cab3dcc600011defd40defa6db2fab10c39df62b67",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "requirement.txt",
+      "bytes": 5883,
+      "lines": 80,
+      "sha256": "6956d2a6ceefa7ca13c902e9b97ba6ff9983da1e198d482db88945e233d23443",
+      "review_item": "B09",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "requirements.lock.txt",
+      "bytes": 772,
+      "lines": 45,
+      "sha256": "d683ae6852b37a47500b6f983a5d15f966c944d79562d88bca4ae249b402fb2e",
+      "review_item": "D01",
+      "proposed_action": "retain_optional_dependency_review"
+    },
+    {
+      "path": "schema-plan.md",
+      "bytes": 27714,
+      "lines": 234,
+      "sha256": "2207ec5ae4dc4b95c7c76b1b446aec8ac7c2196d46f5dcf1a3b33e0ef23acdc8",
+      "review_item": "B02",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "spec.md",
+      "bytes": 18687,
+      "lines": 190,
+      "sha256": "32c632fe80a33853b94c365b19361f01399aa6dfffe52829d9484d39a25226d9",
+      "review_item": "B07",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    },
+    {
+      "path": "src/product_api/__init__.py",
+      "bytes": 48,
+      "lines": 1,
+      "sha256": "40dac9c97905eac47bdedf145ddbc9c783c1cda8bbb7df6e6a826b90c80a4f46",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/app.py",
+      "bytes": 44123,
+      "lines": 992,
+      "sha256": "eb2e97feda6ee14ee8e79b29a83941dbb479e25341a2d8eb2708214245ae975d",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/auth.py",
+      "bytes": 2710,
+      "lines": 70,
+      "sha256": "49ca11f5f4d6f0070f77d21362b6901ce9ab54286637272af19fe6c658dd0c5f",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/business_nodes.py",
+      "bytes": 8535,
+      "lines": 241,
+      "sha256": "119f0947bdea21a5fad8ec25071997cedd5212b89c07472cd788a148c16d0b3f",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/commercial.py",
+      "bytes": 11637,
+      "lines": 310,
+      "sha256": "c26f798cddfe2a18ba232f5447599cb3d421757cb500cc78a4bed1701f4ffa37",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/crm.py",
+      "bytes": 7113,
+      "lines": 199,
+      "sha256": "b58bfb2ff8d71cdc7a5b625c80c5b2b73ad4f35030d0acf304cf28b85dc37f12",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/gateway.py",
+      "bytes": 35622,
+      "lines": 875,
+      "sha256": "f46d03cf1d128ded577a2bd669ed431e5318eff945877d25f516a9fe35b55a0a",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/glm.py",
+      "bytes": 3307,
+      "lines": 95,
+      "sha256": "f62293b886d6e979871899414745e765363d3fff00ce82b49f0fb3a29f993c48",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/harness.py",
+      "bytes": 23469,
+      "lines": 575,
+      "sha256": "7d93cff1542ec102916321fca6e0be39b1adcd71b90400842064bf37b01b5f35",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/intelligence.py",
+      "bytes": 25235,
+      "lines": 565,
+      "sha256": "86c8b402f58cc2d42b5859426b33c917e0b284ac601f8849f1351e35003c0585",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/knowledge.py",
+      "bytes": 9278,
+      "lines": 297,
+      "sha256": "9d9c1628e023b400ef135e06cc61f58a0f6075ca7eaf2e3c86038c6c5f346d7a",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/knowledge_import.py",
+      "bytes": 5165,
+      "lines": 131,
+      "sha256": "aaf93aab1665e83ca4fd94eff903a29868dfb4a1efc9b5e7bdbeb862bf14b8ad",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/memory.py",
+      "bytes": 5338,
+      "lines": 158,
+      "sha256": "21c9aca7f269e6b8809a364862efc641fed6cf1140f42c189dad186fd2b79784",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/mission_runtime.py",
+      "bytes": 5544,
+      "lines": 148,
+      "sha256": "7123d6ff4701dee646df985fd5c32e40512376f04fad295eb750aa315dd43441",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/model_tools.py",
+      "bytes": 465,
+      "lines": 12,
+      "sha256": "321c607d420b9d7d016dc97ef58349f4e58f5e5a7e8afff45ca1b6932e65dab2",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/rbac.py",
+      "bytes": 1949,
+      "lines": 40,
+      "sha256": "19db79cd9f8e512608ab8e51b9ce861f98b979f5d15672c64e584f4e020e6621",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/runtime.py",
+      "bytes": 45055,
+      "lines": 1113,
+      "sha256": "9067b84c46995aee9c94fdfe5d0530935ccf828057e7aee4f0c93bdec20a4e99",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/specialist_runner.py",
+      "bytes": 8139,
+      "lines": 202,
+      "sha256": "022c811895190dae162f56b46b216fbfbb8a950cab662183b0f908147d0e6e96",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/specialists.py",
+      "bytes": 11269,
+      "lines": 305,
+      "sha256": "15ab935d3e506fa781869453417c28bc87e0dadb1b44631856e31a2430fb4618",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/supply.py",
+      "bytes": 17201,
+      "lines": 470,
+      "sha256": "2a7afb60e1fb6e20098151459e100a36e7bc2909b0ce6d62609c1d163e619d0b",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/tenant.py",
+      "bytes": 9174,
+      "lines": 236,
+      "sha256": "3f2e4e7e8cc2c8bedbff733164e32a92fed11d7ffbffe1d6913e21aab9e5e101",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/trace.py",
+      "bytes": 13157,
+      "lines": 377,
+      "sha256": "c664f98bf11a815258eb93970aefcb59597a1b4da64ca38e709c1f0eb45659f5",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "src/product_api/worker_main.py",
+      "bytes": 5226,
+      "lines": 135,
+      "sha256": "2d880546b7976a1d609fca9cd5eef8275c5757297513d0cd7eab44ff5835344c",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "supabase/migrations/0001_f31_tenant.sql",
+      "bytes": 7245,
+      "lines": 154,
+      "sha256": "01dad28b16e5ccfeb7603596e3126737224f2a28d6ba8c05d5f8e7d84d1b74b2",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0002_f39_supply.sql",
+      "bytes": 4090,
+      "lines": 75,
+      "sha256": "6ac5220826ced4d611ad863bcf56f55f93fc3c1ff0972553b473007af5b53f68",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0003_f39_supply_timeline.sql",
+      "bytes": 1449,
+      "lines": 31,
+      "sha256": "6df21d84377c069a8725f357090bfd736428ff0e4661c540b6722cd4083ad631",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0004_f40_trace.sql",
+      "bytes": 13780,
+      "lines": 287,
+      "sha256": "f29c7dc1b70deeac5f0afb0f29b196d29da98b282158eedb32686d3c91e455a7",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0005_f32_crm.sql",
+      "bytes": 7962,
+      "lines": 72,
+      "sha256": "14a5ccc4d28a47501bfd20ec9876b1da6721cc785b70a2104576fadc3ebdd41a",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0006_f32_crm_commands.sql",
+      "bytes": 4566,
+      "lines": 48,
+      "sha256": "0eac46810a043f68b8bcf3746a02a75210595e2e77c21e6d500f7206bd44ff4a",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0007_f32_crm_interactions.sql",
+      "bytes": 3911,
+      "lines": 35,
+      "sha256": "957a40634772164745e8e02e9cef1756d6bc098af7360c2b789f9fd1a1131cc9",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0008_f32_crm_review.sql",
+      "bytes": 2786,
+      "lines": 31,
+      "sha256": "7141c877bfdec60798a26b77dee1804e173f617a6dca05d105d1a71335fbf678",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0009_f34_gateway.sql",
+      "bytes": 2550,
+      "lines": 24,
+      "sha256": "871286aa545323cf272b1a08219db862932462e4d2383bcf96e2e47356dd3de7",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0010_f35_runtime.sql",
+      "bytes": 6196,
+      "lines": 25,
+      "sha256": "646e62a79cca91fd1887d09e3218e1eff5e8b9a139b0494a00e90d35e7ab97de",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0011_f32_crm_scope.sql",
+      "bytes": 1137,
+      "lines": 14,
+      "sha256": "1deb47ac876eba7eb8953de6f6132e3ee24ff966ccf35158fc22c9b403696973",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0012_f32_crm_audit.sql",
+      "bytes": 1404,
+      "lines": 17,
+      "sha256": "691be07dc78f540dd64bcc8bab43b0d0cf9f8b4cc1d1b207187d5cef74dbe642",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0014_f35_runtime_commands.sql",
+      "bytes": 1265,
+      "lines": 28,
+      "sha256": "b60ef79f7708df8fa1315061775a0bf20332aba50e24fd7bedab706de7859d74",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0015_f39_supply_fact_corrections.sql",
+      "bytes": 5130,
+      "lines": 80,
+      "sha256": "6d772e60bdb9ce1173a7f04dc33054675528fde12064411ea1533f4ef063225f",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0016_f40_trace_hardening.sql",
+      "bytes": 10447,
+      "lines": 220,
+      "sha256": "0bd4b3060ac37275197f5ec304991141a966b0535016186f65d47080b52aaac7",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0017_f40_artifact_read_and_hash.sql",
+      "bytes": 3020,
+      "lines": 59,
+      "sha256": "87ab19cfb8ccc3639095c7cc8d55e9d002acfd190afc5b0f5e9eafd08200bf1a",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0018_f34_budget_reservations.sql",
+      "bytes": 7434,
+      "lines": 147,
+      "sha256": "06eb24e657200e9b736470b886e7a860a4375a13dd2641bcfb6fdfd10fd8658e",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0019_f35_worker_lifecycle.sql",
+      "bytes": 12086,
+      "lines": 239,
+      "sha256": "565d6478159d6c6894dd7bf89086a3b340f29ff973f8ec2ac9195e5b9af8a025",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0020_f36_knowledge.sql",
+      "bytes": 19693,
+      "lines": 391,
+      "sha256": "b3564ce7bb8ac7e92e0a272f2f6d3180e0a51770db29f4adccec2c84ed156b10",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0021_f36_mission.sql",
+      "bytes": 3518,
+      "lines": 60,
+      "sha256": "cc5c27e7e63dd96fef67f559530dad23b56c4c5e819b881921a01f2a119c94d9",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0022_f36_memory.sql",
+      "bytes": 9821,
+      "lines": 149,
+      "sha256": "05a6f7208fdfcbfc51af02600d34b38031b57e1064da6b2dd6ac4bc90e48040c",
+      "review_item": null,
+      "proposed_action": "retain_product_migration_history"
+    },
+    {
+      "path": "supabase/migrations/0023_f41_proposals.sql",
+      "bytes": 6806,
+      "lines": 117,
+      "sha256": "b21bc0bc8a93ea91c2a2e67da823ea49b4a73d1dc7fd5bef66fe98a3218e149a",
+      "review_item": "C05",
+      "proposed_action": "retain_deferred_draft"
+    },
+    {
+      "path": "supabase/migrations/0024_f45_intelligence.sql",
+      "bytes": 10759,
+      "lines": 169,
+      "sha256": "fc22faabc516c10f257c2f3bfd1382d98bada20e69ba19701c5855bf47709407",
+      "review_item": null,
+      "proposed_action": "retain_verified_pending_application"
+    },
+    {
+      "path": "supabase/migrations/0025_f46_business_nodes.sql",
+      "bytes": 5963,
+      "lines": 86,
+      "sha256": "77eb04fc5aff79d52185057cde46b58894315ed18e1061fe8a64864b07dd49a8",
+      "review_item": null,
+      "proposed_action": "retain_verified_pending_application"
+    },
+    {
+      "path": "supabase/migrations/0026_f47_bom_quotes.sql",
+      "bytes": 16012,
+      "lines": 206,
+      "sha256": "86c593df093acd70f2f6b46218fddeaa19c7ba22bd63d6717f209b895c07899a",
+      "review_item": null,
+      "proposed_action": "retain_verified_pending_application"
+    },
+    {
+      "path": "supabase/migrations/0027_f49_responses.sql",
+      "bytes": 3756,
+      "lines": 46,
+      "sha256": "ec9b3ccefa936467de1b23d96338d618e188d29c69509403d1b782c32a5a39f8",
+      "review_item": null,
+      "proposed_action": "retain_verified_pending_application"
+    },
+    {
+      "path": "supabase/migrations/0028_f50_glm.sql",
+      "bytes": 309,
+      "lines": 5,
+      "sha256": "74d4c958368a5d85e9efa1a5d5892a1e848dc69b118048512827ee99210c67cb",
+      "review_item": null,
+      "proposed_action": "retain_verified_pending_application"
+    },
+    {
+      "path": "supabase/tests/f31_rls.sql",
+      "bytes": 1815,
+      "lines": 36,
+      "sha256": "8e1978ee6d6aa75903c8b91065a6d1d0c055e17ebadeb698ddc289820809daa1",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "supabase/tests/f32_crm.sql",
+      "bytes": 3618,
+      "lines": 24,
+      "sha256": "0d349bcbce8e7fa0ad1055c3f4be2a736b6823c8918c639e9f5071dd7a24e1bb",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "supabase/tests/f34_gateway.sql",
+      "bytes": 3440,
+      "lines": 53,
+      "sha256": "e190a7296e3fa0fe0ea4075d22c7570fcd0c49ae6a06ad959262d649dca4140c",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "supabase/tests/f35_runtime.sql",
+      "bytes": 4410,
+      "lines": 63,
+      "sha256": "b10e43d6ca7b9cdcbde1674c04a1e11a487befc6d655fed7016e7cf571724933",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "supabase/tests/f36_knowledge.sql",
+      "bytes": 7601,
+      "lines": 166,
+      "sha256": "76026eb7b181625bf394bbd4d461a61490107d4300b2059762e9baba68d5bdb9",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "supabase/tests/f39_supply.sql",
+      "bytes": 4579,
+      "lines": 71,
+      "sha256": "fb69795104548cb773e8216495cf6363e9146fa48fd1333942621944a77fead2",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "supabase/tests/f40_trace.sql",
+      "bytes": 7515,
+      "lines": 164,
+      "sha256": "cd5d23c3e6f27f262d3f7614f60131b8f22e1db2991846eff4966df04d60eed8",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/fixtures/f42_minimal_agent_engine.py",
+      "bytes": 835,
+      "lines": 28,
+      "sha256": "d7eb656124d793d271cddc1c0b261081aea4f9f984c402f6a05f414424f67576",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api.py",
+      "bytes": 6448,
+      "lines": 155,
+      "sha256": "967e87e0dca4bb9723cdafd3598f255fca472a83e52ba175958700ef23e03fae",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_business_nodes.py",
+      "bytes": 2585,
+      "lines": 71,
+      "sha256": "53db651d6d37340cd133c130350d8415bc63ae2a473ad85735d1d6109850f878",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_business_nodes_integration.py",
+      "bytes": 17492,
+      "lines": 387,
+      "sha256": "385e8bc61456a367f7f500f06100bea0469bfc3aef7b8beb3c32d953c0e0ce4a",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_commercial.py",
+      "bytes": 2527,
+      "lines": 71,
+      "sha256": "46be9e1f88af97a1d352cd4b97098ddcf9305a0aea91aead31d627de062784b1",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_commercial_integration.py",
+      "bytes": 18017,
+      "lines": 399,
+      "sha256": "71bce683ded6b26f5c64ac744f6cb66ede41126c2d6d5bbd8383e305bcbd5f31",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_crm.py",
+      "bytes": 1011,
+      "lines": 27,
+      "sha256": "ce48f5dc97c9acd8acfea64af7b2d8b99a1427f17eb7e59e8a641a0afb91ccef",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_crm_integration.py",
+      "bytes": 8610,
+      "lines": 152,
+      "sha256": "c44429b2f433bbae1bcf0dd1e1cdc613485b2d06cef05b0fdf576dba9e523974",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_f41_integration.py",
+      "bytes": 6096,
+      "lines": 130,
+      "sha256": "5843c1b21e9df0e3b33a107d310bbce66d466014770b86f71b809f89aff3d744",
+      "review_item": "C05",
+      "proposed_action": "retain_deferred_acceptance_test"
+    },
+    {
+      "path": "tests/test_product_api_gateway.py",
+      "bytes": 17865,
+      "lines": 487,
+      "sha256": "8cc77e7f889ee2db2535f1a9173478f3137703f240f1c788ef6ec0848b5f60b9",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_gateway_integration.py",
+      "bytes": 8682,
+      "lines": 216,
+      "sha256": "93a463b7db2a30add86135f6debbb37ebda5764c84923f03f5755e22107f916f",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_glm.py",
+      "bytes": 6024,
+      "lines": 156,
+      "sha256": "f3bccbe4247a0fabdae68c646019d8b6bdceb409f85caafc091288308bac6307",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_glm_live.py",
+      "bytes": 3260,
+      "lines": 93,
+      "sha256": "78f05f19919a0fc87746c2cb61f15a15ec64e7ff7d86e4fc61e136bab3910933",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_harness.py",
+      "bytes": 7971,
+      "lines": 196,
+      "sha256": "3ebbc2bbc0c4bb6e3cfbfe5deb602ec648a8ea21e918d187b1b5b60b7979b5c4",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_harness_integration.py",
+      "bytes": 5142,
+      "lines": 120,
+      "sha256": "c5a63a2c655070c42da06f59f7f4499c3feded8cf9feceae3ab65c1ec4e7962c",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_integration.py",
+      "bytes": 4491,
+      "lines": 112,
+      "sha256": "a4edbbc741d4981ad8bb40b195760f4434ce8465755e927a584fc533ba870264",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_intelligence.py",
+      "bytes": 4367,
+      "lines": 127,
+      "sha256": "b7394f40d28312e0fba96fa0a134d9487189b0dcfe923e976363cf8c9c5bd083",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_intelligence_integration.py",
+      "bytes": 14677,
+      "lines": 327,
+      "sha256": "a746d9f37dab325a84bbe919e72dac72955372668eadffa38a061be67fb36092",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_knowledge.py",
+      "bytes": 3720,
+      "lines": 115,
+      "sha256": "88cc3aae6ef963829c4b451c5def95b34da65f7b2608860430976b12d94b9881",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_knowledge_import.py",
+      "bytes": 3788,
+      "lines": 105,
+      "sha256": "9e67ffdb7f38ab20eed16f2556b6f6f60cdc9b637c753aca177fc2b3b0705e97",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_memory.py",
+      "bytes": 1187,
+      "lines": 34,
+      "sha256": "58316e936e798a22631dc0207d9dc1eee2282c221056fda5eff0d5ed8c1aabe6",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_mission_integration.py",
+      "bytes": 11230,
+      "lines": 269,
+      "sha256": "a548d6c28702fc2cea51da8ff43034c42c790ae80bc50b9b626c5e1b970af0b2",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_mission_runtime.py",
+      "bytes": 5757,
+      "lines": 172,
+      "sha256": "073d4af589675195fcf998b3adf74f931e0c04fa188a7cd036ab3e24ae0c0b44",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_responses_integration.py",
+      "bytes": 8967,
+      "lines": 210,
+      "sha256": "8c02f56b2ca601b1c8724503fbf7bb7bd55c00b166b169bb9cdf45b4c207a160",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_runtime.py",
+      "bytes": 11356,
+      "lines": 314,
+      "sha256": "5d6b4a7380d6dc1b6e01a89f37e74f1df95adfd8fea00f7b070797a7bdc9495c",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_runtime_integration.py",
+      "bytes": 12407,
+      "lines": 264,
+      "sha256": "ce9591382bb31fa40377ad254fa1d13a03fbaffd7bd9d7f514544666a98b7b31",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_specialist_runner.py",
+      "bytes": 6876,
+      "lines": 220,
+      "sha256": "e432d313b22e0f2720a8ab62f2262c2cfc303dc457e0baa42ac3a5581e1abb79",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_specialists.py",
+      "bytes": 7136,
+      "lines": 220,
+      "sha256": "d1bbf941ebf5cfc17f9d2e03f6d880c7aa006ff649d6ab7e17637a5351775463",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_supabase_live.py",
+      "bytes": 7202,
+      "lines": 175,
+      "sha256": "933a1cf191b8b1c0513e8189a50ffd76a9b2e92e0f6e3d67d396c4c4360444f1",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_supply.py",
+      "bytes": 13120,
+      "lines": 393,
+      "sha256": "49abb3a823b5dd281ab57dba70ecf4bcad8b2bca983f7a20d5f895c989068b54",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_supply_integration.py",
+      "bytes": 6356,
+      "lines": 169,
+      "sha256": "e0757b6fdf8a6e3a9c9b237c35749fa9b23a670250a6a33c9357f3bf790dac55",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_trace.py",
+      "bytes": 5085,
+      "lines": 131,
+      "sha256": "9f910fe319f6166e4b9d9243ec862da7ece868cb0d9ddea10570d3d01807970a",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "tests/test_product_api_trace_integration.py",
+      "bytes": 9349,
+      "lines": 204,
+      "sha256": "7f5f8c3a71ad8c786aacf64055782fdf6178414fe5d848cb740f94974010ae1d",
+      "review_item": null,
+      "proposed_action": "retain"
+    },
+    {
+      "path": "todo.md",
+      "bytes": 18630,
+      "lines": 230,
+      "sha256": "33367faad35e8320af57f8103c11ffcd5e006f3173f5e5e4e26f40e8cc5d17f5",
+      "review_item": "B01",
+      "proposed_action": "rewrite_or_consolidate_candidate"
+    }
+  ]
+}

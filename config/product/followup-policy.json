@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "policyId": "SYNTHETIC-DEMO-FOLLOWUP-v1",
+  "provenance": "synthetic",
+  "activeStages": [
+    "lead",
+    "qualified",
+    "proposal",
+    "negotiation"
+  ],
+  "requireOpportunityOwner": true,
+  "requireTaskOwner": true,
+  "requireFutureTask": true,
+  "maxCaseParts": 32,
+  "businessTimezone": "Asia/Shanghai"
+}

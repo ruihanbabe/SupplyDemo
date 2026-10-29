@@ -1,7 +1,0 @@
-{"mpn": "SKY13453-385LF", "title": "SKY13453-385LF SPDT RF Switch (synthetic fixture, not vendor text)",
- "toc": [{"title": "Features", "page": 1}, {"title": "Electrical Specifications", "page": 2}, {"title": "Package Dimensions", "page": 3}],
- "pages": [
-  {"page": 1, "text": "# SKY13453-385LF\n\nSynthetic fixture page. SPDT switch for 0.1 to 6.0 GHz applications.\n\n## Features\n- Broadband frequency range: 0.1 to 6.0 GHz\n- Low insertion loss\n- High isolation\n- Positive control logic, 1.8 V compatible"},
-  {"page": 2, "text": "## Electrical Specifications\n\n| Parameter | Condition | Min | Typ | Max | Unit |\n|---|---|---|---|---|---|\n| Insertion loss | 2.4 GHz | | 0.45 | 0.60 | dB |\n| Isolation | 2.4 GHz | 25 | 28 | | dB |\n| Supply voltage VDD | | 1.65 | 2.8 | 3.6 | V |\n| Switching time | | | 200 | | ns |"},
-  {"page": 3, "text": "## Package Dimensions\n\nQFN-12, 2.0 x 2.0 x 0.75 mm. Moisture sensitivity level MSL1."}
- ]}

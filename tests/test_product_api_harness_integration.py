@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -86,7 +87,9 @@ async def _scenario(database_url: str) -> None:
             ]
             assert events[0].metadata == {"engine": PI_CORE_ENGINE}
             assert all("part" not in event.metadata for event in events)
-            assert events[3].metadata == {"length": 49}
+            assert result.output is not None and result.output["role"] == "supply_risk"
+            # Trace stores only the structured Replay output's length, never its text.
+            assert events[3].metadata == {"length": len(json.dumps(result.output, separators=(",", ":"), ensure_ascii=False))}
             assert await traces.verify_chain(connection, trace_run_id)
             await connection.rollback()
     finally:

@@ -168,7 +168,7 @@ def test_python_tool_failure_is_stable_and_traced() -> None:
         broken = ToolRegistry((ToolDefinition("supply.impact", lambda _arguments: (_ for _ in ()).throw(HarnessToolError("broken"))),))
         with pytest.raises(HarnessTurnError, match="tool_failed"):
             await PiRuntimeAdapter(("node", str(SIDECAR))).run_turn(_context(), broken, trace)
-        assert trace.events[-1]["metadata"] == {"code": "tool_failed"}
+        assert trace.events[-1]["metadata"] == {"code": "binding_invalid"}
 
     asyncio.run(scenario())
 

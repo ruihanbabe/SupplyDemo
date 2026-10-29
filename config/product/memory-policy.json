@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "syntheticOnly": true,
+  "backend": "mem0",
+  "retentionDays": 7,
+  "dreamEnabled": false
+}

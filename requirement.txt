@@ -1,80 +1,20 @@
-# SupplyAgent 依赖与环境台账
+# 当前依赖与维护入口
 
-> **文档契约** · 类型：规则层 · 读取：准备环境、增删依赖或排查版本问题时按节读
-> 更新：安装、升级、删除任何依赖后由 Codex 即时写入，须同时填日期、原因与验证
-> 独占：项目直接依赖清单、组件版本台账、依赖变更记录、明确排除的依赖及其理由
-> 不收录：服务可用性的验证状态（见 `PROGRESS.md`）、命令实现（见 `Makefile`）、服务拓扑（见 `compose.yaml`）、环境变量清单（见 `.env.example`）、决策理由（见 `DECISIONS.md`）
+精确 Python 环境版本见 requirements.lock.txt；Node 依赖分别由 frontend/ 和 pi_sidecar/ 的 package.json + package-lock.json 固定。命令仅在 Makefile 实现，服务拓扑以 compose.yaml 为准，环境变量见 .env.example。
 
-本文记录「项目声明要用什么」与「本机实际装了什么」。**机器真相以 `requirements.lock.txt` 为准**（由 `make freeze` 生成）；本文承担人工审计视角的说明与取舍理由，不替代锁文件。
-
-开发环境已于 2026-09-14 迁至本地，借用的 GPU 服务器不再是默认环境（见 `DECISIONS.md` D18）。
-
-## 运行时
-
-| 项目 | 版本 | 说明 |
-|---|---|---|
-| 宿主机 | MacBook Pro 2020，Intel i5-1038NG7，32 GB | x86_64，macOS 15.7.9 |
-| Python | 3.11.15 | Homebrew `python@3.11`，路径 `/usr/local/opt/python@3.11/bin/python3.11` |
-| 虚拟环境 | 项目根 `.venv` | 由 `make setup` 创建；Makefile 内部一律用 `.venv/bin/python`，不依赖是否已激活 |
-| 计算资源 | 4 核 8 线程 / 32 GB | **本地不跑任何模型推理**，LLM 全部外部 API 调用，无 GPU 需求 |
-
-Homebrew 自 2026-08 起不再为 Intel macOS 提供预编译包，`brew install` 会退化为源码编译。因此容器运行时与 CLI 均改用官方静态二进制安装，不经 brew。
-
-## 容器与服务组件
-
-| 能力 | 版本 | 运行方式 |
-|---|---|---|
-| Docker CE / CLI | 29.7.1 | 官方静态二进制装于 `/usr/local/bin/docker`，非 brew |
-| Docker Compose | v5.5.1 | 官方 release 单文件，装于 `~/.docker/cli-plugins/` |
-| 虚拟机 | colima 0.10.3 + lima 2.2.0 | `--vm-type vz`（macOS Virtualization.framework），不需要 QEMU |
-| PostgreSQL | 16.6 | `compose.yaml`，只绑 `127.0.0.1:5432`，数据卷 `supplyagent-pgdata` |
-| Redis | 7.4.2 | `compose.yaml`，只绑 `127.0.0.1:6379`，AOF 持久化，数据卷 `supplyagent-redisdata` |
-
-PostgreSQL 与 Redis 版本刻意对齐此前服务器上的版本，以便将来若启用远端环境时行为一致（见 D18 约束）。端口不得改成 `0.0.0.0` 或无认证 TCP 监听。
-
-## 项目直接依赖
-
-| 能力 | 包 | 声明版本 |
-|---|---|---|
-| API | `fastapi`、`uvicorn[standard]` | 0.140.8 / 0.51.0 |
-| 配置与模型 | `pydantic`、`pydantic-settings`、`python-dotenv` | 2.13.4 / 2.15.0 / 1.2.3 |
-| HTTP 客户端 | `httpx` | 0.28.1 |
-| Agent 行为配置 | `PyYAML` | 6.0.3（D07 的 YAML 配置载入） |
-| Redis 客户端 | `redis` | 6.4.0 |
-| PostgreSQL 客户端 | `SQLAlchemy[asyncio]`、`asyncpg` | 2.0.51 / 0.31.0 |
-| 迁移 | `alembic`、`psycopg[binary]` | 1.20.0 / 3.3.4 |
-| 测试与质量 | `pytest`、`pytest-asyncio`、`ruff`、`mypy` | 9.1.1 / 1.4.0 / 0.16.7 / 2.3.1 |
-| Agent Runtime | 自研 | 无新增外部依赖 |
-| LLM 抽象 | 待选 | 通过 `ModelProvider` 接口接入；**不默认绑定 LangChain**，MVP 用 `httpx` 直连即可 |
-
-上表为直接依赖；连带的传递依赖共 44 条，完整清单以 `requirements.lock.txt` 为准。
-
-## 明确排除的依赖
-
-以下均来自此前项目的环境，**不进入 SupplyAgent 的依赖清单**：
-
-| 包 | 排除理由 |
+| 用途 | 当前组件 |
 |---|---|
-| `torch`、`transformers`、`sentence-transformers`、`FlagEmbedding` | 本地模型推理栈。本项目不建通用 RAG／向量检索（`DECISIONS.md` D11），模型全部外部调用；且 Intel Mac 无 CUDA，CPU 推理不可用 |
-| `qdrant-client` 及任何向量库 | 同上。若将来重新引入，按 D11 用 PostgreSQL 扩展而非独立向量库 |
-| `ragas`、`datasets` | 评测栈，且会连带拖入 LangChain 与 torch。回归门禁由独立断言实现（见 `docs/product/acceptance-cases.md`），不依赖该框架 |
-| `langchain`、`langchain-openai`、`langgraph` | 不绑定编排框架。Graph 编排器自研（D23）——引框架会把「并行与依赖怎么被编排出来」这最值钱的部分交给框架 |
-| `cn2an` | 中文数字解析，属此前项目的法规场景需求，本项目无此需求 |
-|
+| Python API/验证 | FastAPI、uvicorn、pydantic、python-dotenv |
+| 产品数据库 | psycopg；PostgreSQL + RLS |
+| 历史 public schema 维护 | Alembic、SQLAlchemy（同步 psycopg 驱动）；不管理 app 表 |
+| 模型 HTTP | httpx；Pi 的官方协议 Adapter，不引入厂商 SDK |
+| 知识文件导入 | pypdf |
+| 离线验证 | pytest、ruff、compileall |
+| Web | Next.js、React、Supabase Auth 客户端；无业务 SQL/Worker |
+| Agent turn | pi-agent-core / pi-ai 0.73.1、typebox |
 
-## 依赖维护约定
+锁文件中仍有暂未直接使用的历史/开发依赖，本次未批准卸载或重建环境；不把锁文件的每个包都称为当前产品直接依赖。Redis 服务保留，但当前产品队列由 SQL 管理。
 
-1. 直接依赖、实际版本和变更原因统一记录在本文件；机器真相以 `requirements.lock.txt` 为准。
-2. 每次安装、升级或删除包，同步更新本文件的日期、原因和验证结果，并重跑 `make freeze`。
-3. 需要可复现锁定时由 `make freeze` 生成，不手工编辑锁文件。
-4. 禁止把 API Key、凭据或本地绝对路径写入依赖台账或锁文件。
-5. 新增依赖前先确认它不在「明确排除」表中；确需引入被排除项，先在 `DECISIONS.md` 记录推翻理由。
+新增依赖先说明必要性、替代方案、成本和验证。依赖变更后在干净环境验证，再用 make freeze 固化 Python 环境；不要手删传递依赖的 lock 行。当前整理不改变任何已安装版本或锁文件。
 
-## 变更记录
-
-| 日期 | 变更 | 原因 | 验证 |
-|---|---|---|---|
-| 2026-09-14 | 本文由此前项目的台账适配为 SupplyAgent 版 | 该文件原不在治理索引内却持有关键事实，按 `DECISIONS.md` D17 纳入治理并剔除遗留内容 | 逐行核对，LawAgent 专属条目已移入「明确排除」表 |
-| 2026-09-14 | 本地建 `.venv`（Python 3.11.15），装入上表直接依赖 | 开发环境迁至本地（D18） | 用户本人执行并确认成功；`requirements.lock.txt` 已生成，44 条，全部 pin 解析成功且无排除项混入 |
-| 2026-09-14 | 装 Docker CE 29.7.1 + Compose v5.5.1（官方静态二进制）、colima 0.10.3 | Homebrew 停止为 Intel macOS 提供预编译包，brew 路径退化为源码编译不可行 | 用户本人执行并确认成功 |
-| 2026-09-14 | 起 PostgreSQL 16.6 + Redis 7.4.2 容器 | 支撑 `DECISIONS.md` D14 的 ③ 层集成故障注入 | 用户本人执行并确认成功；Claude 未复核 |
+F37可选渠道加密依赖独立锁定在requirements.channels.lock.txt，不替换既有主环境或Memory锁。使用cryptography Fernet；清洁Python3.11已验证加解密和错钥拒绝。仅受控Python处理私有密钥，默认无配置拒绝；安装入口f37-setup，不启用真实渠道。

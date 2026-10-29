@@ -4,17 +4,18 @@
 
 This is an original, short SupplyAgent summary of an open-source hardware design. The
 authoritative design files are the HackRF repository at commit
-`7f96cc8e3fa625c4263a71ba8dd44d1f6110e4fa`, which is also the commit recorded in
-this repository's read-only `data/hardware/raw/hackrf-one/MANIFEST.json`.
+`7f96cc8e3fa625c4263a71ba8dd44d1f6110e4fa`. The source URLs are recorded in the
+demo manifest; the upstream design files are not included in this checkout.
 
 It is not a statement that every manufactured HackRF One has this exact BOM. A Mission
 must identify the board revision before it uses any part-level conclusion.
 
 ## Product context
 
-HackRF One is a USB wideband software-defined radio platform. The local source package
-contains the product schematic and its child schematic sheets. SupplyAgent derives the
-local `hw_part` rows from those pinned KiCad files; it does not manually type a BOM.
+HackRF One is a USB wideband software-defined radio platform. The upstream design includes the
+product schematic and child schematic sheets. Legacy `hw_part` rows are retained as
+isolated historical data; this checkout has no hardware-source rebuild command.
+Current product investigations use explicitly bound, versioned organization BOMs.
 
 ## Relevant component relationship
 

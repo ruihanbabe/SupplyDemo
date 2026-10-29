@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "stage": "A-module-organization-only",
+  "referenceCommit": "3a0e73fa767d7022034971506b3d73b3f0993f41",
+  "legacyModules": {
+    "harness": "supplyagent.sdk.engine.harness",
+    "tool_bridge": "supplyagent.sdk.engine.tool_bridge",
+    "tool_registry": "supplyagent.sdk.tools.registry",
+    "tool_runtime": "supplyagent.sdk.tools.runtime",
+    "tool_scheduler": "supplyagent.sdk.tools.scheduler",
+    "context_runtime": "supplyagent.sdk.context.compiler",
+    "context_protocol": "supplyagent.sdk.context.protocol",
+    "context_compaction": "supplyagent.sdk.context.compaction",
+    "context_mapping": "supplyagent.sdk.context.mapping",
+    "app": "supplyagent.service.api.app",
+    "auth": "supplyagent.service.api.auth",
+    "rbac": "supplyagent.service.api.rbac",
+    "actions": "supplyagent.service.actions.models",
+    "channels": "supplyagent.service.actions.channels",
+    "runtime": "supplyagent.service.runtime.runtime",
+    "recovery": "supplyagent.service.runtime.recovery",
+    "worker_main": "supplyagent.service.runtime.worker_main",
+    "tenant": "supplyagent.service.persistence.tenant",
+    "trace": "supplyagent.service.persistence.trace",
+    "context_store": "supplyagent.service.persistence.context_store",
+    "gateway": "supplyagent.service.gateway.gateway",
+    "glm": "supplyagent.service.gateway.glm",
+    "model_tools": "supplyagent.service.gateway.model_tools",
+    "intelligence": "supplyagent.service.workflows.intelligence",
+    "mission_runtime": "supplyagent.service.workflows.mission_runtime",
+    "specialist_runner": "supplyagent.service.workflows.specialist_runner",
+    "specialists": "supplyagent.service.workflows.specialists",
+    "business_nodes": "supplyagent.service.domains.business_nodes",
+    "commercial": "supplyagent.service.domains.commercial",
+    "crm": "supplyagent.service.domains.crm",
+    "supply": "supplyagent.service.domains.supply",
+    "knowledge": "supplyagent.service.domains.knowledge",
+    "knowledge_import": "supplyagent.service.domains.knowledge_import",
+    "memory": "supplyagent.service.domains.memory",
+    "context_session": "supplyagent.service.context.session",
+    "mem0_adapter": "supplyagent.service.memory.mem0_adapter",
+    "memory_models": "supplyagent.service.memory.models",
+    "memory_runtime": "supplyagent.service.memory.runtime",
+    "memory_store": "supplyagent.service.memory.store",
+    "memory_governance": "supplyagent.service.memory.governance",
+    "memory_dream": "supplyagent.service.memory.dream",
+    "memory_worker_main": "supplyagent.service.memory.worker_main",
+    "evaluation": "supplyagent.service.evaluation.runner",
+    "evaluation_result": "supplyagent.service.evaluation.results"
+  },
+  "transitionalImports": [
+    [
+      "supplyagent.sdk.context.compaction",
+      "supplyagent.service.persistence.context_store"
+    ],
+    [
+      "supplyagent.sdk.context.compiler",
+      "supplyagent.service.persistence.context_store"
+    ],
+    [
+      "supplyagent.sdk.context.mapping",
+      "supplyagent.service.persistence.context_store"
+    ],
+    [
+      "supplyagent.sdk.context.protocol",
+      "supplyagent.service.persistence.context_store"
+    ],
+    [
+      "supplyagent.sdk.engine.harness",
+      "supplyagent.service.persistence.trace"
+    ],
+    [
+      "supplyagent.sdk.engine.tool_bridge",
+      "supplyagent.service.persistence.context_store"
+    ],
+    [
+      "supplyagent.sdk.tools.runtime",
+      "supplyagent.service.domains.commercial"
+    ],
+    [
+      "supplyagent.sdk.tools.runtime",
+      "supplyagent.service.domains.crm"
+    ],
+    [
+      "supplyagent.sdk.tools.runtime",
+      "supplyagent.service.domains.knowledge"
+    ],
+    [
+      "supplyagent.sdk.tools.runtime",
+      "supplyagent.service.persistence.tenant"
+    ],
+    [
+      "supplyagent.sdk.tools.runtime",
+      "supplyagent.service.workflows.specialists"
+    ]
+  ],
+  "note": "SDK is a target grouping, not yet an independently distributable SDK. Internal responsibility extraction is explicitly deferred."
+}

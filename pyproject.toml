@@ -8,6 +8,7 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "--strict-markers"
 markers = [
+  "model_live: explicit authorization required; external free model smoke",
   "integration: requires local PostgreSQL; isolated transactional fixtures",
   "supabase_live: requires explicit authorization plus local Supabase test credentials",
 ]

@@ -1,7 +1,7 @@
 {
   "version": 4,
-  "updated": "2026-10-21",
-  "notes": "v0.6 将 Agentic 开发重心固定为 Python Product Harness + 可替换 AgentEnginePort。Pi Agent Core 是首选 turn 执行引擎，Node 只作无状态 sidecar；Python/SQL 继续拥有租户、上下文、工具、模型网关、运行恢复、副作用和审计。F35/F36 已在本地确定性 Replay 与 PostgreSQL/RLS 证据边界获用户验收；下一 Agentic Feature 为仍待用户确认 Contract 的 F41，之后才是 F37、F33 和 F38。",
+  "updated": "2026-10-28",
+  "notes": "F34/F35 运行补充已实现待验收，交接基线见 data-contract.md；F50 真实冒烟为既有证据。F51 P1–P4、F52 C1–C3 已本地实现待验收；F48 M1–M3已本地合成实现待验收；实际Mem0/SQL/Context证据及启用限制见contracts/F48.md。业务库未应用0030–0041；审批/渠道和真实数据 Memory 启用仍暂缓。",
   "status_values": [
     "not_started",
     "contract_draft",
@@ -12,553 +12,33 @@
   ],
   "features": [
     {
-      "id": "F01",
-      "name": "工程底座：src/ 包结构、迁移清理（删 v0.1 旧表）、Makefile 目标对齐、hw_part 管线恢复",
-      "type": "最小",
-      "spec": [
-        "§1.3",
-        "§5.1"
-      ],
-      "necessity": "所有 Feature 的前提；hw_part 是唯一真实元件数据",
-      "depends_on": [],
-      "milestone": "M1",
-      "status": "done",
-      "contract": "contracts/F01.md",
-      "note": "已验收（2026-09-29，提交 89fdb6e）"
-    },
-    {
-      "id": "F02",
-      "name": "第二块板入库（原理图 + 板级上下文）",
-      "type": "最小",
-      "spec": [
-        "§1.1",
-        "§1.7"
-      ],
-      "necessity": "§1.1 定了两块板；跨板迁移与 Eval 留出集防泄漏",
-      "depends_on": [
-        "F01"
-      ],
-      "milestone": "M5",
-      "status": "done",
-      "contract": "contracts/F02.md",
-      "note": "用户决定提前于 M5 开工；已验收（2026-09-29）：bms-c1 原理图入库 + 两块板 README 原文存档"
-    },
-    {
-      "id": "F03",
-      "name": "环境内核：订单、计划/工单、库存、采购单、运单；按天时钟；类 ERP 查询与写接口；种子复现；每日快照与分叉；结果指标",
-      "type": "最小",
-      "spec": [
-        "§4.1",
-        "§4.2",
-        "§4.6"
-      ],
-      "necessity": "Agent 操作的唯一业务状态来源，也是 Eval 场；没有它就没有可处置的异常",
-      "depends_on": [
-        "F01"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F03.md",
-      "note": "五小步完成（2026-09-29）：make check 48 过、test-integration 6 过、sim-run SEED=42 两次逐字相同；待用户验收"
-    },
-    {
-      "id": "F04",
-      "name": "情景与异常：A1–A9 由机制产生、B1–B3 叠加注入；情景 YAML；期望标注；两个基线与情景筛选",
-      "type": "最小",
-      "spec": [
-        "§1.5",
-        "§4.3",
-        "§4.4",
-        "§4.6"
-      ],
-      "necessity": "§4.4 的异常是 Harness 全部压力来源；基线用于剔除无效情景和对比",
-      "depends_on": [
-        "F03"
-      ],
-      "milestone": "M3",
-      "status": "not_started",
-      "contract": null,
-      "note": "M1 先做 A1（物流延误）"
-    },
-    {
-      "id": "F05",
-      "name": "模拟人工：H1–H5 规则应答",
-      "type": "最小",
-      "spec": [
-        "§4.5"
-      ],
-      "necessity": "无人值守跑跨天审批；Eval 必需",
-      "depends_on": [
-        "F03"
-      ],
-      "milestone": "M1",
-      "status": "deferred",
-      "contract": "contracts/F05.md",
-      "note": "2026-10-09 冻结为 eval_only：保留当前工作树代码供模拟/回归/Eval；不是 v0.4 真实人工审批或产品运行时，后续仅由 F39 分层迁入。"
-    },
-    {
-      "id": "F06",
-      "name": "Session 事件日志与 Artifact：只追加日志 + 哈希链、Artifact 版本与依赖、失效传播、案子状态投影",
-      "type": "深度②",
-      "spec": [
-        "§5.1",
-        "§5.5"
-      ],
-      "necessity": "A2/A3/A5/A7 都靠失效传播；崩溃恢复和回放的基础",
-      "depends_on": [
-        "F01"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F06.md",
-      "note": "完成（2026-09-29）：make check 53 过、test-integration 7 过（Pg 与内存逐条哈希一致）；待用户验收"
-    },
-    {
-      "id": "F07",
-      "name": "工具代理层与 MCP Server：管道、统一返回、两个时钟的缓存、配额、留档、注入挂点、返回校验、多源矛盾警告；环境/分销商/参数/留档/编排控制 Server",
-      "type": "深度②",
-      "spec": [
-        "§5.4",
-        "G1",
-        "G5"
-      ],
-      "necessity": "G1 强制；B2/B3 在这里处理；留档是回放与 Eval 的前提",
-      "depends_on": [
-        "F03",
-        "F06"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F07.md",
-      "note": "完成（2026-09-30）：make check 67 过、test-integration 8 过（Redis 并发令牌桶不超发、Pg 留档往返）；分销商只有固定样例后端；参数 Server 推迟 M2；MCP 标准传输待装 mcp 包；待用户验收"
-    },
-    {
-      "id": "F08",
-      "name": "模型适配层：GLM/Qwen 统一格式、Schema 校验 + 修复 1 次、降级、编造料号拒绝、完整输入输出记录",
-      "type": "最小",
-      "spec": [
-        "§5.3"
-      ],
-      "necessity": "弱模型可靠性的第一道防线；完整 I/O 是全回放的前提",
-      "depends_on": [
-        "F06"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F08.md",
-      "note": "完成（2026-09-30）：make check 59 过，全部 mock，无真实调用；quirks 取值待真实联调（需授权）核实；待用户验收"
-    },
-    {
-      "id": "F09",
-      "name": "Runtime：活跃段重建、并行派发与汇合、三层预算、循环检测、模拟时钟调度循环、并发上限",
-      "type": "深度②",
-      "spec": [
-        "§5.3"
-      ],
-      "necessity": "跨天挂起、多案并发、可控成本都在这里",
-      "depends_on": [
-        "F06",
-        "F07",
-        "F08"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F09.md",
-      "note": "M1 薄版完成（2026-09-30）：make check 77 过；批内与案子间顺序执行（Contract 默认值，待确认）；待用户验收"
-    },
-    {
-      "id": "F10",
-      "name": "事件接入与案子管理：统一事件与实体键、订阅唤醒、按影响开案、同源合并、软声明冲突、关闭条件、Monitor",
-      "type": "深度②",
-      "spec": [
-        "§5.2",
-        "§3.3"
-      ],
-      "necessity": "A1/A4/A8/A9 的落点；没有它只能单案演示",
-      "depends_on": [
-        "F06",
-        "F09",
-        "F21"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F10.md",
-      "note": "M1 做薄版，后续里程碑补全"
-    },
-    {
-      "id": "F11",
-      "name": "权限 L1/L2：工具风险分级 R0/R1/R2、能力令牌与衰减、代表链、数据库只读角色、出站白名单、凭证隔离与脱敏",
-      "type": "深度",
-      "spec": [
-        "§5.5",
-        "§3.4"
-      ],
-      "necessity": "G1、G8（A6 靠没有这个工具）、B1 兜底",
-      "depends_on": [
-        "F07"
-      ],
-      "milestone": "M2",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F11.md",
-      "note": ""
-    },
-    {
-      "id": "F12",
-      "name": "证据门控与审批令牌：§2.4 前提检查、HMAC 令牌绑定草稿哈希、提交前重校验",
-      "type": "深度",
-      "spec": [
-        "§2.4",
-        "§5.5",
-        "G2"
-      ],
-      "necessity": "A2 的核心机制；G2 强制",
-      "depends_on": [
-        "F06",
-        "F21"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F12.md",
-      "note": "M1 做换供应商路径所需的门控，替代料门控随 M2 补全"
-    },
-    {
-      "id": "F13",
-      "name": "字段级污点追踪与汇点检查",
-      "type": "深度",
-      "spec": [
-        "§5.5"
-      ],
-      "necessity": "B1 的结构性防线（§5.5 已定字段级）",
-      "depends_on": [
-        "F06",
-        "F11"
-      ],
-      "milestone": "M2",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F13.md",
-      "note": ""
-    },
-    {
-      "id": "F14",
-      "name": "反馈与升级：反馈卡片、重规划分级、预期与偏差比对、代码强制升级、升级工具",
-      "type": "深度②",
-      "spec": [
-        "§5.7"
-      ],
-      "necessity": "A1 延迟后果靠偏差反馈发现；避免模型自行判断何时重规划",
-      "depends_on": [
-        "F06",
-        "F09",
-        "F10"
-      ],
-      "milestone": "M3",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F14.md",
-      "note": ""
-    },
-    {
-      "id": "F15",
-      "name": "异常处理与恢复：重试退避、熔断 5 分钟、部分成功、意图/完成两步写 + 幂等键、重放恢复",
-      "type": "深度②",
-      "spec": [
-        "§5.8"
-      ],
-      "necessity": "深度点②的主体；不重复下单",
-      "depends_on": [
-        "F07",
-        "F09",
-        "F21"
-      ],
-      "milestone": "M3",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F15.md",
-      "note": "熔断状态放 Redis（§5.8）"
-    },
-    {
-      "id": "F16",
-      "name": "上下文组装：分区、代码摘要、旧结果折叠、上限裁剪、外部内容引用块",
-      "type": "深度③",
-      "spec": [
-        "§5.9"
-      ],
-      "necessity": "深度点③的主体；弱模型 24K/16K 上限下必须有",
-      "depends_on": [
-        "F06",
-        "F09"
-      ],
-      "milestone": "M4",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F16.md",
-      "note": "完成（2026-09-30）：make check 81 过；token 为字符估算，待真实联调校准；待用户验收"
-    },
-    {
-      "id": "F17",
-      "name": "可观测计量：LLM/工具计量、上下文快照存储、案子汇总、配额数据",
-      "type": "最小",
-      "spec": [
-        "§5.11"
-      ],
-      "necessity": "调试与 P8 所需真实数据的来源",
-      "depends_on": [
-        "F07",
-        "F08"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F17.md",
-      "note": "完成（2026-09-30）：make check 69 过、test-integration 9 过；待用户验收"
-    },
-    {
-      "id": "F18",
-      "name": "测试注入、回放与分叉：三处挂点、三种回放模式、唤醒边界分叉、运行清单",
-      "type": "深度①",
-      "spec": [
-        "§5.12"
-      ],
-      "necessity": "可复现是 §0.2 成功标准；回归门禁依赖全回放",
-      "depends_on": [
-        "F03",
-        "F07",
-        "F08",
-        "F09"
-      ],
-      "milestone": "M3",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F18.md",
-      "note": ""
-    },
-    {
-      "id": "F19",
-      "name": "datasheet 知识库 A：白名单下载、Docling 解析、页表、全文检索 + 同义词、目录、版本哈希、引用校验器",
-      "type": "最小",
-      "spec": [
-        "§6.1",
-        "§6.2",
-        "§2.4"
-      ],
-      "necessity": "Verifier 与 S3 的证据来源；G4 引用校验；A5",
-      "depends_on": [
-        "F06",
-        "F07"
-      ],
-      "milestone": "M2",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F19.md",
-      "note": ""
-    },
-    {
-      "id": "F20",
-      "name": "知识资产与知识库 B：术语表、比对清单与替代规则、Skills、板级文档原文与文档工具；KB B 种子导入、别名、H1/H3 写入、失效与撤销、按实体键注入",
-      "type": "最小",
-      "spec": [
-        "§6",
-        "§6.3",
-        "§5.10",
-        "§3.5"
-      ],
-      "necessity": "替代判断的真值来源与注入内容；G3",
-      "depends_on": [
-        "F01",
-        "F06"
-      ],
-      "milestone": "M2",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F20.md",
-      "note": ""
-    },
-    {
-      "id": "F21",
-      "name": "确定性业务组件：影响分析、Sourcing（需求列表、部分结果）、Policy（YAML）、等级汇总器、Procurement 执行器",
-      "type": "最小",
-      "spec": [
-        "§3.3",
-        "G7",
-        "G8"
-      ],
-      "necessity": "数字与写操作全由代码产生是整个设计的底线",
-      "depends_on": [
-        "F03",
-        "F06",
-        "F07"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F21.md",
-      "note": "完成（2026-09-30）：make check 90 过、test-integration 9 过；门控为最小门控，F12 接入同一挂点；待用户验收"
-    },
-    {
-      "id": "F22",
-      "name": "编排者：路由与节点集合、任务图、计划校验、固定模板兜底、两级目标修订（H4）、重规划",
-      "type": "深度",
-      "spec": [
-        "§2.1",
-        "§2.2",
-        "§2.3",
-        "§2.5",
-        "§2.6",
-        "§2.7"
-      ],
-      "necessity": "动态编排 + 证据门控是项目核心；固定模板同时是 Eval 对照组",
-      "depends_on": [
-        "F09",
-        "F12",
-        "F21"
-      ],
-      "milestone": "M1",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F22.md",
-      "note": "M1 做薄版，后续里程碑补全"
-    },
-    {
-      "id": "F23",
-      "name": "子 Agent 与 LLM 函数：画像、按来源的替代检索、隔离的 Verifier、Resolver 三层、Explainer",
-      "type": "深度",
-      "spec": [
-        "§3.2",
-        "§3.5"
-      ],
-      "necessity": "缺料替代采购这条对策的全部判断",
-      "depends_on": [
-        "F19",
-        "F20",
-        "F22"
-      ],
-      "milestone": "M2",
-      "status": "awaiting_acceptance",
-      "contract": "contracts/F23.md",
-      "note": ""
-    },
-    {
-      "id": "F24",
-      "name": "S3 互换问答路径：只读节点集合、引用校验后的结论输出",
-      "type": "最小",
-      "spec": [
-        "§1.4",
-        "§2.6"
-      ],
-      "necessity": "§1.4 定的两类请求之一；复用 F19/F23",
-      "depends_on": [
-        "F19",
-        "F22",
-        "F23"
-      ],
-      "milestone": "M4",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
-    },
-    {
-      "id": "F25",
-      "name": "Web 人工节点：配置化登录与角色、H1–H5 页面、用户发起请求、审批页（含预演）",
-      "type": "最小",
-      "spec": [
-        "§1.2",
-        "§2.8",
-        "§5.5"
-      ],
-      "necessity": "真人参与与演示的唯一入口；预演是 §5.5 已定机制",
-      "depends_on": [
-        "F06",
-        "F12",
-        "F20"
-      ],
-      "milestone": "M4",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
-    },
-    {
-      "id": "F26",
-      "name": "Web 案子时间线与配额面板",
-      "type": "最小",
-      "spec": [
-        "§5.11"
-      ],
-      "necessity": "调试与演示（§5.11 已定自研时间线）",
-      "depends_on": [
-        "F06",
-        "F17"
-      ],
-      "milestone": "M4",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
-    },
-    {
-      "id": "F27",
-      "name": "Eval 最小框架：结果/过程/花费三层代码评分、实验运行器（种子 × 配置 × 重复）、置信区间、回归门禁脚本",
-      "type": "深度①",
-      "spec": [
-        "§7",
-        "§0.2"
-      ],
-      "necessity": "三个深度点都要靠它出数据；策略按 P8 后定，框架先有",
-      "depends_on": [
-        "F04",
-        "F17",
-        "F18"
-      ],
-      "milestone": "M5",
-      "status": "not_started",
-      "contract": null,
-      "note": "开工前先定 P8"
-    },
-    {
-      "id": "F28",
-      "name": "对照配置与消融开关：单 Agent、细拆多 Agent、§3.6 各开关",
-      "type": "深度①",
-      "spec": [
-        "§3.6",
-        "§0.3"
-      ],
-      "necessity": "证明组件有用（§0.3、§3.6 已定）；实验怎么跑等 P8",
-      "depends_on": [
-        "F22",
-        "F23",
-        "F27"
-      ],
-      "milestone": "M5",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
-    },
-    {
-      "id": "F29",
-      "name": "交付：compose 一键启动全套、录好的演示回放",
-      "type": "最小",
-      "spec": [
-        "§11"
-      ],
-      "necessity": "作品可展示、可复现",
-      "depends_on": [
-        "F18",
-        "F25",
-        "F26"
-      ],
-      "milestone": "M5",
-      "status": "not_started",
-      "contract": null,
-      "note": ""
-    },
-    {
       "id": "F30",
-      "name": "v0.5 重基线与既有能力兼容审计",
+      "name": "v0.6 产品基线与遗留清理",
       "type": "最小",
-      "spec": ["§0.4", "§3", "§5"],
-      "necessity": "防止把单租户模拟 Harness 误报为多租户产品能力；为所有复用提供逐项证据。",
-      "depends_on": ["F01", "F03", "F06", "F07", "F08", "F09", "F10", "F11", "F12", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23"],
+      "spec": [
+        "§0.4",
+        "§3",
+        "§5"
+      ],
+      "necessity": "确立唯一的多租户产品基线，避免历史实现或数据库记录被误报为当前能力。",
+      "depends_on": [],
       "milestone": "M0",
       "status": "awaiting_acceptance",
       "contract": "contracts/F30.md",
-      "note": "2026-10-10 已补 v0.5 Python 主体/薄前端重基线说明；兼容矩阵待用户验收，不改业务代码。"
+      "note": "2026-10-23：已按批准范围完成文档/模板归并与本地数据库退役；业务规则集中 business-logic BL、数据契约集中 data-contract DC。全库备份恢复及克隆验证后应用 legacy0009/产品0029，保留29张app表、117行硬件和历史；0023–0028未应用。离线106及迁移保护/Worker/Gateway/GLM克隆验证通过，完整证据及既有F41限制见Contract，待验收。"
     },
     {
       "id": "F31",
       "name": "多租户身份、组织隔离、RBAC/RLS 与服务端 API",
       "type": "深度",
-      "spec": ["§1.1", "§2.1"],
+      "spec": [
+        "§1.1",
+        "§2.1"
+      ],
       "necessity": "图中的组织隔离和信任边界；没有它不能安全提供 CRM 或 BYOK。",
-      "depends_on": ["F30"],
+      "depends_on": [
+        "F30"
+      ],
       "milestone": "M1",
       "status": "awaiting_acceptance",
       "contract": "contracts/F31.md",
@@ -568,9 +48,14 @@
       "id": "F32",
       "name": "CRM 业务域：客户、联系人、商机、会话、Kanban 与受控提案",
       "type": "深度",
-      "spec": ["§1.2", "§2.7"],
+      "spec": [
+        "§1.2",
+        "§2.7"
+      ],
       "necessity": "保留图中 CRM 核心对象，并与采购异常工作流建立可审计关联。",
-      "depends_on": ["F31"],
+      "depends_on": [
+        "F31"
+      ],
       "milestone": "M1",
       "status": "deferred",
       "contract": "contracts/F32.md",
@@ -580,45 +65,79 @@
       "id": "F33",
       "name": "React Workbench、审批收件箱、SSE 运行回放与配额面板",
       "type": "最小",
-      "spec": ["§2.1", "§4"],
+      "spec": [
+        "§2.1",
+        "§4"
+      ],
       "necessity": "保留图中的工作台、可视化和 Event-ID 回放，成为真人参与入口。",
-      "depends_on": ["F31", "F32", "F35", "F36", "F37", "F06", "F17"],
+      "depends_on": [
+        "F31",
+        "F32",
+        "F35",
+        "F36",
+        "F37"
+      ],
       "milestone": "M4",
-      "status": "deferred",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F33.md",
-      "note": "2026-10-19：延后到 Harness、Runtime、审批与 SSE 读取接口稳定之后；Next 仅保留薄 Workbench/BFF。"
+      "note": "2026-10-28 只读运行SSE/续接/时间线/本Run用量本地实现；8专项/3克隆/224离线通过。完整工作台/全局配额/审批与浏览器真实联调、生产构建仍后续。"
     },
     {
       "id": "F34",
       "name": "组织级 Model Gateway / BYOK、预算、成本与审计",
       "type": "深度",
-      "spec": ["§0.3", "§2.4", "§4"],
+      "spec": [
+        "§0.3",
+        "§2.4",
+        "§4"
+      ],
       "necessity": "保留图中的 Gateway/BYOK；把现有模型适配层置于组织、凭证和预算边界内。",
-      "depends_on": ["F31", "F08", "F17"],
+      "depends_on": [
+        "F31"
+      ],
       "milestone": "M2",
       "status": "awaiting_acceptance",
       "contract": "contracts/F34.md",
-      "note": "2026-10-19：用户选择单 Run 短期 HTTP 能力；Python Gateway、Pi HTTP 模型端口、OpenAI Adapter、SQL 预算预留/计量已通过离线与本地 PostgreSQL/RLS 验证。F35 Worker 已接线并通过 Replay 全链路；真实付费 Provider 验证仍需 G5 授权。"
+      "note": "2026-10-23：保留单 Run 私有 HTTP 能力，当前 GLM 兼容接入见 F50，Responses 见 F49。新增健康/就绪与克隆库验收入口，运行契约及证据见 docs/design/model-gateway-worker-contract.md ；不代表活动租约即时撤销或生产部署已验证。"
     },
     {
       "id": "F35",
       "name": "SQL Durable Runtime、独立 Worker/cron 与可恢复队列",
       "type": "深度",
-      "spec": ["§2.2", "§3", "§4"],
+      "spec": [
+        "§2.2",
+        "§3",
+        "§4"
+      ],
       "necessity": "保留图中的 SQL job、claim/lease/reaper/retry 和独立 Worker；HTTP 不承担 Agent 执行。",
-      "depends_on": ["F30", "F31", "F06", "F09", "F15"],
+      "depends_on": [
+        "F30",
+        "F31"
+      ],
       "milestone": "M2",
-      "status": "done",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F35.md",
-      "note": "2026-10-21：用户验收本地确定性 Mission 证据。HTTP 幂等入队、单组织专用身份 Worker、SQL 租约/代次/reaper/重试/取消、F40 持久 checkpoint、F42 AgentEnginePort 已接线；完整 F36 Mission 由同一 Worker 编排。隔离克隆库通过真实 Pi Replay 全链路；部署重启、cron 运维和真实付费 Provider 尚未验证。"
+      "note": "2026-10-28 原done验收保留；R1恢复增强本地实现：细原因/永久错误分流、固定checkpoint hooks、Job绑定模型能力。19专项/5克隆/230离线通过；0042仅克隆，自动分支复用等仍后续。"
     },
     {
       "id": "F36",
       "name": "统一 Agent Specialist、企业知识/Wiki/RAG、引用与长期记忆",
       "type": "深度",
-      "spec": ["§2.5", "§2.6", "§3"],
+      "spec": [
+        "§2.5",
+        "§2.6",
+        "§3"
+      ],
       "necessity": "保留图中的 Agent Harness、Specialist 与知识底座，并复用采购验证链路。",
-      "depends_on": ["F31", "F32", "F34", "F35", "F39", "F40", "F42", "F19", "F20", "F22", "F23"],
+      "depends_on": [
+        "F31",
+        "F32",
+        "F34",
+        "F35",
+        "F39",
+        "F40",
+        "F42"
+      ],
       "milestone": "M3",
       "status": "done",
       "contract": "contracts/F36.md",
@@ -628,45 +147,75 @@
       "id": "F37",
       "name": "人工决策、受控写入、发送账本与 WhatsApp/飞书渠道",
       "type": "深度",
-      "spec": ["§0.3", "§2.7", "§2.8"],
+      "spec": [
+        "§0.3",
+        "§2.7",
+        "§2.8"
+      ],
       "necessity": "保留图中动作分级、审批发送、渠道事件和内部协作，且不绕过 SupplyAgent 审批约束。",
-      "depends_on": ["F31", "F32", "F35", "F36", "F12"],
+      "depends_on": [
+        "F31",
+        "F32",
+        "F35",
+        "F36"
+      ],
       "milestone": "M3",
-      "status": "contract_draft",
+      "status": "in_progress",
       "contract": "contracts/F37.md",
-      "note": "2026-10-19：等待 F41 建立统一 Proposal/Execution 边界。渠道 webhook、SendLedger 和执行 Adapter 尚未实现，真实连接与发送仍须另获 G5 授权。"
+      "note": "2026-10-28 本地加密草稿/审批Job/fixture发送与签名回执已接线；2离线/232全量离线通过，最新专项10通过1领取idle失败。时钟回跳已记录，用户要求暂缓；保持in_progress待验证，真实渠道关闭，0044仅克隆。"
     },
     {
       "id": "F38",
       "name": "SQL Trace、Eval、可选 Langfuse 与容器化交付",
       "type": "深度",
-      "spec": ["§4", "§6"],
+      "spec": [
+        "§4",
+        "§6"
+      ],
       "necessity": "保留图中的 Trace、Eval、工程部署与完成项，并证明多租户与副作用边界。",
-      "depends_on": ["F33", "F34", "F35", "F36", "F37", "F18", "F27", "F28", "F29"],
+      "depends_on": [
+        "F33",
+        "F34",
+        "F35",
+        "F36",
+        "F37"
+      ],
       "milestone": "M4",
-      "status": "contract_draft",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F38.md",
-      "note": "2026-10-19：已有离线门禁和部分 F40/F42 本地集成路径；完整 Compose、故障注入、全回放、Langfuse、Workbench 与产品演示尚未实现。"
+      "note": "2026-10-28 当前只读入口E0/E1已实现并通过本地验证；完整回放/分叉/部署及未来副作用评测仍未完成，详见Contract。"
     },
     {
       "id": "F39",
       "name": "供应链领域迁入：组织范围服务与模拟环境分层",
       "type": "深度",
-      "spec": ["§3", "§3.1"],
-      "necessity": "保留 SupplyAgent 的确定性采购价值，同时阻止单租户 simenv 直接成为产品 API 或模型工具。",
-      "depends_on": ["F30", "F31", "F03", "F10", "F21"],
+      "spec": [
+        "§3",
+        "§3.1"
+      ],
+      "necessity": "保留 SupplyAgent 的确定性采购价值，并确保测试夹具不会成为产品 API 或模型工具。",
+      "depends_on": [
+        "F30",
+        "F31"
+      ],
       "milestone": "M1",
       "status": "awaiting_acceptance",
       "contract": "contracts/F39.md",
-      "note": "2026-10-14：F39 以 Python 参数化 DML + 成员级 RLS 实现；真实本地 PostgreSQL migration、RLS 与 Python API 端到端验证已通过。细角色矩阵延后；`simenv` 仍只作测试/Eval。等待用户验收。"
+      "note": "2026-10-14：F39 以 Python 参数化 DML + 成员级 RLS 实现；真实本地 PostgreSQL migration、RLS 与 Python API 端到端验证已通过。细角色矩阵延后；测试夹具不属于产品路径。等待用户验收。"
     },
     {
       "id": "F40",
       "name": "产品 Trace 迁入：组织级 Event Log、Artifact、计量、回放与 SSE 投影",
       "type": "深度",
-      "spec": ["§3.1", "§4"],
+      "spec": [
+        "§3.1",
+        "§4"
+      ],
       "necessity": "让已有事件、Artifact、计量和回放变成多租户产品审计事实，而不是单租户实验轨迹。",
-      "depends_on": ["F30", "F31", "F06", "F17", "F18"],
+      "depends_on": [
+        "F30",
+        "F31"
+      ],
       "milestone": "M1",
       "status": "awaiting_acceptance",
       "contract": "contracts/F40.md",
@@ -676,21 +225,38 @@
       "id": "F41",
       "name": "受控副作用迁入：工具、权限、Proposal、审批令牌、执行账本与恢复",
       "type": "深度",
-      "spec": ["§2.7", "§2.8", "§3.1"],
+      "spec": [
+        "§2.7",
+        "§2.8",
+        "§3.1"
+      ],
       "necessity": "把已有采购门控扩展为 CRM 更新、采购提交和渠道发送的统一不可绕过边界。",
-      "depends_on": ["F31", "F35", "F42", "F07", "F11", "F12", "F13", "F15"],
+      "depends_on": [
+        "F31",
+        "F35",
+        "F42"
+      ],
       "milestone": "M3",
-      "status": "contract_draft",
+      "status": "awaiting_acceptance",
       "contract": "contracts/F41.md",
-      "note": "2026-10-19：现有审批和证据门控只是历史资产，统一多租户 Proposal/Execution 尚未实现。F42 当前只允许 R0 只读工具，F41 验收前不开放 Agent 写入或外部副作用。"
+      "note": "2026-10-28 人工customer_update审批/SQL Worker执行本地闭环；20专项/8克隆/230离线通过；0043仅克隆。完整采购/外部渠道/Agent R1仍后续。"
     },
     {
       "id": "F42",
       "name": "Python Product Harness 与可替换的 Pi Agent Engine",
       "type": "深度",
-      "spec": ["§2.2", "§2.3", "§2.5", "§3.1"],
+      "spec": [
+        "§2.2",
+        "§2.3",
+        "§2.5",
+        "§3.1"
+      ],
       "necessity": "保留 Pi Core 的成熟 turn 循环，同时让 Python/SQL 继续拥有产品上下文、工具、策略、证据和运行事实，并维持执行引擎可替换。",
-      "depends_on": ["F31", "F39", "F40", "F08", "F09", "F16", "F22", "F23"],
+      "depends_on": [
+        "F31",
+        "F39",
+        "F40"
+      ],
       "milestone": "M2",
       "status": "awaiting_acceptance",
       "contract": "contracts/F42.md",
@@ -700,9 +266,16 @@
       "id": "F43",
       "name": "在途事实一致性：到货明细、库存快照与缺料投影的权威来源和对账",
       "type": "深度",
-      "spec": ["§3", "§3.1", "§5"],
+      "spec": [
+        "§3",
+        "§3.1",
+        "§5"
+      ],
       "necessity": "避免库存快照的在途聚合与逐笔到货明细重复计入，或因无法判定其关系而让持续补货料件长期无法获得可解释的缺料投影。",
-      "depends_on": ["F39", "F42"],
+      "depends_on": [
+        "F39",
+        "F42"
+      ],
       "milestone": "M3",
       "status": "contract_draft",
       "contract": "contracts/F43.md",
@@ -712,13 +285,208 @@
       "id": "F44",
       "name": "业务动作授权：角色到 capability 的 API 命令门禁",
       "type": "最小",
-      "spec": ["§2.1", "§3", "§5"],
+      "spec": [
+        "§2.1",
+        "§3",
+        "§5"
+      ],
       "necessity": "将已展示的业务角色能力变为真实 API 命令约束，同时保持 F31 组织 RLS 为最终跨租户隔离边界。",
-      "depends_on": ["F31", "F39"],
+      "depends_on": [
+        "F31",
+        "F39"
+      ],
       "milestone": "M1",
       "status": "awaiting_acceptance",
       "contract": "contracts/F44.md",
       "note": "2026-10-14：F39 的四类人工写入口要求 supply:propose；离线与真实 PostgreSQL API 集成验证已通过。无新增 schema、角色级 RLS 或前端授权逻辑；scope 与对象关系授权仍延后。等待用户验收。"
+    },
+    {
+      "id": "F45",
+      "name": "商机情报问答：问题、输入快照与可追溯答案",
+      "type": "深度",
+      "spec": [
+        "§2.5",
+        "§2.6",
+        "§3"
+      ],
+      "necessity": "将商机业务提问贯穿只读调查、持久执行和工作台。",
+      "depends_on": [
+        "F31",
+        "F35",
+        "F36",
+        "F40",
+        "F42"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F45.md",
+      "note": "2026-10-23：商机提问、HTTP/Job/Pi 只读调查、私有输入与观测快照、按批次重试及前端已实现。本地 PostgreSQL/Pi Replay 与 79 个离线测试通过，业务库未应用 0024。web-check 因 Next.js SecurityFatalError 未全绿；一次未再复现的领取异常留待观察。真实模型、语义审查和其余三场景未完成，详见 Contract。 中断后续验修复当前成员角色查询，并验证角色撤权后 Worker 不进入调查。"
+    },
+    {
+      "id": "F46",
+      "name": "业务故事驱动的数据与只读业务节点",
+      "type": "深度",
+      "spec": [
+        "§1",
+        "§2.3",
+        "§2.5",
+        "§2.6"
+      ],
+      "necessity": "用明确业务事实和固定场景时钟验证跟进缺口与多料号调查，不以演示回答替代数据流转。",
+      "depends_on": [
+        "F32",
+        "F39",
+        "F45"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F46.md",
+      "note": "2026-10-23：首个数据闭环已实现并验证：三客户模拟种子、负责人/截止时间、固定分析时钟、可见任务跟进信号、完整 Case 料号范围和三料号投影。83 个离线测试通过；全量集成 10 passed、1 个既有 F41 路由失败。0025 仅在克隆库应用，业务库未改；BOM/报价后续进展见 F47；漏斗聚合、审批和渠道仍未实现。"
+    },
+    {
+      "id": "F47",
+      "name": "版本化 BOM 关联与报价时效 Specialist",
+      "type": "深度",
+      "spec": [
+        "§2.5",
+        "§2.6"
+      ],
+      "necessity": "版本化 BOM 关联与报价时效 Specialist",
+      "depends_on": [
+        "F46"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F47.md",
+      "note": "2026-10-23：BOM 固定版本、精确派生需求、报价时效 Specialist 与私有证据已通过本地 PostgreSQL/RLS + Pi Replay。86 个离线测试通过，专项集成通过；0026 仅在自动删除的克隆库应用。审批/渠道暂缓，真实 Provider 未验。"
+    },
+    {
+      "id": "F48",
+      "name": "Mem0 长期记忆、治理与离线巩固",
+      "type": "深度",
+      "spec": [
+        "§2.5",
+        "§2.6"
+      ],
+      "necessity": "支撑跨会话偏好、历史过程与经验复用，并保留来源时效、纠错、隔离和完整遗忘",
+      "depends_on": [
+        "F36",
+        "F40",
+        "F52"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F48.md",
+      "note": "2026-10-28：M1–M3已本地合成实现待验收；20专项、38实际后端/克隆、210全量离线通过。M2含实体域/时间条件/多来源冲突及旧数据单读桥；M3含无损Dream持久批次、复盘候选、冷层/原始支持及待加工派生删除、备份恢复与合成覆盖收益。最新Dream专项3通过、旧数据撤权导出专项2通过；曾一次发布未知状态，串行未复现，详见Contract。默认Memory/Dream关闭，backup_pending保留；0035–0041仅克隆，无业务库迁移或真实端点启用。"
+    },
+    {
+      "id": "F49",
+      "name": "Pi OpenAI Responses 接入与私有模型观测",
+      "type": "深度",
+      "spec": [
+        "§2.2",
+        "§2.4",
+        "§2.5",
+        "§4"
+      ],
+      "necessity": "复用 Pi 原生 Responses 转换并关联真实模型、工具和证据，保证评测归因",
+      "depends_on": [
+        "F34",
+        "F42",
+        "F47"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F49.md",
+      "note": "2026-10-23：复用锁定 Pi Responses；私有模型交换与工具观测显式关联。89 个离线测试、2 项专项克隆库集成通过；全量12通过/既有F41失败。0027未应用业务库，真实凭证与付费联调未进行；F45偶发领取异常仍未确认。"
+    },
+    {
+      "id": "F50",
+      "name": "GLM 免费模型 OpenAI 兼容接入",
+      "type": "深度",
+      "spec": [
+        "§2.2",
+        "§2.4",
+        "§2.5",
+        "§4"
+      ],
+      "necessity": "在既有 Pi/Gateway 边界中验证免费真实模型与业务工具交接",
+      "depends_on": [
+        "F49"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F50.md",
+      "note": "2026-10-23：91离线通过，GLM/Responses克隆验证通过。更新凭证后真实GLM两次请求一次工具和引用JSON通过；不是完整真实业务验收，0028未应用业务库。"
+    },
+    {
+      "id": "F51",
+      "name": "声明式工具、统一执行与有序批次调度",
+      "type": "深度",
+      "spec": [
+        "§2.3",
+        "§2.7",
+        "§4"
+      ],
+      "necessity": "统一工具定义与受限绑定、执行身份和持久结果，在保持屏障与权限的前提下开放批次并行",
+      "depends_on": [
+        "F35",
+        "F36",
+        "F40",
+        "F42",
+        "F45",
+        "F49",
+        "F50"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F51.md",
+      "note": "2026-10-27：P1–P4已实现待验收；81专项、11克隆集成、162离线通过。生产Pi v2完整批次、Python独占Runtime/Scheduler、调用台账/共享容量及原产物原子接受；0030/0031未应用业务库，无真实Provider/供应商调用。F52/F48未实施。"
+    },
+    {
+      "id": "F52",
+      "name": "会话、Working State 与每请求 Context 管理",
+      "type": "深度",
+      "spec": [
+        "§2.3",
+        "§2.6",
+        "§4"
+      ],
+      "necessity": "保持长工具链消息配对、任务恢复与每次请求的授权、预算和来源可追溯",
+      "depends_on": [
+        "F35",
+        "F40",
+        "F42",
+        "F45",
+        "F49",
+        "F50",
+        "F51"
+      ],
+      "milestone": "M3",
+      "status": "awaiting_acceptance",
+      "contract": "contracts/F52.md",
+      "note": "2026-10-27：C1–C3本地实现完成；28离线/13克隆专项、190全量离线通过。保守逐字前缀摘要/来源失效/渐进读，Context默认关闭；0032–0034仅克隆验证，等待用户验收。"
+    },
+    {
+      "id": "F53",
+      "name": "SDK与Service模块收敛、替换接口与规则可追溯",
+      "type": "深度",
+      "spec": [
+        "§0.3",
+        "§3",
+        "§4"
+      ],
+      "necessity": "将通用执行机制与产品授权/持久化分离，降低规则定位与评测替换成本。",
+      "depends_on": [
+        "F35",
+        "F41",
+        "F51",
+        "F52"
+      ],
+      "milestone": "M4",
+      "status": "in_progress",
+      "contract": "contracts/F53.md",
+      "note": "2026-10-29 用户明确授权参照本地AgentScope源码与架构解析修正现有代码；保留旧入口及SQL权威，无迁移/真实调用。"
     }
   ]
 }

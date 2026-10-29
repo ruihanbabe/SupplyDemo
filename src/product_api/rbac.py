@@ -1,40 +1,8 @@
-"""F31 的角色能力交集：令牌只能缩小，不能扩大权限。"""
+"""Compatibility import; implementation lives in supplyagent.service.api.rbac."""
 
-from collections.abc import Iterable
+import importlib
+import sys
 
+_module = importlib.import_module('supplyagent.service.api.rbac')
 
-class CapabilityAccessError(Exception):
-    """当前组织成员缺少执行业务命令所需的 capability。"""
-
-
-ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
-    "organization_admin": frozenset({"organization:read", "crm:read", "crm:propose", "supply:read", "supply:propose", "approval:review", "audit:read", "member:manage"}),
-    "sales_manager": frozenset({"organization:read", "crm:read", "crm:propose", "supply:read"}),
-    "buyer": frozenset({"organization:read", "supply:read", "supply:propose"}),
-    "approver": frozenset({"organization:read", "crm:read", "supply:read", "approval:review"}),
-    "hardware_engineer": frozenset({"organization:read", "supply:read", "supply:propose"}),
-    "planner": frozenset({"organization:read", "supply:read"}),
-    "auditor": frozenset({"organization:read", "crm:read", "supply:read", "audit:read"}),
-    "maintainer": frozenset({"organization:read", "audit:read"}),
-}
-
-
-def is_known_role(role: str) -> bool:
-    """只有 migration 枚举中的角色可获得能力。"""
-    return role in ROLE_CAPABILITIES
-
-
-def effective_capabilities(role: str, token_capabilities: Iterable[str] | None = None) -> list[str]:
-    """返回角色能力，或与短期令牌能力的交集。"""
-    role_capabilities = ROLE_CAPABILITIES.get(role)
-    if role_capabilities is None:
-        return []
-    if token_capabilities is None:
-        return sorted(role_capabilities)
-    return sorted(capability for capability in token_capabilities if capability in role_capabilities)
-
-
-def require_capability(role: str, required: str) -> None:
-    """拒绝角色能力之外的命令；短期令牌收窄在后续接入时置于此检查之前。"""
-    if required not in ROLE_CAPABILITIES.get(role, frozenset()):
-        raise CapabilityAccessError(f"角色 {role} 不具备 {required} 能力")
+sys.modules[__name__] = _module

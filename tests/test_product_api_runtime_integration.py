@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import signal
+import sys
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -16,7 +19,13 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from product_api.app import create_app
 from product_api.auth import AuthenticatedIdentity
 from product_api.harness import PiRuntimeAdapter
-from product_api.runtime import DurableWorker, PostgresRuntimeStore, WorkerIdentity, WorkerPolicy
+from product_api.runtime import (
+    DurableWorker,
+    PostgresRuntimeStore,
+    RuntimeJob,
+    WorkerIdentity,
+    WorkerPolicy,
+)
 from product_api.tenant import PostgresTenantRepository
 from product_api.trace import PostgresTraceRepository
 
@@ -51,6 +60,12 @@ async def _scenario(source: str) -> None:
 
 
 async def _run_in_clone(database_url: str) -> None:
+    async with await AsyncConnection.connect(database_url) as migration_db:
+        migration = (Path(__file__).resolve().parents[1] / "supabase/migrations/0030_f51_tool_execution.sql").read_text()
+        await migration_db.execute(migration)
+        await migration_db.execute(migration)
+        await migration_db.execute((Path(__file__).resolve().parents[1] / "supabase/migrations/0031_f51_tool_resources.sql").read_text())
+        await migration_db.execute((Path(__file__).resolve().parents[1] / "supabase/migrations/0042_runtime_attempt_guard.sql").read_text())
     organization_id, actor_id, worker_id = uuid4(), uuid4(), uuid4()
     async with await AsyncConnection.connect(database_url) as connection:
         async with connection.cursor() as cursor:
@@ -117,7 +132,8 @@ async def _run_in_clone(database_url: str) -> None:
         store, identity, WorkerPolicy(30, 5, 2, 0),
         lambda _: PiRuntimeAdapter(("node", str(SIDECAR)), timeout_seconds=10),
     )
-    assert not await worker.run_once()
+    rejected = await worker.run_once_report()
+    assert rejected.outcome == "claim_rejected" and rejected.job_id == legacy_job_id
     assert await worker.run_once()
 
     async def inspect(connection):
@@ -130,7 +146,16 @@ async def _run_in_clone(database_url: str) -> None:
             assert row["status"] == "completed"
             trace_run_id = row["trace_run_id"]
             await cursor.execute("select count(*) as n from app.trace_event where run_id=%s", (trace_run_id,))
-            assert (await cursor.fetchone())["n"] == 8
+            assert (await cursor.fetchone())["n"] == 11
+            await cursor.execute(
+                "select event_type,metadata from app.trace_event where run_id=%s order by sequence_no",
+                (trace_run_id,),
+            )
+            events = await cursor.fetchall()
+            assert len([e for e in events if e["event_type"] != "runtime.checkpoint"]) == 8
+            assert [e["metadata"]["phase"] for e in events if e["event_type"] == "runtime.checkpoint"] == [
+                "claimed", "business_completed", "before_terminal",
+            ]
             await cursor.execute(
                 """select id, artifact_type, version, redacted_payload, content_hash
                    from app.trace_artifact where run_id=%s
@@ -159,3 +184,96 @@ async def _run_in_clone(database_url: str) -> None:
         worker_id, organization_id,
         lambda connection: PostgresTraceRepository().verify_chain(connection, trace_run_id),
     )
+
+
+    await _lifecycle_in_clone(database_url, organization_id, actor_id, worker_id, case_id)
+
+
+async def _lifecycle_in_clone(url, org, actor, worker_id, case_id):
+    tenants = PostgresTenantRepository(url)
+    author = PostgresRuntimeStore(tenants, WorkerIdentity(org, actor, "author"))
+    left = PostgresRuntimeStore(tenants, WorkerIdentity(org, worker_id, "left"))
+    right = PostgresRuntimeStore(tenants, WorkerIdentity(org, worker_id, "right"))
+    await author.begin_supply(case_id, "PART-A", uuid4().hex)
+    claims = await asyncio.gather(left.claim_next(30), right.claim_next(30))
+    assert sum(isinstance(item, RuntimeJob) for item in claims) == 1
+    index = next(i for i, item in enumerate(claims) if isinstance(item, RuntimeJob))
+    store = (left, right)[index]
+    job = claims[index]
+    assert await store.fail_outcome(job, "model_failed", WorkerPolicy(30, 5, 3, 0)) == "queued"
+    again = await store.claim_next(30)
+    assert again.generation == job.generation + 1
+    assert not await store.complete(job)
+    assert await store.fail_outcome(again, "protocol_failed", WorkerPolicy(30, 5, 1, 0)) == "failed"
+    assert await store.claim_next(30) is None
+
+    fixture = """import json,sys
+start=json.loads(sys.stdin.readline())
+print(json.dumps({"protocolVersion":1,"type":"turn.started","turnId":start["turnId"]}),flush=True)
+command=json.loads(sys.stdin.readline())
+assert command["type"]=="turn.cancel"
+print(json.dumps({"protocolVersion":1,"type":"turn.cancelled","turnId":start["turnId"]}),flush=True)
+"""
+    program = """import asyncio,sys
+from product_api import worker_main as wm
+from product_api.harness import PiRuntimeAdapter
+original=wm.create_worker
+def create():
+    worker=original()
+    worker._engine_factory=lambda job: PiRuntimeAdapter((sys.executable,"-c",sys.argv[1]),timeout_seconds=30)
+    return worker
+wm.create_worker=create
+raise SystemExit(asyncio.run(wm.run_worker(once=True,poll_seconds=2)))
+"""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        _, _, job_id = await author.begin_supply(case_id, "PART-A", uuid4().hex)
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", program, fixture,
+            env={
+                "PATH": os.environ["PATH"], "PYTHONPATH": "src",
+                "SUPPLYAGENT_PRODUCT_DATABASE_URL": url,
+                "SUPPLYAGENT_WORKER_ORGANIZATION_ID": str(org),
+                "SUPPLYAGENT_WORKER_ACTOR_ID": str(worker_id),
+                "SUPPLYAGENT_WORKER_OWNER": "lifecycle-test",
+                "SUPPLYAGENT_WORKER_LEASE_SECONDS": "2",
+                "SUPPLYAGENT_WORKER_HEARTBEAT_SECONDS": ".2",
+                "SUPPLYAGENT_WORKER_REPLAY": "1",
+            },
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True,
+        )
+        try:
+            async with asyncio.timeout(10):
+                async with await AsyncConnection.connect(url) as db:
+                    while True:
+                        row = await (await db.execute(
+                            "select j.status,j.attempts,exists(select 1 from app.trace_event e where e.run_id=r.trace_run_id and e.event_type='pi.turn_started') from app.runtime_job j join app.runtime_run r on r.id=j.run_id where j.id=%s",
+                            (job_id,),
+                        )).fetchone()
+                        if row[2]:
+                            break
+                        assert process.returncode is None
+                        await db.commit()
+                        await asyncio.sleep(.05)
+                if sig == signal.SIGKILL:
+                    os.killpg(process.pid, sig)
+                else:
+                    process.send_signal(sig)
+                stdout, stderr = await process.communicate()
+                if sig == signal.SIGTERM:
+                    assert process.returncode == 0 and not stderr
+                    assert json.loads(stdout)["outcome"] == "cancelled"
+                    with pytest.raises(ProcessLookupError):
+                        os.killpg(process.pid, 0)
+                else:
+                    assert process.returncode == -signal.SIGKILL
+                    await asyncio.sleep(2.1)
+                    assert await left.reap() == 1
+                    recovered = await left.claim_next(30)
+                    assert recovered.id == job_id and recovered.generation == 2
+                    assert await left.fail_outcome(
+                        recovered, "protocol_failed", WorkerPolicy(30, 5, 1, 0),
+                    ) == "failed"
+        finally:
+            if process.returncode is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                await process.communicate()

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": "readonly-contract-v1",
+  "cases": [
+    {"id":"followup-history","mode":"offline","node":"tests/test_product_api_business_nodes.py::test_new_followup_does_not_erase_old_overdue_task","oracle":"新跟进不能抹去旧逾期"},
+    {"id":"bom-exact","mode":"offline","node":"tests/test_product_api_commercial.py::test_bom_revision_quantities_are_exact_and_same_part_lines_aggregate","oracle":"BOM Decimal精确且厂家歧义拒绝"},
+    {"id":"quote-boundary","mode":"offline","node":"tests/test_product_api_commercial.py::test_quote_expiry_is_exclusive_and_missing_terms_are_unknown","oracle":"到期瞬间失效，缺期限为未知"},
+    {"id":"transit-unknown","mode":"offline","node":"tests/test_product_api_supply.py::test_impact_does_not_double_count_an_unreconciled_in_transit_total","oracle":"无法对账在途不重复计算"},
+    {"id":"write-denied","mode":"offline","node":"tests/test_product_api_supply.py::test_read_only_supply_role_cannot_mutate_any_supply_fact","oracle":"只读角色四种事实写入均拒绝"},
+    {"id":"citation-scope","mode":"offline","node":"tests/test_product_api_specialist_runner.py::test_invalid_citation_is_downgraded_to_rejected","oracle":"非法引用不能成为受支持结论"},
+    {"id":"context-overflow","mode":"offline","node":"tests/test_product_api_context_compaction.py::test_no_safe_reduction_is_explicit_overflow_not_head_truncation","oracle":"无法安全压缩时失败而非截断"},
+    {"id":"history-unavailable","mode":"offline","node":"tests/test_product_api_memory_runtime.py::test_unavailable_historical_memory_is_explicit_not_fabricated","oracle":"历史不可用显式报告"},
+    {"id":"private-question","mode":"integration","node":"tests/test_product_api_intelligence_integration.py::test_intelligence_question_is_private_durable_and_scoped","oracle":"HTTP排队、原用户范围、撤权及失败记录"},
+    {"id":"model-business","mode":"integration","node":"tests/test_product_api_responses_integration.py::test_responses_business_flow_and_private_model_exchange","oracle":"真实Pi双协议固定报文、业务结果及私有交换关联"}
+  ]
+}

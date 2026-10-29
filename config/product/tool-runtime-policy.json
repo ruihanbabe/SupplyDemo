@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "strategy": "contiguous",
+  "admissionPollSeconds": 0.05,
+  "reservationSeconds": 120,
+  "reservationHeartbeatSeconds": 0.25,
+  "capacities": {}
+}

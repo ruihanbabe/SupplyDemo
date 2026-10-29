@@ -1,6 +1,0 @@
-{"mpn": "CAND-RF-01", "title": "CAND-RF-01 SPDT RF Switch (synthetic candidate, fictional part)",
- "toc": [{"title": "Overview", "page": 1}, {"title": "Specifications", "page": 2}],
- "pages": [
-  {"page": 1, "text": "# CAND-RF-01\n\nFictional candidate part for tests. SPDT, 0.05 to 6.0 GHz."},
-  {"page": 2, "text": "## Specifications\n\n| Parameter | Typ | Unit |\n|---|---|---|\n| Insertion loss at 2.4 GHz | 0.50 | dB |\n| Port-to-port isolation at 2.4 GHz | 27 | dB |\n| VDD range | 1.8 to 3.3 | V |\n\nPackage: QFN-12 2x2 mm."}
- ]}

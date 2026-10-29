@@ -1,0 +1,4 @@
+# Optional F37 encrypted fixture transport; validated with Python 3.11 in an isolated venv.
+cryptography==46.0.7
+cffi==2.1.1
+pycparser==3.12

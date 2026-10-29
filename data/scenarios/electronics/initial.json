@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "scenarioId": "electronics-followup-v1",
+  "provenance": "synthetic",
+  "organization": "SYNTHETIC 星屿电子",
+  "asOf": "2026-10-23T09:00:00+08:00",
+  "board": {
+    "id": "DEMO-RF-100",
+    "revision": "revA",
+    "bomRevision": "BOM-DEMO-RF-100-A1",
+    "sets": 500,
+    "requiredDays": 7
+  },
+  "customers": [
+    {
+      "key": "chengchuan",
+      "name": "SYNTHETIC 澄川物联",
+      "opportunity": "无线采集板 revA / 500 套配料",
+      "stage": "negotiation",
+      "owner": "sales",
+      "readers": [
+        "sales",
+        "manager"
+      ]
+    },
+    {
+      "key": "hean",
+      "name": "SYNTHETIC 河岸仪器",
+      "opportunity": "80 套采集模块配料 / 报价待更新",
+      "stage": "proposal",
+      "owner": "manager",
+      "readers": [
+        "manager"
+      ]
+    },
+    {
+      "key": "songqiao",
+      "name": "SYNTHETIC 松桥控制",
+      "opportunity": "小批量维修补料",
+      "stage": "qualified",
+      "owner": "manager",
+      "readers": [
+        "manager"
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "mpn": "SIM-MCU-01",
+      "perSet": 1,
+      "onHand": 650,
+      "reserved": 0,
+      "lineKey": "1"
+    },
+    {
+      "mpn": "SIM-RF-SW-01",
+      "perSet": 1,
+      "onHand": 180,
+      "reserved": 80,
+      "confirmedReceipt": {
+        "quantity": 200,
+        "days": 5
+      },
+      "lineKey": "2"
+    },
+    {
+      "mpn": "SIM-PWR-01",
+      "perSet": 2,
+      "onHand": 1500,
+      "reserved": 200,
+      "lineKey": "3"
+    }
+  ],
+  "conversations": [
+    {
+      "key": "M1",
+      "days": -3,
+      "summary": "赵工：我们希望 500 套配料 D+7 前到齐，能确认吗？"
+    },
+    {
+      "key": "M2",
+      "days": -3,
+      "summary": "林悦：我们争取这个时间，关键物料还要采购确认，确认后正式回复您。"
+    },
+    {
+      "key": "M3",
+      "days": 0,
+      "summary": "赵工：我们按之前沟通的 D+7 在安排了，今天能否发正式确认？"
+    }
+  ],
+  "tasks": [
+    {
+      "key": "T1",
+      "customer": "chengchuan",
+      "title": "向采购确认关键物料并回复客户",
+      "status": "open",
+      "assignee": "sales",
+      "dueDays": -1
+    },
+    {
+      "key": "T-HEAN",
+      "customer": "hean",
+      "title": "重新确认已过期报价",
+      "status": "open",
+      "assignee": "manager",
+      "dueDays": 1
+    },
+    {
+      "key": "T-SONGQIAO",
+      "customer": "songqiao",
+      "title": "确认维修补料需求",
+      "status": "open",
+      "assignee": null,
+      "dueDays": null
+    }
+  ],
+  "unmappedBusinessInputs": {
+    "providerQuote": {
+      "part": "SIM-RF-SW-01",
+      "quantity": 200,
+      "estimatedShipDays": 6,
+      "stockReserved": false,
+      "arrivalConfirmed": false
+    },
+    "candidateAlternative": {
+      "part": "SIM-RF-SW-02",
+      "engineeringApproved": false
+    },
+    "note": "报价、替代适用性和产品/BOM 权威关联尚待独立领域模型；不写进权限 scope，不伪装已接入。"
+  }
+}
